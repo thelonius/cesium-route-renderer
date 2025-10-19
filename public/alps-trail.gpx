@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Alps Hiking Route" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Tour du Mont Blanc - Sample Section</name>
+    <desc>A scenic section of the famous Tour du Mont Blanc trail</desc>
+  </metadata>
+  <trk>
+    <name>TMB Sample Trail</name>
+    <trkseg>
+      <trkpt lat="45.8326" lon="6.8652">
+        <ele>1035</ele>
+        <time>2024-01-01T08:00:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8340" lon="6.8670">
+        <ele>1050</ele>
+        <time>2024-01-01T08:05:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8355" lon="6.8685">
+        <ele>1075</ele>
+        <time>2024-01-01T08:10:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8370" lon="6.8705">
+        <ele>1110</ele>
+        <time>2024-01-01T08:15:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8390" lon="6.8725">
+        <ele>1150</ele>
+        <time>2024-01-01T08:20:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8410" lon="6.8750">
+        <ele>1200</ele>
+        <time>2024-01-01T08:25:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8430" lon="6.8780">
+        <ele>1260</ele>
+        <time>2024-01-01T08:30:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8450" lon="6.8810">
+        <ele>1330</ele>
+        <time>2024-01-01T08:35:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8470" lon="6.8840">
+        <ele>1410</ele>
+        <time>2024-01-01T08:40:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8490" lon="6.8870">
+        <ele>1500</ele>
+        <time>2024-01-01T08:45:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8510" lon="6.8900">
+        <ele>1600</ele>
+        <time>2024-01-01T08:50:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8530" lon="6.8930">
+        <ele>1710</ele>
+        <time>2024-01-01T08:55:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8550" lon="6.8960">
+        <ele>1830</ele>
+        <time>2024-01-01T09:00:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8570" lon="6.8990">
+        <ele>1960</ele>
+        <time>2024-01-01T09:05:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8590" lon="6.9020">
+        <ele>2100</ele>
+        <time>2024-01-01T09:10:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8610" lon="6.9050">
+        <ele>2250</ele>
+        <time>2024-01-01T09:15:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8625" lon="6.9070">
+        <ele>2380</ele>
+        <time>2024-01-01T09:20:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8635" lon="6.9085">
+        <ele>2480</ele>
+        <time>2024-01-01T09:25:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8642" lon="6.9095">
+        <ele>2540</ele>
+        <time>2024-01-01T09:30:00Z</time>
+      </trkpt>
+      <trkpt lat="45.8645" lon="6.9100">
+        <ele>2560</ele>
+        <time>2024-01-01T09:35:00Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
