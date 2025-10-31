@@ -178,30 +178,6 @@ async function recordRoute() {
 
   const server = await startServer();
 
-  const browser = await puppeteer.launch({
-    headless: false, // Use Xvfb virtual display instead of headless mode
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--enable-webgl',
-      '--use-gl=swiftshader', // Use SwiftShader software GL in containers for stability
-      '--enable-unsafe-swiftshader', // Opt into SwiftShader (lower security; OK for trusted content)
-      '--ignore-gpu-blacklist',
-      '--disable-gpu', // Disable GPU to force software rendering
-      '--disable-gpu-vsync', // Disable vsync for unlimited FPS
-      '--disable-frame-rate-limit', // Remove frame rate limit
-      '--disable-background-timer-throttling', // Prevent timer throttling
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
-      '--js-flags=--max-old-space-size=4096', // Increase JS heap for better performance
-      '--window-size=1080,1920',
-      '--start-maximized'
-    ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
-  });
-
-  const page = await browser.newPage();
   // Allow overriding recording FPS and resolution via environment variables
   // If running in a headless/container environment, automatically prefer
   // lower-quality but stable defaults unless explicit env vars are provided.
@@ -224,7 +200,33 @@ async function recordRoute() {
   console.log(`HEADLESS mode: ${isHeadlessEnv}`)
   console.log(`Recording target FPS: ${TARGET_FPS}, resolution: ${RECORD_WIDTH}x${RECORD_HEIGHT}`)
 
-  await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT })
+  const browser = await puppeteer.launch({
+    headless: false, // Use Xvfb virtual display instead of headless mode
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--enable-webgl',
+      '--use-gl=swiftshader', // Use SwiftShader software GL in containers for stability
+      '--enable-unsafe-swiftshader', // Opt into SwiftShader (lower security; OK for trusted content)
+      '--ignore-gpu-blacklist',
+      '--disable-gpu', // Disable GPU to force software rendering
+      '--disable-gpu-vsync', // Disable vsync for unlimited FPS
+      '--disable-frame-rate-limit', // Remove frame rate limit
+      '--disable-background-timer-throttling', // Prevent timer throttling
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--js-flags=--max-old-space-size=4096', // Increase JS heap for better performance
+      `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
+      '--force-device-scale-factor=1', // Ensure 1:1 devicePixelRatio for consistent pixels
+      '--start-maximized'
+    ],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
+  });
+
+  const page = await browser.newPage();
+  // Set viewport with explicit deviceScaleFactor=1 to match the window-size and avoid HiDPI scaling
+  await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 })
 
   // Disable CPU throttling to get maximum performance
   const client = await page.target().createCDPSession();
@@ -260,6 +262,16 @@ async function recordRoute() {
   });
 
   console.log('Cesium app loaded, waiting for initialization...');
+
+  // Log page inner size and devicePixelRatio for diagnostics (this will be captured by page.on('console'))
+  try {
+    await page.evaluate(() => {
+      // eslint-disable-next-line no-console
+      console.log(`VIEWPORT: ${window.innerWidth}x${window.innerHeight} DPR:${window.devicePixelRatio}`);
+    });
+  } catch (e) {
+    console.warn('Could not evaluate viewport diagnostics:', e && e.message ? e.message : e);
+  }
 
   // Wait for Cesium viewer to be created
   try {

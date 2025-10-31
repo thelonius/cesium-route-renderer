@@ -108,6 +108,73 @@ export default function CesiumViewer() {
 
         viewerRef.current = viewer
 
+        // Runtime diagnostics and global error handlers to capture DeveloperError state
+        const dumpDiagnostics = (tag: string, err?: any) => {
+          try {
+            const now = viewer && viewer.clock && viewer.clock.currentTime ? Cesium.JulianDate.toIso8601(viewer.clock.currentTime) : new Date().toISOString()
+            const trackedPos = (viewer && hikerEntity && hikerEntity.position) ? hikerEntity.position.getValue(viewer.clock.currentTime) : null
+            let trackedCarto = null
+            if (trackedPos) {
+              try {
+                const c = Cesium.Cartographic.fromCartesian(trackedPos)
+                trackedCarto = {
+                  lon: Cesium.Math.toDegrees(c.longitude),
+                  lat: Cesium.Math.toDegrees(c.latitude),
+                  height: c.height
+                }
+              } catch (e) {
+                trackedCarto = { error: 'fromCartesian failed', e }
+              }
+            }
+
+            // last few trail points
+            const lastTrail = (window as any).__lastTrailSnapshot || []
+
+            const cam = viewer && viewer.camera && viewer.camera.positionCartographic ? viewer.camera.positionCartographic : null
+            const camInfo = cam
+              ? { lat: Cesium.Math.toDegrees(cam.latitude), lon: Cesium.Math.toDegrees(cam.longitude), height: cam.height }
+              : null
+
+            const globe = viewer && viewer.scene && viewer.scene.globe ? { tilesLoaded: viewer.scene.globe.tilesLoaded, show: viewer.scene.globe.show } : null
+
+            console.error(`DIAG ${tag}: time=${now} tracked=${JSON.stringify(trackedCarto)} trailPoints=${lastTrail.length} camera=${JSON.stringify(camInfo)} globe=${JSON.stringify(globe)} err=${err && (err.stack || err.message || err)}`)
+          } catch (e) {
+            console.error('DIAG dump failed', e)
+          }
+        }
+
+        const onWindowError = (event: ErrorEvent) => {
+          try {
+            console.error('window.onerror captured:', event.error || event.message)
+            dumpDiagnostics('window.onerror', event.error || event.message)
+            ;(window as any).CESIUM_RENDER_ERROR = true
+            // If this looks like a Cesium DeveloperError, disable camera tracking to avoid repeat
+            if (event.message && event.message.toLowerCase().includes('developererror')) {
+              try { if (viewer) viewer.trackedEntity = undefined } catch (e) {}
+            }
+          } catch (e) { console.error('onWindowError handler failed', e) }
+        }
+
+        const onUnhandledRejection = (event: PromiseRejectionEvent) => {
+          try {
+            console.error('unhandledrejection captured:', event.reason)
+            dumpDiagnostics('unhandledrejection', event.reason)
+            ;(window as any).CESIUM_RENDER_ERROR = true
+            const msg = event.reason && (event.reason.message || String(event.reason))
+            if (msg && msg.toLowerCase().includes('developererror')) {
+              try { if (viewer) viewer.trackedEntity = undefined } catch (e) {}
+            }
+          } catch (e) { console.error('onUnhandledRejection handler failed', e) }
+        }
+
+  // Store references for cleanup
+  ;(window as any).__onWindowError = onWindowError
+  ;(window as any).__onUnhandledRejection = onUnhandledRejection
+  window.addEventListener('error', onWindowError)
+  window.addEventListener('unhandledrejection', onUnhandledRejection)
+  // Expose dump helper for other places to call when catching errors
+  ;(window as any).CESIUM_DUMP = dumpDiagnostics
+
         // Parse GPX file
         const urlParams = new URLSearchParams(window.location.search)
         const gpxFile = urlParams.get('gpx') || 'virages.gpx'
@@ -342,7 +409,7 @@ export default function CesiumViewer() {
             disableDepthTestDistance: Number.POSITIVE_INFINITY
           },
           label: {
-            text: 'Hiker',
+            text: 'Mikael Norhairovich',
             font: '14pt sans-serif',
             style: Cesium.LabelStyle.FILL_AND_OUTLINE,
             outlineWidth: 2,
@@ -373,20 +440,20 @@ export default function CesiumViewer() {
         if (startingPosition && viewer) {
           const startingCartographic = Cesium.Cartographic.fromCartesian(startingPosition)
 
-          // Position camera high above the route (space view) - instant, no animation
+          // Position camera at a lower, angled view to emphasize 3D perspective
           viewer.camera.setView({
             destination: Cesium.Cartesian3.fromRadians(
               startingCartographic.longitude,
               startingCartographic.latitude,
-              500000 // 500km high - space view
+              30000 // 30km high - angled overview for stronger 3D feel
             ),
             orientation: {
               heading: Cesium.Math.toRadians(0),
-              pitch: Cesium.Math.toRadians(-90), // Looking straight down
+              pitch: Cesium.Math.toRadians(-30), // Angled toward horizon for better 3D perception
               roll: 0
             }
           })
-          console.log('✓ Camera positioned at start altitude')
+          console.log('✓ Camera positioned at start (angled overview)')
         }
 
         viewer.scene.postRender.addEventListener(() => {
@@ -395,40 +462,10 @@ export default function CesiumViewer() {
 
             const currentTime = viewer.clock.currentTime
 
-            // Check if we should start outro animation (before getting position)
-            const timeUntilEnd = Cesium.JulianDate.secondsDifference(stopTime, currentTime)
-            if (timeUntilEnd <= OUTRO_START_OFFSET && timeUntilEnd > 0 && !isOutroStarted) {
-              isOutroStarted = true
-              console.log('✓ Starting outro animation')
+            // Outro animation removed in headless/recording mode — keep playback stable until the end
 
-              // Get position safely before it becomes invalid
-              const outroPosition = hikerEntity.position.getValue(currentTime)
-              if (outroPosition) {
-                try {
-                  const outroCartographic = Cesium.Cartographic.fromCartesian(outroPosition)
-
-                  // Fly out to space view
-                  viewer.camera.flyTo({
-                    destination: Cesium.Cartesian3.fromRadians(
-                      outroCartographic.longitude,
-                      outroCartographic.latitude,
-                      500000 // 500km high - space view
-                    ),
-                    orientation: {
-                      heading: Cesium.Math.toRadians(0),
-                      pitch: Cesium.Math.toRadians(-90), // Looking straight down
-                      roll: 0
-                    },
-                    duration: OUTRO_DURATION
-                  })
-                } catch (error) {
-                  console.error('Error starting outro animation:', error)
-                }
-              }
-            }
-
-            // Exit early if intro not complete or outro started
-            if (!isIntroComplete || isOutroStarted) return
+            // Exit early if intro not complete
+            if (!isIntroComplete) return
 
             // Get position for tracking (only when intro complete and outro not started)
             const position = hikerEntity.position.getValue(currentTime)
@@ -461,11 +498,11 @@ export default function CesiumViewer() {
             const cameraOffsetLocal = new Cesium.Cartesian3(-smoothedBack, 0, smoothedHeight)
             const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3())
 
-            // Point camera at hiker from offset position
+              // Point camera at hiker from offset position
             try {
               viewer.camera.position = cameraPosition
               // Use safe lookAt: ensure position is defined
-              if (position) viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(1200, dynamicHeight * 0.75))) // Look at hiker, slightly above
+              if (position) viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(800, dynamicHeight * 0.5))) // Look at hiker, more horizon tilt
             } catch (camErr) {
               console.warn('Camera update failed, skipping this frame:', camErr)
             }
@@ -474,6 +511,18 @@ export default function CesiumViewer() {
             console.error('Error in postRender handler (ignored):', outerErr)
             // Optionally set a flag for diagnostics
             ;(window as any).CESIUM_RENDER_ERROR = true
+            // If this is a DeveloperError from Cesium, disable camera tracking to avoid repeated failures
+            try {
+              const msg = outerErr && ((outerErr as any).message || String(outerErr))
+              if (msg && msg.toLowerCase().includes('developererror')) {
+                console.warn('Detected DeveloperError in render loop — disabling camera tracking for stability')
+                if (viewer) viewer.trackedEntity = undefined
+                // Dump diagnostics to logs for investigation
+                try { (window as any).CESIUM_DUMP && (window as any).CESIUM_DUMP('postRender DeveloperError', outerErr) } catch (e) {}
+              }
+            } catch (e) {
+              // ignore
+            }
           }
         })
 
@@ -565,6 +614,19 @@ export default function CesiumViewer() {
               console.warn('Failed to clone currentPosition for trail, skipping point:', e)
             }
 
+            // Keep a small snapshot of recent trail positions for diagnostics
+            try {
+              const snap = trailPositions.slice(-20).map(p => {
+                try {
+                  const c = Cesium.Cartographic.fromCartesian(p)
+                  return { lon: Cesium.Math.toDegrees(c.longitude), lat: Cesium.Math.toDegrees(c.latitude), h: c.height }
+                } catch (e) { return { error: true } }
+              })
+              ;(window as any).__lastTrailSnapshot = snap
+            } catch (e) {
+              // ignore
+            }
+
             // Limit trail length by removing old points (keep most recent trail)
             if (trailPositions.length > MAX_TRAIL_POINTS) {
               trailPositions.shift() // Remove oldest point
@@ -577,7 +639,7 @@ export default function CesiumViewer() {
           }
         })
 
-        console.log('✓ Route loaded and animation started!')
+  console.log('✓ Route loaded and animation started! (intro/outro disabled)')
         console.log('✓ Animation clock:', {
           startTime: Cesium.JulianDate.toIso8601(viewer.clock.startTime),
           stopTime: Cesium.JulianDate.toIso8601(viewer.clock.stopTime),
@@ -600,58 +662,10 @@ export default function CesiumViewer() {
           }
         }, 1000)
 
-        // Signal to recording script that animation is ready
-        // Wait longer for globe tiles to fully load and render before starting intro
-        setTimeout(() => {
-          if (viewer && startingPosition) {
-            console.log('✅ Waiting for tiles to fully render...')
-            console.log('✅ Globe state:', {
-              show: viewer.scene.globe.show,
-              tilesLoaded: viewer.scene.globe.tilesLoaded
-            })
-
-            // Wait additional time for tiles to actually render (not just load)
-            setTimeout(() => {
-              if (!viewer) return
-              console.log('✅ Starting intro animation')
-
-              // NOW start the intro animation after tiles are fully rendered
-              const transform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition)
-
-              // Compute a terrain-relative offset for the intro so camera doesn't clip into terrain
-              let startTerrainHeight = 0
-              try {
-                const startCart = Cesium.Cartographic.fromCartesian(startingPosition)
-                const h = viewer.scene.globe.getHeight(startCart)
-                if (typeof h === 'number' && Number.isFinite(h)) startTerrainHeight = h
-              } catch (e) {
-                // ignore
-              }
-
-              const introHeight = Math.max(CAMERA_BASE_HEIGHT, startTerrainHeight * 0.2 + 800)
-              const introBack = Math.max(1200, Math.min(8000, CAMERA_BASE_BACK + startTerrainHeight * 0.05))
-              const introOffset = new Cesium.Cartesian3(-introBack, 0, introHeight)
-              const targetPosition = Cesium.Matrix4.multiplyByPoint(transform, introOffset, new Cesium.Cartesian3())
-
-              viewer.camera.flyTo({
-                destination: targetPosition,
-                orientation: {
-                  heading: Cesium.Math.toRadians(0),
-                  pitch: Cesium.Math.toRadians(-30), // Angled view
-                  roll: 0
-                },
-                duration: INTRO_DURATION,
-                complete: () => {
-                  isIntroComplete = true
-                  console.log('✓ Intro animation complete, starting tracking')
-                }
-              })
-            }, 3000) // Wait additional 3 seconds for rendering
-
-            // Mark as ready for recording to start
-            ;(window as any).CESIUM_ANIMATION_READY = true
-          }
-        }, 5000) // Wait 5 seconds for globe tiles to load
+        // Signal to recording script that animation is ready immediately
+        isIntroComplete = true
+        ;(window as any).CESIUM_ANIMATION_READY = true
+        console.log('✅ Animation ready (intro/outro animations disabled)')
 
       } catch (error) {
         console.error('Error initializing Cesium:', error)
@@ -661,6 +675,15 @@ export default function CesiumViewer() {
     initViewer()
 
     return () => {
+      try {
+        // Remove global handlers we added
+        try { window.removeEventListener('error', (window as any).__onWindowError) } catch (e) {}
+        try { window.removeEventListener('unhandledrejection', (window as any).__onUnhandledRejection) } catch (e) {}
+        try { delete (window as any).CESIUM_DUMP } catch (e) {}
+        try { delete (window as any).__lastTrailSnapshot } catch (e) {}
+      } catch (cleanupErr) {
+        console.warn('Error cleaning up global handlers:', cleanupErr)
+      }
       if (viewer) {
         console.log('Destroying Cesium viewer')
         viewer.destroy()
