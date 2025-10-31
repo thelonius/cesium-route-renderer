@@ -185,8 +185,10 @@ async function recordRoute() {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--enable-webgl',
-      '--use-gl=desktop', // Use desktop GL with Xvfb
+      '--use-gl=swiftshader', // Use SwiftShader software GL in containers for stability
+      '--enable-unsafe-swiftshader', // Opt into SwiftShader (lower security; OK for trusted content)
       '--ignore-gpu-blacklist',
+      '--disable-gpu', // Disable GPU to force software rendering
       '--disable-gpu-vsync', // Disable vsync for unlimited FPS
       '--disable-frame-rate-limit', // Remove frame rate limit
       '--disable-background-timer-throttling', // Prevent timer throttling
