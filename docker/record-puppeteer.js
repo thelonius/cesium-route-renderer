@@ -134,20 +134,23 @@ function getRecordingDuration() {
   // Auto-calculate from GPX
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
-    // Get animation speed multiplier from environment or default to 10
-    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '10');
+  // Get animation speed multiplier from environment or default to 10
+  const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '10');
 
-    // Calculate playback duration (route duration / speed multiplier)
-    const playbackDuration = gpxDuration / speedMultiplier;
+  // Calculate playback duration (route duration / speed multiplier)
+  const playbackDuration = gpxDuration / speedMultiplier;
 
-    // Add buffer: 8s for tile loading + 5s intro + 6s outro = 19s total
-    const totalDuration = (playbackDuration + 19) * 1000;
+  // Buffer seconds for recording startup/teardown (tiles, small safety margin).
+  // Default to 10s which is sufficient when the viewer waits for tiles to render.
+  const bufferSeconds = parseInt(process.env.RECORD_BUFFER_SECONDS || '10');
 
-    console.log(`Animation speed: ${speedMultiplier}x`);
-    console.log(`Calculated playback duration: ${(playbackDuration / 60).toFixed(1)} minutes`);
-    console.log(`Recording duration (with intro/outro buffer): ${(totalDuration / 1000).toFixed(1)} seconds`);
+  const totalDuration = (playbackDuration + bufferSeconds) * 1000;
 
-    return totalDuration;
+  console.log(`Animation speed: ${speedMultiplier}x`);
+  console.log(`Calculated playback duration: ${(playbackDuration / 60).toFixed(1)} minutes`);
+  console.log(`Recording duration (with buffer ${bufferSeconds}s): ${(totalDuration / 1000).toFixed(1)} seconds`);
+
+  return totalDuration;
   }
 
   // Default fallback
@@ -252,7 +255,8 @@ async function recordRoute() {
 
   // Get GPX filename from environment
   const gpxFilename = process.env.GPX_FILENAME || 'alps-trail.gpx';
-  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}`;
+  const speedParam = process.env.ANIMATION_SPEED || '10'
+  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&speed=${encodeURIComponent(speedParam)}`;
 
   // Navigate to the app FIRST
   console.log(`Loading Cesium app with GPX: ${gpxFilename}`);
@@ -315,10 +319,15 @@ async function recordRoute() {
     recordingStarted = true;
     console.log('Recording started');
 
-    console.log(`Recording animation for ${RECORD_DURATION / 1000} seconds...`);
+    console.log(`Recording animation for up to ${RECORD_DURATION / 1000} seconds (will stop early if page signals finish)`);
 
-    // Wait for animation duration
-    await page.waitForTimeout(RECORD_DURATION);
+    // Wait for the page to signal animation finished, or timeout after RECORD_DURATION
+    try {
+      await page.waitForFunction(() => window.CESIUM_ANIMATION_POST_RENDERED === true, { timeout: RECORD_DURATION });
+      console.log('Page signaled animation post-rendered — stopping recording')
+    } catch (e) {
+      console.log('Animation post-render signal not received within duration; stopping after timeout')
+    }
 
     console.log('Stopping recording...');
     await recorder.stop();

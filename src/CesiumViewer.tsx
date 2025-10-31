@@ -329,8 +329,14 @@ export default function CesiumViewer() {
         viewer.clock.startTime = startTime.clone()
         viewer.clock.stopTime = stopTime.clone()
         viewer.clock.currentTime = startTime.clone()
-        viewer.clock.clockRange = Cesium.ClockRange.LOOP_STOP
-        viewer.clock.multiplier = 100 // Faster speed for shorter videos
+  viewer.clock.clockRange = Cesium.ClockRange.LOOP_STOP
+
+  // Allow playback speed to be controlled via URL param `speed` so recorder
+  // and viewer stay in sync. Default speed multiplier is 10 (same as recorder default).
+  const urlParamsInner = new URLSearchParams(window.location.search)
+  const speedParam = parseInt(urlParamsInner.get('speed') || '')
+  const speedMultiplier = Number.isFinite(speedParam) && speedParam > 0 ? speedParam : 10
+  viewer.clock.multiplier = speedMultiplier
 
         // Set timeline bounds
         viewer.timeline.zoomTo(startTime, stopTime)
@@ -458,6 +464,19 @@ export default function CesiumViewer() {
 
         viewer.scene.postRender.addEventListener(() => {
           try {
+            // If the animation was marked finished in preRender, then the next postRender
+            // indicates the final frame has actually been painted. Signal post-render
+            // completion so recorder can stop after the final visual frame is ready.
+            try {
+              const finished = (window as any).CESIUM_ANIMATION_FINISHED === true
+              const postRendered = (window as any).CESIUM_ANIMATION_POST_RENDERED === true
+              if (finished && !postRendered) {
+                ;(window as any).CESIUM_ANIMATION_POST_RENDERED = true
+                console.log('✅ Animation post-rendered (final frame painted)')
+              }
+            } catch (e) {
+              // ignore
+            }
             if (!viewer || !hikerEntity || !hikerEntity.position) return
 
             const currentTime = viewer.clock.currentTime
@@ -593,6 +612,18 @@ export default function CesiumViewer() {
             if (!viewer || !hikerEntity || !hikerEntity.position) return
             const currentTime = viewer.clock.currentTime
 
+            // If the clock has reached or passed the stopTime, mark animation finished
+            try {
+              if (Cesium.JulianDate.compare(currentTime, stopTime) >= 0) {
+                if (!(window as any).CESIUM_ANIMATION_FINISHED) {
+                  ;(window as any).CESIUM_ANIMATION_FINISHED = true
+                  console.log('✅ Animation finished (clock reached stopTime)')
+                }
+              }
+            } catch (e) {
+              // ignore
+            }
+
             // Reset trail when animation loops back to start
             if (Cesium.JulianDate.compare(currentTime, lastAddedTime) < 0) {
               console.log('Animation looped, resetting trail')
@@ -645,9 +676,8 @@ export default function CesiumViewer() {
           stopTime: Cesium.JulianDate.toIso8601(viewer.clock.stopTime),
           multiplier: viewer.clock.multiplier
         })
-
         // Verify tracking is still active after trail setup
-        setTimeout(() => {
+  (globalThis as any).setTimeout(() => {
           if (viewer && viewer.trackedEntity === hikerEntity) {
             console.log('✓ Camera tracking confirmed active')
             const pos = viewer.camera.positionCartographic
@@ -662,10 +692,47 @@ export default function CesiumViewer() {
           }
         }, 1000)
 
-        // Signal to recording script that animation is ready immediately
-        isIntroComplete = true
-        ;(window as any).CESIUM_ANIMATION_READY = true
-        console.log('✅ Animation ready (intro/outro animations disabled)')
+        // Wait for globe tiles to visually finish loading before signaling readiness
+        // This prevents the recorder from capturing initial solid-blue frames
+  (function waitForTilesThenReady() {
+          const MAX_WAIT_MS = 30000 // 30s max wait for tiles
+          const CHECK_INTERVAL_MS = 500
+          let waited = 0
+
+          const check = () => {
+            try {
+              const tilesLoaded = viewer && viewer.scene && viewer.scene.globe ? viewer.scene.globe.tilesLoaded : false
+              console.log('Tile load check:', { tilesLoaded, waited })
+              if (tilesLoaded) {
+                // Give a short grace period to allow imagery to render
+                (globalThis as any).setTimeout(() => {
+                  isIntroComplete = true
+                  ;(window as any).CESIUM_ANIMATION_READY = true
+                  console.log('✅ Animation ready (tiles loaded)')
+                }, 1500)
+                return
+              }
+
+              if (waited >= MAX_WAIT_MS) {
+                // Timeout: proceed anyway but warn
+                isIntroComplete = true
+                ;(window as any).CESIUM_ANIMATION_READY = true
+                console.warn('Tiles did not finish loading within timeout; proceeding with recording')
+                return
+              }
+
+              waited += CHECK_INTERVAL_MS
+              (globalThis as any).setTimeout(check, CHECK_INTERVAL_MS)
+            } catch (e) {
+              // On error, proceed to avoid blocking indefinitely
+              isIntroComplete = true
+              ;(window as any).CESIUM_ANIMATION_READY = true
+              console.error('Error while waiting for tiles; proceeding', e)
+            }
+          }
+
+          check()
+        })()
 
       } catch (error) {
         console.error('Error initializing Cesium:', error)
