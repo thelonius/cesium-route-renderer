@@ -165,26 +165,25 @@ export default function CesiumViewer() {
           // Use default ellipsoid terrain in Docker
         }
 
-        // Load imagery - use OpenStreetMap as fallback for Docker
+        // Load imagery - prefer OpenStreetMap (CORS friendly) to avoid Bing/ION 401+CORS issues in headless
         try {
           viewer.imageryLayers.removeAll()
 
-          // Try Cesium Ion imagery first
+          // Prefer OSM which is public and CORS friendly for headless/container runs
+          const osm = new Cesium.OpenStreetMapImageryProvider({
+            url: 'https://a.tile.openstreetmap.org/'
+          })
+          viewer.imageryLayers.addImageryProvider(osm)
+          console.log('✓ OpenStreetMap imagery loaded')
+        } catch (imageryError) {
+          console.warn('⚠️ Could not load OpenStreetMap imagery, attempting Ion fallback', imageryError)
           try {
             const imagery = await Cesium.IonImageryProvider.fromAssetId(2, {})
             viewer.imageryLayers.addImageryProvider(imagery)
-            console.log('✓ Bing Maps imagery loaded')
+            console.log('✓ Fallback: Bing Maps imagery loaded via Ion')
           } catch (ionError) {
-            console.warn('⚠️ Could not load Bing imagery from Ion, using OpenStreetMap fallback')
-            // Use OpenStreetMap which doesn't require authentication
-            const osm = new Cesium.OpenStreetMapImageryProvider({
-              url: 'https://a.tile.openstreetmap.org/'
-            })
-            viewer.imageryLayers.addImageryProvider(osm)
-            console.log('✓ OpenStreetMap imagery loaded')
+            console.error('❌ Could not load any imagery:', ionError)
           }
-        } catch (imageryError) {
-          console.error('❌ Could not load any imagery:', imageryError)
         }
 
         // Create time-based positions for animation
@@ -257,17 +256,54 @@ export default function CesiumViewer() {
         viewer.timeline.zoomTo(startTime, stopTime)
 
         // Pre-sample terrain heights for the route to avoid per-frame height flicker
-        const cartographics = trackPoints.map(p => Cesium.Cartographic.fromDegrees(p.lon, p.lat))
-        let sampled = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, cartographics)
+        // Build safe cartographics array (filter invalid points)
+        const cartographics = trackPoints
+          .map(p => {
+            const lon = Number(p.lon)
+            const lat = Number(p.lat)
+            if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null
+            return Cesium.Cartographic.fromDegrees(lon, lat)
+          })
+          .filter(Boolean) as Cesium.Cartographic[]
 
-        // Build position property with smoother interpolation
+        let sampled: Cesium.Cartographic[] | null = null
+        try {
+          sampled = await Cesium.sampleTerrainMostDetailed(viewer.terrainProvider, cartographics)
+        } catch (sampleErr) {
+          console.warn('Could not sample terrain, proceeding without sampled heights:', sampleErr)
+          sampled = null
+        }
+
+        // Build position property with smoother interpolation (guard against missing sampled data)
         const hikerPositions = new Cesium.SampledPositionProperty()
         for (let i = 0; i < trackPoints.length; i++) {
-          const t = Cesium.JulianDate.fromIso8601(trackPoints[i].time)
-          const c = sampled[i]
-          // Use zero height - will be clamped to actual terrain
-          const pos = Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, 0)
-          hikerPositions.addSample(t, pos)
+          try {
+            const t = Cesium.JulianDate.fromIso8601(trackPoints[i].time)
+            // Prefer sampled cartographic if available, otherwise use raw degrees with 0 height
+            let pos: Cesium.Cartesian3 | null = null
+            if (sampled && sampled[i]) {
+              const c = sampled[i]
+              if (c && Number.isFinite(c.longitude) && Number.isFinite(c.latitude)) {
+                pos = Cesium.Cartesian3.fromRadians(c.longitude, c.latitude, 0)
+              }
+            }
+            if (!pos) {
+              // Fallback: create from original GPX point
+              const lon = Number(trackPoints[i].lon)
+              const lat = Number(trackPoints[i].lat)
+              if (Number.isFinite(lon) && Number.isFinite(lat)) {
+                pos = Cesium.Cartesian3.fromDegrees(lon, lat, trackPoints[i].ele || 0)
+              }
+            }
+
+            if (pos) {
+              hikerPositions.addSample(t, pos)
+            } else {
+              console.warn('Skipping invalid position sample at index', i, trackPoints[i])
+            }
+          } catch (e) {
+            console.warn('Error adding hiker position sample:', e)
+          }
         }
         // Use Hermite interpolation for smoother curves
         hikerPositions.setInterpolationOptions({
@@ -396,22 +432,34 @@ export default function CesiumViewer() {
         console.log('Camera tracking set to follow hiker at 2400m distance')
 
         // Create the full route polyline (shows planned path)
-        const fullRoutePositions = trackPoints.map(point =>
-          Cesium.Cartesian3.fromDegrees(point.lon, point.lat, point.ele)
-        )
+        // Create the full route polyline (shows planned path) - filter invalid points first
+        const fullRoutePositions = trackPoints
+          .map(point => {
+            const lon = Number(point.lon)
+            const lat = Number(point.lat)
+            const ele = Number(point.ele) || 0
+            if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null
+            return Cesium.Cartesian3.fromDegrees(lon, lat, ele)
+          })
+          .filter(Boolean) as Cesium.Cartesian3[]
 
-        viewer.entities.add({
-          polyline: {
-            positions: fullRoutePositions,
-            width: 3,
-            material: new Cesium.PolylineOutlineMaterialProperty({
-              color: Cesium.Color.WHITE.withAlpha(0.5),
-              outlineWidth: 1,
-              outlineColor: Cesium.Color.BLUE.withAlpha(0.3)
-            }),
-            clampToGround: true
-          }
-        })
+        if (fullRoutePositions.length > 1) {
+          viewer.entities.add({
+            polyline: {
+              positions: fullRoutePositions,
+              width: 3,
+              material: new Cesium.PolylineOutlineMaterialProperty({
+                color: Cesium.Color.WHITE.withAlpha(0.5),
+                outlineWidth: 1,
+                outlineColor: Cesium.Color.BLUE.withAlpha(0.3)
+              }),
+              clampToGround: true
+            }
+          })
+          console.log('Full route polyline added')
+        } else {
+          console.warn('Not enough valid points to draw full route polyline')
+        }
 
         console.log('Full route polyline added')
 
