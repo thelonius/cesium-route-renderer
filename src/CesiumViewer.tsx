@@ -303,13 +303,79 @@ export default function CesiumViewer() {
           }
         })
 
+        // Camera animation states
+        let isIntroComplete = false
+        let isOutroStarted = false
+        const INTRO_DURATION = 5 // 5 seconds intro for smoother animation
+        const OUTRO_DURATION = 4 // 4 seconds outro
+        const OUTRO_START_OFFSET = 6 // Start outro 6 seconds before end
+
         // Manual camera tracking with custom distance (2400m back)
         const cameraOffset = new Cesium.Cartesian3(-2400, 0, 1200) // 2400m back, 1200m up
+
+        // Position camera at starting position but don't start intro yet
+        const startingPosition = hikerEntity.position?.getValue(startTime)
+        if (startingPosition && viewer) {
+          const startingCartographic = Cesium.Cartographic.fromCartesian(startingPosition)
+
+          // Position camera high above the route (space view) - instant, no animation
+          viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromRadians(
+              startingCartographic.longitude,
+              startingCartographic.latitude,
+              500000 // 500km high - space view
+            ),
+            orientation: {
+              heading: Cesium.Math.toRadians(0),
+              pitch: Cesium.Math.toRadians(-90), // Looking straight down
+              roll: 0
+            }
+          })
+          console.log('✓ Camera positioned at start altitude')
+        }
 
         viewer.scene.postRender.addEventListener(() => {
           if (!viewer || !hikerEntity.position) return
 
-          const position = hikerEntity.position.getValue(viewer.clock.currentTime)
+          const currentTime = viewer.clock.currentTime
+
+          // Check if we should start outro animation (before getting position)
+          const timeUntilEnd = Cesium.JulianDate.secondsDifference(stopTime, currentTime)
+          if (timeUntilEnd <= OUTRO_START_OFFSET && timeUntilEnd > 0 && !isOutroStarted) {
+            isOutroStarted = true
+            console.log('✓ Starting outro animation')
+
+            // Get position safely before it becomes invalid
+            const outroPosition = hikerEntity.position.getValue(currentTime)
+            if (outroPosition) {
+              try {
+                const outroCartographic = Cesium.Cartographic.fromCartesian(outroPosition)
+
+                // Fly out to space view
+                viewer.camera.flyTo({
+                  destination: Cesium.Cartesian3.fromRadians(
+                    outroCartographic.longitude,
+                    outroCartographic.latitude,
+                    500000 // 500km high - space view
+                  ),
+                  orientation: {
+                    heading: Cesium.Math.toRadians(0),
+                    pitch: Cesium.Math.toRadians(-90), // Looking straight down
+                    roll: 0
+                  },
+                  duration: OUTRO_DURATION
+                })
+              } catch (error) {
+                console.error('Error starting outro animation:', error)
+              }
+            }
+          }
+
+          // Exit early if intro not complete or outro started
+          if (!isIntroComplete || isOutroStarted) return
+
+          // Get position for tracking (only when intro complete and outro not started)
+          const position = hikerEntity.position.getValue(currentTime)
           if (!position) return
 
           // Calculate camera position relative to hiker
@@ -424,14 +490,40 @@ export default function CesiumViewer() {
         }, 1000)
 
         // Signal to recording script that animation is ready
-        // Wait for globe tiles to load before marking as ready
+        // Wait longer for globe tiles to fully load and render before starting intro
         setTimeout(() => {
-          if (viewer) {
-            console.log('✅ Setting CESIUM_ANIMATION_READY marker')
-            console.log('✅ Final globe state:', {
+          if (viewer && startingPosition) {
+            console.log('✅ Waiting for tiles to fully render...')
+            console.log('✅ Globe state:', {
               show: viewer.scene.globe.show,
               tilesLoaded: viewer.scene.globe.tilesLoaded
             })
+
+            // Wait additional time for tiles to actually render (not just load)
+            setTimeout(() => {
+              if (!viewer) return
+              console.log('✅ Starting intro animation')
+
+              // NOW start the intro animation after tiles are fully rendered
+              const transform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition)
+              const targetPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffset, new Cesium.Cartesian3())
+
+              viewer.camera.flyTo({
+                destination: targetPosition,
+                orientation: {
+                  heading: Cesium.Math.toRadians(0),
+                  pitch: Cesium.Math.toRadians(-30), // Angled view
+                  roll: 0
+                },
+                duration: INTRO_DURATION,
+                complete: () => {
+                  isIntroComplete = true
+                  console.log('✓ Intro animation complete, starting tracking')
+                }
+              })
+            }, 3000) // Wait additional 3 seconds for rendering
+
+            // Mark as ready for recording to start
             ;(window as any).CESIUM_ANIMATION_READY = true
           }
         }, 5000) // Wait 5 seconds for globe tiles to load

@@ -1,0 +1,193 @@
+const TelegramBot = require('node-telegram-bot-api');
+const FormData = require('form-data');
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+
+const BOT_TOKEN = '8418496404:AAGLdVNW_Pla_u1bMVfFia-s9klwRsgYZhs';
+const API_SERVER = 'http://localhost:3000';
+
+const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+
+console.log('🤖 Telegram bot started!');
+
+// Store active renders
+const activeRenders = new Map();
+
+// Welcome message
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId,
+    '🗺️ Welcome to GPX Route Video Renderer!\n\n' +
+    'Send me a GPX file and I\'ll create a beautiful 3D video animation of your route.\n\n' +
+    '📱 Video format: Vertical (1080x1920) perfect for mobile\n' +
+    '🎥 Features: Intro/outro animations, smooth camera tracking\n' +
+    '⏱️ Processing time: ~2-3 minutes per route\n\n' +
+    'Just send me your GPX file to get started!'
+  );
+});
+
+// Help command
+bot.onText(/\/help/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId,
+    '📖 How to use:\n\n' +
+    '1️⃣ Send me a GPX file (as document)\n' +
+    '2️⃣ Wait for processing (you\'ll get progress updates)\n' +
+    '3️⃣ Receive your video!\n\n' +
+    '💡 Tips:\n' +
+    '• Routes without timestamps will use 5 km/h walking speed\n' +
+    '• Animation plays at 100x speed\n' +
+    '• Video includes 5s intro and 4s outro\n\n' +
+    'Commands:\n' +
+    '/start - Start the bot\n' +
+    '/help - Show this help\n' +
+    '/status - Check current render status'
+  );
+});
+
+// Status command
+bot.onText(/\/status/, (msg) => {
+  const chatId = msg.chat.id;
+  const render = activeRenders.get(chatId);
+
+  if (!render) {
+    bot.sendMessage(chatId, '❌ No active renders. Send me a GPX file to start!');
+    return;
+  }
+
+  bot.sendMessage(chatId,
+    `⏳ Current status: ${render.status}\n` +
+    `📊 Output ID: ${render.outputId || 'pending'}`
+  );
+});
+
+// Handle document (GPX file)
+bot.on('document', async (msg) => {
+  const chatId = msg.chat.id;
+  const doc = msg.document;
+
+  // Check if it's a GPX file
+  if (!doc.file_name.toLowerCase().endsWith('.gpx')) {
+    bot.sendMessage(chatId, '❌ Please send a GPX file (.gpx extension)');
+    return;
+  }
+
+  try {
+    // Send initial message
+    await bot.sendMessage(chatId, '📥 Downloading your GPX file...');
+
+    // Download the file
+    const file = await bot.getFile(doc.file_id);
+    const filePath = file.file_path;
+    const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+
+    const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+    const gpxBuffer = Buffer.from(response.data);
+
+    // Save temporarily
+    const tempPath = path.join(__dirname, 'temp', `${Date.now()}.gpx`);
+    fs.mkdirSync(path.dirname(tempPath), { recursive: true });
+    fs.writeFileSync(tempPath, gpxBuffer);
+
+    await bot.sendMessage(chatId, '🚀 Starting video rendering...');
+
+    // Track this render
+    activeRenders.set(chatId, {
+      status: 'rendering',
+      outputId: null,
+      fileName: doc.file_name
+    });
+
+    // Submit to render API
+    const formData = new FormData();
+    formData.append('gpx', fs.createReadStream(tempPath));
+
+    const renderResponse = await axios.post(`${API_SERVER}/render-route`, formData, {
+      headers: formData.getHeaders(),
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity
+    });
+
+    const result = renderResponse.data;
+
+    if (!result.success) {
+      throw new Error('Render failed');
+    }
+
+    // Update status
+    activeRenders.set(chatId, {
+      status: 'completed',
+      outputId: result.outputId,
+      fileName: doc.file_name,
+      videoPath: result.videoUrl
+    });
+
+    await bot.sendMessage(chatId,
+      '✅ Rendering complete!\n' +
+      `📁 File size: ${(result.fileSize / 1024 / 1024).toFixed(2)} MB\n` +
+      '📤 Uploading video to Telegram...'
+    );
+
+    // Send the video
+    const videoPath = path.join(__dirname, '..', result.videoUrl.substring(1)); // Remove leading /
+
+    if (fs.existsSync(videoPath)) {
+      await bot.sendVideo(chatId, videoPath, {
+        caption: `🎬 Your route video: ${doc.file_name}\n\n` +
+                 `📊 Size: ${(result.fileSize / 1024 / 1024).toFixed(2)} MB\n` +
+                 `🎥 Format: 1080x1920 (Vertical)\n` +
+                 `⚡ Animation: 100x speed`,
+        supports_streaming: true
+      });
+
+      await bot.sendMessage(chatId,
+        '🎉 Done! Send another GPX file to create more videos.\n\n' +
+        'Use /help for more information.'
+      );
+    } else {
+      throw new Error('Video file not found');
+    }
+
+    // Cleanup
+    fs.unlinkSync(tempPath);
+    activeRenders.delete(chatId);
+
+  } catch (error) {
+    console.error('Error processing GPX:', error);
+
+    bot.sendMessage(chatId,
+      '❌ Error processing your GPX file:\n' +
+      error.message + '\n\n' +
+      'Please try again or contact support.'
+    );
+
+    activeRenders.delete(chatId);
+  }
+});
+
+// Handle other messages
+bot.on('message', (msg) => {
+  const chatId = msg.chat.id;
+
+  // Ignore commands and documents (handled separately)
+  if (msg.text && msg.text.startsWith('/')) return;
+  if (msg.document) return;
+
+  bot.sendMessage(chatId,
+    '🤔 I can only process GPX files.\n\n' +
+    'Please send me a GPX file (as document) to create a route video.\n' +
+    'Use /help for more information.'
+  );
+});
+
+// Error handling
+bot.on('polling_error', (error) => {
+  console.error('Polling error:', error);
+});
+
+process.on('SIGINT', () => {
+  console.log('\n🛑 Shutting down bot...');
+  bot.stopPolling();
+  process.exit(0);
+});

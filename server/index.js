@@ -40,6 +40,9 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   // Run Docker container with the GPX file and filename
   // Don't pass RECORD_DURATION - let the script auto-calculate from GPX
   const dockerCommand = `docker run --rm \
+    --cpus="4" \
+    --memory="4g" \
+    --shm-size=2g \
     -v "${absGpxPath}:/app/dist/${gpxFilename}:ro" \
     -v "${absOutputDir}:/output" \
     -e GPX_FILENAME=${gpxFilename} \

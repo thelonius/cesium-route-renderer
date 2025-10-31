@@ -102,12 +102,12 @@ function getRecordingDuration() {
     // Calculate playback duration (route duration / speed multiplier)
     const playbackDuration = gpxDuration / speedMultiplier;
 
-    // Add 10 seconds buffer for terrain loading
-    const totalDuration = (playbackDuration + 10) * 1000;
+    // Add buffer: 8s for tile loading + 5s intro + 6s outro = 19s total
+    const totalDuration = (playbackDuration + 19) * 1000;
 
     console.log(`Animation speed: ${speedMultiplier}x`);
     console.log(`Calculated playback duration: ${(playbackDuration / 60).toFixed(1)} minutes`);
-    console.log(`Recording duration (with buffer): ${(totalDuration / 1000).toFixed(1)} seconds`);
+    console.log(`Recording duration (with intro/outro buffer): ${(totalDuration / 1000).toFixed(1)} seconds`);
 
     return totalDuration;
   }
@@ -148,16 +148,25 @@ async function recordRoute() {
       '--disable-dev-shm-usage',
       '--enable-webgl',
       '--use-gl=desktop', // Use desktop GL with Xvfb
-      '--enable-features=VaapiVideoDecoder',
       '--ignore-gpu-blacklist',
-      '--window-size=1920,1080',
+      '--disable-gpu-vsync', // Disable vsync for unlimited FPS
+      '--disable-frame-rate-limit', // Remove frame rate limit
+      '--disable-background-timer-throttling', // Prevent timer throttling
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--js-flags=--max-old-space-size=4096', // Increase JS heap for better performance
+      '--window-size=1080,1920',
       '--start-maximized'
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1920, height: 1080 });
+  await page.setViewport({ width: 1080, height: 1920 });
+
+  // Disable CPU throttling to get maximum performance
+  const client = await page.target().createCDPSession();
+  await client.send('Emulation.setCPUThrottlingRate', { rate: 1 }); // No throttling
 
   // Log browser console messages
   page.on('console', msg => {
@@ -214,12 +223,16 @@ async function recordRoute() {
   console.log('Setting up screen recorder...');
   const recorder = new PuppeteerScreenRecorder(page, {
     followNewTab: false,
-    fps: 45, // 45fps for smoother motion without overwhelming the system
+    fps: 60, // 60fps for very smooth motion
     videoFrame: {
-      width: 1920,
-      height: 1080,
+      width: 1080,
+      height: 1920,
     },
-    aspectRatio: '16:9',
+    aspectRatio: '9:16',
+    videoCrf: 23, // Balanced quality (18 is too slow, 23 is good balance)
+    videoCodec: 'libx264',
+    videoPreset: 'ultrafast', // Fastest encoding for better real-time performance
+    videoBitrate: '5000k', // Fixed bitrate for consistent performance
   });
 
   await recorder.start('/output/route-video.mp4');
