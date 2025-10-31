@@ -39,6 +39,13 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   // Run Docker container with the GPX file and filename
   // Don't pass RECORD_DURATION - let the script auto-calculate from GPX
+  // Defaults for recorder envs - these can be overridden by setting the corresponding
+  // env vars on the server process (e.g. RECORD_FPS, RECORD_WIDTH, RECORD_HEIGHT).
+  const dockerHeadless = '1'; // Force headless-quality defaults inside the container
+  const dockerRecordFps = process.env.RECORD_FPS || '30';
+  const dockerRecordWidth = process.env.RECORD_WIDTH || '720';
+  const dockerRecordHeight = process.env.RECORD_HEIGHT || '1280';
+
   const dockerCommand = `docker run --rm \
     --cpus="4" \
     --memory="4g" \
@@ -47,6 +54,10 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     -v "${absOutputDir}:/output" \
     -e GPX_FILENAME=${gpxFilename} \
     -e ANIMATION_SPEED=100 \
+    -e HEADLESS=${dockerHeadless} \
+    -e RECORD_FPS=${dockerRecordFps} \
+    -e RECORD_WIDTH=${dockerRecordWidth} \
+    -e RECORD_HEIGHT=${dockerRecordHeight} \
     cesium-route-recorder`;
 
   console.log('Running Docker command:', dockerCommand);

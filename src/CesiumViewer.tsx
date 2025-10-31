@@ -88,6 +88,18 @@ export default function CesiumViewer() {
           maximumRenderTimeChange: isDocker ? 0 : Infinity
         })
 
+        // Reduce post-processing cost (FXAA) in software GL / headless runs which can
+        // materially improve achievable FPS. Use a safe try/catch in case the API
+        // isn't available in some Cesium builds.
+        try {
+          if (viewer && viewer.scene && viewer.scene.postProcessStages && viewer.scene.postProcessStages.fxaa) {
+            viewer.scene.postProcessStages.fxaa.enabled = false
+            console.log('Disabled FXAA post-process for better performance')
+          }
+        } catch (e) {
+          console.warn('Could not disable FXAA (non-fatal):', e)
+        }
+
         // Force scene to render continuously in Docker
         if (isDocker) {
           viewer.scene.requestRenderMode = false
@@ -165,24 +177,25 @@ export default function CesiumViewer() {
           // Use default ellipsoid terrain in Docker
         }
 
-        // Load imagery - prefer OpenStreetMap (CORS friendly) to avoid Bing/ION 401+CORS issues in headless
+        // Load imagery - prefer Cesium Ion world imagery first, fallback to OpenStreetMap
         try {
           viewer.imageryLayers.removeAll()
 
-          // Prefer OSM which is public and CORS friendly for headless/container runs
-          const osm = new Cesium.OpenStreetMapImageryProvider({
-            url: 'https://a.tile.openstreetmap.org/'
-          })
-          viewer.imageryLayers.addImageryProvider(osm)
-          console.log('✓ OpenStreetMap imagery loaded')
-        } catch (imageryError) {
-          console.warn('⚠️ Could not load OpenStreetMap imagery, attempting Ion fallback', imageryError)
+          // Try Cesium Ion imagery (assetId 2 is the Cesium World Imagery/Bing-backed provider)
+          // This requires Cesium.Ion.defaultAccessToken to be set above.
+          const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {})
+          viewer.imageryLayers.addImageryProvider(ionImagery)
+          console.log('✓ Cesium Ion world imagery loaded')
+        } catch (ionErr) {
+          console.warn('⚠️ Could not load Cesium Ion imagery, falling back to OpenStreetMap:', ionErr)
           try {
-            const imagery = await Cesium.IonImageryProvider.fromAssetId(2, {})
-            viewer.imageryLayers.addImageryProvider(imagery)
-            console.log('✓ Fallback: Bing Maps imagery loaded via Ion')
-          } catch (ionError) {
-            console.error('❌ Could not load any imagery:', ionError)
+            const osm = new Cesium.OpenStreetMapImageryProvider({
+              url: 'https://a.tile.openstreetmap.org/'
+            })
+            viewer.imageryLayers.addImageryProvider(osm)
+            console.log('✓ Fallback: OpenStreetMap imagery loaded')
+          } catch (osmErr) {
+            console.error('❌ Could not load any imagery provider:', osmErr)
           }
         }
 
@@ -346,8 +359,14 @@ export default function CesiumViewer() {
         const OUTRO_DURATION = 4 // 4 seconds outro
         const OUTRO_START_OFFSET = 6 // Start outro 6 seconds before end
 
-        // Manual camera tracking with custom distance (2400m back)
-        const cameraOffset = new Cesium.Cartesian3(-2400, 0, 1200) // 2400m back, 1200m up
+  // Manual camera tracking base values (used to compute a dynamic, terrain-relative offset)
+  const CAMERA_BASE_BACK = 2400 // base meters behind the hiker
+  const CAMERA_BASE_HEIGHT = 1200 // base meters above the hiker
+
+  // Smoothing for dynamic camera offset to avoid jitter when terrain heights change
+  const CAMERA_SMOOTH_ALPHA = 0.15 // EMA alpha: 0 = no update, 1 = instant update
+  let smoothedBack = CAMERA_BASE_BACK
+  let smoothedHeight = CAMERA_BASE_HEIGHT
 
         // Position camera at starting position but don't start intro yet
         const startingPosition = hikerEntity.position?.getValue(startTime)
@@ -371,56 +390,91 @@ export default function CesiumViewer() {
         }
 
         viewer.scene.postRender.addEventListener(() => {
-          if (!viewer || !hikerEntity.position) return
+          try {
+            if (!viewer || !hikerEntity || !hikerEntity.position) return
 
-          const currentTime = viewer.clock.currentTime
+            const currentTime = viewer.clock.currentTime
 
-          // Check if we should start outro animation (before getting position)
-          const timeUntilEnd = Cesium.JulianDate.secondsDifference(stopTime, currentTime)
-          if (timeUntilEnd <= OUTRO_START_OFFSET && timeUntilEnd > 0 && !isOutroStarted) {
-            isOutroStarted = true
-            console.log('✓ Starting outro animation')
+            // Check if we should start outro animation (before getting position)
+            const timeUntilEnd = Cesium.JulianDate.secondsDifference(stopTime, currentTime)
+            if (timeUntilEnd <= OUTRO_START_OFFSET && timeUntilEnd > 0 && !isOutroStarted) {
+              isOutroStarted = true
+              console.log('✓ Starting outro animation')
 
-            // Get position safely before it becomes invalid
-            const outroPosition = hikerEntity.position.getValue(currentTime)
-            if (outroPosition) {
-              try {
-                const outroCartographic = Cesium.Cartographic.fromCartesian(outroPosition)
+              // Get position safely before it becomes invalid
+              const outroPosition = hikerEntity.position.getValue(currentTime)
+              if (outroPosition) {
+                try {
+                  const outroCartographic = Cesium.Cartographic.fromCartesian(outroPosition)
 
-                // Fly out to space view
-                viewer.camera.flyTo({
-                  destination: Cesium.Cartesian3.fromRadians(
-                    outroCartographic.longitude,
-                    outroCartographic.latitude,
-                    500000 // 500km high - space view
-                  ),
-                  orientation: {
-                    heading: Cesium.Math.toRadians(0),
-                    pitch: Cesium.Math.toRadians(-90), // Looking straight down
-                    roll: 0
-                  },
-                  duration: OUTRO_DURATION
-                })
-              } catch (error) {
-                console.error('Error starting outro animation:', error)
+                  // Fly out to space view
+                  viewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromRadians(
+                      outroCartographic.longitude,
+                      outroCartographic.latitude,
+                      500000 // 500km high - space view
+                    ),
+                    orientation: {
+                      heading: Cesium.Math.toRadians(0),
+                      pitch: Cesium.Math.toRadians(-90), // Looking straight down
+                      roll: 0
+                    },
+                    duration: OUTRO_DURATION
+                  })
+                } catch (error) {
+                  console.error('Error starting outro animation:', error)
+                }
               }
             }
+
+            // Exit early if intro not complete or outro started
+            if (!isIntroComplete || isOutroStarted) return
+
+            // Get position for tracking (only when intro complete and outro not started)
+            const position = hikerEntity.position.getValue(currentTime)
+            if (!position) return
+
+            // Validate position object
+            if (!position.x && position.x !== 0) return
+
+            // Calculate camera position relative to hiker using a terrain-relative offset
+            const transform = Cesium.Transforms.eastNorthUpToFixedFrame(position)
+
+            // Determine terrain height at current position (may be undefined if not available yet)
+            let terrainHeight = 0
+            try {
+              const cart = Cesium.Cartographic.fromCartesian(position)
+              const h = viewer.scene.globe.getHeight(cart)
+              if (typeof h === 'number' && Number.isFinite(h)) terrainHeight = h
+            } catch (e) {
+              // ignore
+            }
+
+            // Compute dynamic offset: keep minimum safe height but scale up when terrain is high
+            const dynamicHeight = Math.max(CAMERA_BASE_HEIGHT, terrainHeight * 0.2 + 800)
+            const dynamicBack = Math.max(1200, Math.min(8000, CAMERA_BASE_BACK + terrainHeight * 0.05))
+
+            // Apply exponential smoothing (EMA) to reduce jitter when terrain heights change rapidly
+            smoothedBack = smoothedBack * (1 - CAMERA_SMOOTH_ALPHA) + dynamicBack * CAMERA_SMOOTH_ALPHA
+            smoothedHeight = smoothedHeight * (1 - CAMERA_SMOOTH_ALPHA) + dynamicHeight * CAMERA_SMOOTH_ALPHA
+
+            const cameraOffsetLocal = new Cesium.Cartesian3(-smoothedBack, 0, smoothedHeight)
+            const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3())
+
+            // Point camera at hiker from offset position
+            try {
+              viewer.camera.position = cameraPosition
+              // Use safe lookAt: ensure position is defined
+              if (position) viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(1200, dynamicHeight * 0.75))) // Look at hiker, slightly above
+            } catch (camErr) {
+              console.warn('Camera update failed, skipping this frame:', camErr)
+            }
+          } catch (outerErr) {
+            // Catch any Cesium DeveloperErrors or unexpected runtime errors to avoid stopping the render loop
+            console.error('Error in postRender handler (ignored):', outerErr)
+            // Optionally set a flag for diagnostics
+            ;(window as any).CESIUM_RENDER_ERROR = true
           }
-
-          // Exit early if intro not complete or outro started
-          if (!isIntroComplete || isOutroStarted) return
-
-          // Get position for tracking (only when intro complete and outro not started)
-          const position = hikerEntity.position.getValue(currentTime)
-          if (!position) return
-
-          // Calculate camera position relative to hiker
-          const transform = Cesium.Transforms.eastNorthUpToFixedFrame(position)
-          const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffset, new Cesium.Cartesian3())
-
-          // Point camera at hiker from offset position
-          viewer.camera.position = cameraPosition
-          viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, 1200)) // Look at hiker, slightly above
         })
 
         // Enable smooth camera movement
@@ -486,32 +540,41 @@ export default function CesiumViewer() {
         const MAX_TRAIL_POINTS = 500 // Limit trail length to prevent performance issues
 
         viewer.scene.preRender.addEventListener(() => {
-          if (!viewer) return
-          const currentTime = viewer.clock.currentTime
+          try {
+            if (!viewer || !hikerEntity || !hikerEntity.position) return
+            const currentTime = viewer.clock.currentTime
 
-          // Reset trail when animation loops back to start
-          if (Cesium.JulianDate.compare(currentTime, lastAddedTime) < 0) {
-            console.log('Animation looped, resetting trail')
-            trailPositions.length = 0
-            lastAddedTime = Cesium.JulianDate.clone(startTime)
-            return
+            // Reset trail when animation loops back to start
+            if (Cesium.JulianDate.compare(currentTime, lastAddedTime) < 0) {
+              console.log('Animation looped, resetting trail')
+              trailPositions.length = 0
+              lastAddedTime = Cesium.JulianDate.clone(startTime)
+              return
+            }
+
+            const currentPosition = hikerEntity.position.getValue(currentTime)
+            if (!currentPosition) return
+
+            const dt = Cesium.JulianDate.secondsDifference(currentTime, lastAddedTime)
+            if (dt < ADD_INTERVAL_SECONDS && trailPositions.length > 0) return
+
+            // Use the entity's current position (already height-stable via pre-sampled data)
+            try {
+              trailPositions.push(currentPosition.clone())
+            } catch (e) {
+              console.warn('Failed to clone currentPosition for trail, skipping point:', e)
+            }
+
+            // Limit trail length by removing old points (keep most recent trail)
+            if (trailPositions.length > MAX_TRAIL_POINTS) {
+              trailPositions.shift() // Remove oldest point
+            }
+
+            lastAddedTime = Cesium.JulianDate.clone(currentTime)
+          } catch (err) {
+            console.error('Error in preRender handler (ignored):', err)
+            ;(window as any).CESIUM_RENDER_ERROR = true
           }
-
-          const currentPosition = hikerEntity.position?.getValue(currentTime)
-          if (!currentPosition) return
-
-          const dt = Cesium.JulianDate.secondsDifference(currentTime, lastAddedTime)
-          if (dt < ADD_INTERVAL_SECONDS && trailPositions.length > 0) return
-
-          // Use the entity's current position (already height-stable via pre-sampled data)
-          trailPositions.push(currentPosition.clone())
-
-          // Limit trail length by removing old points (keep most recent trail)
-          if (trailPositions.length > MAX_TRAIL_POINTS) {
-            trailPositions.shift() // Remove oldest point
-          }
-
-          lastAddedTime = Cesium.JulianDate.clone(currentTime)
         })
 
         console.log('✓ Route loaded and animation started!')
@@ -554,7 +617,21 @@ export default function CesiumViewer() {
 
               // NOW start the intro animation after tiles are fully rendered
               const transform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition)
-              const targetPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffset, new Cesium.Cartesian3())
+
+              // Compute a terrain-relative offset for the intro so camera doesn't clip into terrain
+              let startTerrainHeight = 0
+              try {
+                const startCart = Cesium.Cartographic.fromCartesian(startingPosition)
+                const h = viewer.scene.globe.getHeight(startCart)
+                if (typeof h === 'number' && Number.isFinite(h)) startTerrainHeight = h
+              } catch (e) {
+                // ignore
+              }
+
+              const introHeight = Math.max(CAMERA_BASE_HEIGHT, startTerrainHeight * 0.2 + 800)
+              const introBack = Math.max(1200, Math.min(8000, CAMERA_BASE_BACK + startTerrainHeight * 0.05))
+              const introOffset = new Cesium.Cartesian3(-introBack, 0, introHeight)
+              const targetPosition = Cesium.Matrix4.multiplyByPoint(transform, introOffset, new Cesium.Cartesian3())
 
               viewer.camera.flyTo({
                 destination: targetPosition,

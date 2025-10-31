@@ -166,11 +166,50 @@ bot.on('document', async (msg) => {
   } catch (error) {
     console.error('Error processing GPX:', error);
 
-    bot.sendMessage(chatId,
-      '❌ Error processing your GPX file:\n' +
-      error.message + '\n\n' +
-      'Please try again or contact support.'
-    );
+    // Prepare a safe short message for Telegram (avoid sending massive error bodies)
+    const MAX_TELEGRAM_TEXT = 3500;
+
+    // Prefer structured response body when available (server returned JSON in err.response.data)
+    let detailText = '';
+    if (error && error.response && error.response.data) {
+      try {
+        detailText = typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data, null, 2);
+      } catch (e) {
+        detailText = String(error.response.data);
+      }
+    } else if (error && error.message) {
+      detailText = error.message;
+    } else {
+      detailText = String(error);
+    }
+
+    try {
+      if (detailText.length <= MAX_TELEGRAM_TEXT) {
+        await bot.sendMessage(chatId,
+          '❌ Error processing your GPX file:\n' +
+          detailText + '\n\n' +
+          'Please try again or contact support.'
+        );
+      } else {
+        // Write the long error to a temporary file and send as a document
+        const errFileDir = path.join(__dirname, 'temp');
+        fs.mkdirSync(errFileDir, { recursive: true });
+        const errFilePath = path.join(errFileDir, `render-error-${Date.now()}.txt`);
+        fs.writeFileSync(errFilePath, detailText);
+
+        await bot.sendMessage(chatId,
+          '❌ Error processing your GPX file. Details too long to display here — sending as a file.'
+        );
+
+        await bot.sendDocument(chatId, errFilePath, {}, { filename: 'render-error.txt' });
+
+        // Cleanup
+        try { fs.unlinkSync(errFilePath); } catch (e) { /* ignore */ }
+      }
+    } catch (sendErr) {
+      // If sending the message/document fails, ensure we still log it to server console
+      console.error('Failed to notify user via Telegram:', sendErr);
+    }
 
     activeRenders.delete(chatId);
   }

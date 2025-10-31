@@ -202,7 +202,29 @@ async function recordRoute() {
   });
 
   const page = await browser.newPage();
-  await page.setViewport({ width: 1080, height: 1920 });
+  // Allow overriding recording FPS and resolution via environment variables
+  // If running in a headless/container environment, automatically prefer
+  // lower-quality but stable defaults unless explicit env vars are provided.
+  const isHeadlessEnv = (process.env.HEADLESS === 'true' || process.env.HEADLESS === '1')
+
+  // Default high-quality values
+  const DEFAULT_FPS = 60
+  const DEFAULT_WIDTH = 1080
+  const DEFAULT_HEIGHT = 1920
+
+  // Lower-quality defaults for headless/container runs
+  const HEADLESS_FPS = 30
+  const HEADLESS_WIDTH = 720
+  const HEADLESS_HEIGHT = 1280
+
+  const TARGET_FPS = parseInt(process.env.RECORD_FPS || (isHeadlessEnv ? String(HEADLESS_FPS) : String(DEFAULT_FPS)), 10)
+  const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || (isHeadlessEnv ? String(HEADLESS_WIDTH) : String(DEFAULT_WIDTH)), 10)
+  const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || (isHeadlessEnv ? String(HEADLESS_HEIGHT) : String(DEFAULT_HEIGHT)), 10)
+
+  console.log(`HEADLESS mode: ${isHeadlessEnv}`)
+  console.log(`Recording target FPS: ${TARGET_FPS}, resolution: ${RECORD_WIDTH}x${RECORD_HEIGHT}`)
+
+  await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT })
 
   // Disable CPU throttling to get maximum performance
   const client = await page.target().createCDPSession();
@@ -263,10 +285,10 @@ async function recordRoute() {
   console.log('Setting up screen recorder...');
   const recorder = new PuppeteerScreenRecorder(page, {
     followNewTab: false,
-    fps: 60, // 60fps for very smooth motion
+    fps: TARGET_FPS, // configurable target FPS
     videoFrame: {
-      width: 1080,
-      height: 1920,
+      width: RECORD_WIDTH,
+      height: RECORD_HEIGHT,
     },
     aspectRatio: '9:16',
     videoCrf: 23, // Balanced quality (18 is too slow, 23 is good balance)
