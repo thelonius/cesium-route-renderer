@@ -33,3 +33,9 @@ lerna-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# Docker outputs
+output/
+!output/.gitkeep
+uploads/
+!uploads/.gitkeep

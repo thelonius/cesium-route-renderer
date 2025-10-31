@@ -1,0 +1,244 @@
+const puppeteer = require('puppeteer');
+const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
+const http = require('http');
+const handler = require('serve-handler');
+const path = require('path');
+const fs = require('fs');
+
+const PORT = 8080;
+
+// Haversine formula to calculate distance between two lat/lon points in meters
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth's radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c;
+}
+
+// Parse GPX file to get actual route duration
+function getGPXDuration() {
+  try {
+    // Use GPX_FILENAME from environment or default to alps-trail.gpx
+    const gpxFilename = process.env.GPX_FILENAME || 'alps-trail.gpx';
+    const gpxPath = path.join(__dirname, 'dist', gpxFilename);
+    console.log(`Reading GPX file: ${gpxPath}`);
+    const gpxContent = fs.readFileSync(gpxPath, 'utf8');
+
+    // Extract first and last timestamps
+    const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
+    if (timeMatches && timeMatches.length >= 2) {
+      const firstTime = new Date(timeMatches[0].match(/<time>([^<]+)<\/time>/)[1]);
+      const lastTime = new Date(timeMatches[timeMatches.length - 1].match(/<time>([^<]+)<\/time>/)[1]);
+
+      // Duration in seconds
+      const durationSeconds = (lastTime - firstTime) / 1000;
+      console.log(`GPX route duration from timestamps: ${(durationSeconds / 60).toFixed(1)} minutes`);
+
+      return durationSeconds;
+    }
+
+    // If no timestamps, calculate based on distance
+    console.log('No timestamps found, calculating duration from distance...');
+    const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
+
+    if (trkptMatches && trkptMatches.length >= 2) {
+      let totalDistance = 0;
+      const points = trkptMatches.map(match => {
+        const latMatch = match.match(/lat="([^"]+)"/);
+        const lonMatch = match.match(/lon="([^"]+)"/);
+        return {
+          lat: parseFloat(latMatch[1]),
+          lon: parseFloat(lonMatch[1])
+        };
+      });
+
+      // Calculate total distance
+      for (let i = 1; i < points.length; i++) {
+        const distance = calculateDistance(
+          points[i - 1].lat, points[i - 1].lon,
+          points[i].lat, points[i].lon
+        );
+        totalDistance += distance;
+      }
+
+      // Assume walking speed of 5 km/h = 1.39 m/s
+      const walkingSpeed = 1.39; // meters per second
+      const durationSeconds = totalDistance / walkingSpeed;
+
+      console.log(`Total route distance: ${(totalDistance / 1000).toFixed(2)} km`);
+      console.log(`Estimated duration at 5 km/h: ${(durationSeconds / 60).toFixed(1)} minutes`);
+
+      return durationSeconds;
+    }
+  } catch (error) {
+    console.warn('Could not parse GPX duration, using default:', error.message);
+  }
+  return null;
+}
+
+// Calculate recording duration
+function getRecordingDuration() {
+  // Manual override
+  if (process.env.RECORD_DURATION) {
+    const duration = parseInt(process.env.RECORD_DURATION) * 1000;
+    console.log(`Using manual duration: ${duration / 1000} seconds`);
+    return duration;
+  }
+
+  // Auto-calculate from GPX
+  const gpxDuration = getGPXDuration();
+  if (gpxDuration) {
+    // Get animation speed multiplier from environment or default to 10
+    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '10');
+
+    // Calculate playback duration (route duration / speed multiplier)
+    const playbackDuration = gpxDuration / speedMultiplier;
+
+    // Add 10 seconds buffer for terrain loading
+    const totalDuration = (playbackDuration + 10) * 1000;
+
+    console.log(`Animation speed: ${speedMultiplier}x`);
+    console.log(`Calculated playback duration: ${(playbackDuration / 60).toFixed(1)} minutes`);
+    console.log(`Recording duration (with buffer): ${(totalDuration / 1000).toFixed(1)} seconds`);
+
+    return totalDuration;
+  }
+
+  // Default fallback
+  console.log('Using default duration: 60 seconds');
+  return 60 * 1000;
+}
+
+const RECORD_DURATION = getRecordingDuration();
+
+async function startServer() {
+  const server = http.createServer((request, response) => {
+    return handler(request, response, {
+      public: path.join(__dirname, 'dist'), // Serve from dist where GPX is mounted
+      cleanUrls: true,
+    });
+  });
+
+  return new Promise((resolve) => {
+    server.listen(PORT, () => {
+      console.log(`Server running at http://localhost:${PORT}`);
+      resolve(server);
+    });
+  });
+}
+
+async function recordRoute() {
+  console.log('Starting route recording...');
+
+  const server = await startServer();
+
+  const browser = await puppeteer.launch({
+    headless: false, // Use Xvfb virtual display instead of headless mode
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--enable-webgl',
+      '--use-gl=desktop', // Use desktop GL with Xvfb
+      '--enable-features=VaapiVideoDecoder',
+      '--ignore-gpu-blacklist',
+      '--window-size=1920,1080',
+      '--start-maximized'
+    ],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
+  });
+
+  const page = await browser.newPage();
+  await page.setViewport({ width: 1920, height: 1080 });
+
+  // Log browser console messages
+  page.on('console', msg => {
+    const type = msg.type();
+    const text = msg.text();
+    if (type === 'error') {
+      console.error(`Browser console error: ${text}`);
+    } else if (type === 'warning') {
+      console.warn(`Browser console warning: ${text}`);
+    } else {
+      console.log(`Browser console: ${text}`);
+    }
+  });
+
+  // Log page errors
+  page.on('pageerror', error => {
+    console.error(`Page error: ${error.message}`);
+  });
+
+  // Get GPX filename from environment
+  const gpxFilename = process.env.GPX_FILENAME || 'alps-trail.gpx';
+  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}`;
+
+  // Navigate to the app FIRST
+  console.log(`Loading Cesium app with GPX: ${gpxFilename}`);
+  await page.goto(appUrl, {
+    waitUntil: 'domcontentloaded',
+    timeout: 30000
+  });
+
+  console.log('Cesium app loaded, waiting for initialization...');
+
+  // Wait for Cesium viewer to be created
+  try {
+    await page.waitForSelector('.cesium-viewer', { timeout: 30000 });
+    console.log('Cesium viewer initialized');
+  } catch (error) {
+    console.warn('Cesium viewer selector not found, continuing anyway...');
+  }
+
+  // Wait for the animation ready marker (terrain + imagery loaded)
+  console.log('Waiting for animation to be ready...');
+  try {
+    await page.waitForFunction(
+      () => window.CESIUM_ANIMATION_READY === true,
+      { timeout: 60000 } // Increased timeout for terrain loading
+    );
+    console.log('Animation is ready!');
+  } catch (error) {
+    console.warn('Animation ready marker not found after 60s, starting recording anyway...');
+  }
+
+  // NOW start recording after everything is loaded
+  console.log('Setting up screen recorder...');
+  const recorder = new PuppeteerScreenRecorder(page, {
+    followNewTab: false,
+    fps: 45, // 45fps for smoother motion without overwhelming the system
+    videoFrame: {
+      width: 1920,
+      height: 1080,
+    },
+    aspectRatio: '16:9',
+  });
+
+  await recorder.start('/output/route-video.mp4');
+  console.log('Recording started');
+
+  console.log(`Recording animation for ${RECORD_DURATION / 1000} seconds...`);
+
+  // Wait for animation duration
+  await page.waitForTimeout(RECORD_DURATION);
+
+  console.log('Stopping recording...');
+  await recorder.stop();
+  await browser.close();
+  server.close();
+
+  console.log('Recording complete! Video saved to /output/route-video.mp4');
+}
+
+recordRoute().catch((error) => {
+  console.error('Recording failed:', error);
+  process.exit(1);
+});
