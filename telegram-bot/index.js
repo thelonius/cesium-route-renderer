@@ -103,16 +103,26 @@ bot.on('document', async (msg) => {
     const formData = new FormData();
     formData.append('gpx', fs.createReadStream(tempPath));
 
-    const renderResponse = await axios.post(`${API_SERVER}/render-route`, formData, {
-      headers: formData.getHeaders(),
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity
-    });
+    let renderResponse;
+    try {
+      renderResponse = await axios.post(`${API_SERVER}/render-route`, formData, {
+        headers: formData.getHeaders(),
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity
+      });
+    } catch (err) {
+      // Surface HTTP / network errors with any response body for easier debugging
+      const respData = err.response && err.response.data ? err.response.data : null;
+      console.error('Render API request failed:', err.message, respData || 'no response body');
+      throw new Error('Render API request failed: ' + (respData ? JSON.stringify(respData) : err.message));
+    }
 
     const result = renderResponse.data;
 
-    if (!result.success) {
-      throw new Error('Render failed');
+    if (!result || !result.success) {
+      console.error('Render API returned unsuccessful response:', result);
+      const details = result && (result.error || result.details) ? (result.error || result.details) : JSON.stringify(result);
+      throw new Error('Render failed: ' + details);
     }
 
     // Update status

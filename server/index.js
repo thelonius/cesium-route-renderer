@@ -51,7 +51,8 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   console.log('Running Docker command:', dockerCommand);
 
-  exec(dockerCommand, (error, stdout, stderr) => {
+  // Increase maxBuffer to capture larger Docker/Chromium logs and return them on error (trimmed)
+  exec(dockerCommand, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
     // Clean up uploaded file
     fs.unlinkSync(gpxFile.path);
 
@@ -60,9 +61,18 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
     if (error) {
       console.error('Docker execution error:', error);
+
+      // Helper to trim logs to a sensible size for API responses
+      const trim = (s, n = 8000) => {
+        if (!s) return '';
+        return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
+      };
+
       return res.status(500).json({
         error: 'Failed to render video',
-        details: error.message
+        details: error.message,
+        stdout: trim(stdout),
+        stderr: trim(stderr)
       });
     }
 
@@ -77,7 +87,18 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         fileSize: stats.size
       });
     } else {
-      res.status(500).json({ error: 'Video file not created' });
+      // If no video was created, include trimmed logs for debugging
+      const trim = (s, n = 8000) => {
+        if (!s) return '';
+        return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
+      };
+
+      console.error('Video file not created. Docker stdout/stderr included in response.');
+      res.status(500).json({
+        error: 'Video file not created',
+        stdout: trim(stdout),
+        stderr: trim(stderr)
+      });
     }
   });
 });

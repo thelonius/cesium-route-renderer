@@ -7,6 +7,44 @@ const fs = require('fs');
 
 const PORT = 8080;
 
+// Output directory inside the container (mounted by server)
+const OUTPUT_DIR = path.resolve('/output');
+
+// Ensure output dir exists
+try {
+  if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+} catch (err) {
+  // If we can't create the output dir, still continue and let console logs show the error
+  console.error('Could not ensure output directory exists:', err && err.message);
+}
+
+// Simple file logger to persist runtime logs for debugging inside the output folder
+const LOG_PATH = path.join(OUTPUT_DIR, 'recorder.log');
+const ERROR_LOG_PATH = path.join(OUTPUT_DIR, 'recorder-error.log');
+function appendLog(...parts) {
+  const line = `[${new Date().toISOString()}] ${parts.map(p => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ')}\n`;
+  try { fs.appendFileSync(LOG_PATH, line); } catch (e) { /* ignore */ }
+}
+
+// Mirror console output to the log file for post-mortem debugging
+const _log = console.log;
+const _warn = console.warn;
+const _err = console.error;
+console.log = (...args) => { _log.apply(console, args); appendLog(...args); };
+console.warn = (...args) => { _warn.apply(console, args); appendLog(...args); };
+console.error = (...args) => { _err.apply(console, args); appendLog(...args); };
+
+process.on('uncaughtException', (err) => {
+  try { fs.appendFileSync(ERROR_LOG_PATH, `[${new Date().toISOString()}] uncaughtException: ${err.stack || err}\n`); } catch (e) {}
+  console.error('uncaughtException', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  try { fs.appendFileSync(ERROR_LOG_PATH, `[${new Date().toISOString()}] unhandledRejection: ${reason && reason.stack ? reason.stack : reason}\n`); } catch (e) {}
+  console.error('unhandledRejection', reason);
+});
+
 // Haversine formula to calculate distance between two lat/lon points in meters
 function calculateDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000; // Earth's radius in meters
@@ -235,23 +273,35 @@ async function recordRoute() {
     videoBitrate: '5000k', // Fixed bitrate for consistent performance
   });
 
-  await recorder.start('/output/route-video.mp4');
-  console.log('Recording started');
+  let recordingStarted = false;
+  try {
+    await recorder.start('/output/route-video.mp4');
+    recordingStarted = true;
+    console.log('Recording started');
 
-  console.log(`Recording animation for ${RECORD_DURATION / 1000} seconds...`);
+    console.log(`Recording animation for ${RECORD_DURATION / 1000} seconds...`);
 
-  // Wait for animation duration
-  await page.waitForTimeout(RECORD_DURATION);
+    // Wait for animation duration
+    await page.waitForTimeout(RECORD_DURATION);
 
-  console.log('Stopping recording...');
-  await recorder.stop();
-  await browser.close();
-  server.close();
+    console.log('Stopping recording...');
+    await recorder.stop();
+    console.log('Recorder stopped successfully');
+  } catch (err) {
+    console.error('Error during recording lifecycle:', err && err.stack ? err.stack : err);
+    try { fs.appendFileSync(ERROR_LOG_PATH, `[${new Date().toISOString()}] recording error: ${err && err.stack ? err.stack : err}\n`); } catch (e) {}
+    throw err;
+  } finally {
+    try { await browser.close(); } catch (e) { console.warn('Error closing browser:', e && e.message); }
+    try { server.close(); } catch (e) { console.warn('Error closing server:', e && e.message); }
+  }
 
   console.log('Recording complete! Video saved to /output/route-video.mp4');
 }
 
 recordRoute().catch((error) => {
+  // Persist final error to the error log for easier retrieval from host
+  try { fs.appendFileSync(ERROR_LOG_PATH, `[${new Date().toISOString()}] fatal error: ${error && error.stack ? error.stack : error}\n`); } catch (e) {}
   console.error('Recording failed:', error);
   process.exit(1);
 });
