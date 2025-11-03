@@ -64,8 +64,11 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 // Parse GPX file to get actual route duration
 function getGPXDuration() {
   try {
-    // Use GPX_FILENAME from environment or default to alps-trail.gpx
-    const gpxFilename = process.env.GPX_FILENAME || 'alps-trail.gpx';
+    // Use GPX_FILENAME from environment
+    const gpxFilename = process.env.GPX_FILENAME;
+    if (!gpxFilename) {
+      throw new Error('GPX_FILENAME environment variable is required');
+    }
     const gpxPath = path.join(__dirname, 'dist', gpxFilename);
     console.log(`Reading GPX file: ${gpxPath}`);
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
@@ -251,7 +254,10 @@ async function recordRoute() {
   });
 
   // Get GPX filename from environment
-  const gpxFilename = process.env.GPX_FILENAME || 'alps-trail.gpx';
+  const gpxFilename = process.env.GPX_FILENAME;
+  if (!gpxFilename) {
+    throw new Error('GPX_FILENAME environment variable is required');
+  }
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}`;
 
   // Navigate to the app FIRST

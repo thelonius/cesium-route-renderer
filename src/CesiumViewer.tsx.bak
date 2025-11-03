@@ -1,0 +1,826 @@
+import React, { useEffect, useRef, useState } from 'react';
+import * as Cesium from 'cesium';
+import 'cesium/Build/Cesium/Widgets/widgets.css';
+import useViewerInit from './hooks/useViewerInit';
+import { useRoute } from './hooks/useRoute';
+import useCesiumAnimation from './hooks/useCesiumAnimation';
+import useCesiumCamera from './components/useCesiumCamera';
+
+export default function CesiumViewer() {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const viewerRef = useRef<Cesium.Viewer | null>(null);
+  const entityRef = useRef<Cesium.Entity | null>(null);
+  const [menuVisible, setMenuVisible] = useState(true);
+  const [availableRoutes, setAvailableRoutes] = useState<string[]>([]);
+  const [currentRoute, setCurrentRoute] = useState<string | null>(null);
+  const [showRouteSelector, setShowRouteSelector] = useState(false);
+  const [isIntroComplete, setIsIntroComplete] = useState(false);
+
+import React, { useEffect, useRef, useState } from 'react';
+import * as Cesium from 'cesium';
+import 'cesium/Build/Cesium/Widgets/widgets.css';
+import useViewerInit from './hooks/useViewerInit';
+import { useRoute } from './hooks/useRoute';
+import useCesiumAnimation from './hooks/useCesiumAnimation';
+import useCesiumCamera from './components/useCesiumCamera';
+
+export default function CesiumViewer() {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const viewerRef = useRef<Cesium.Viewer | null>(null);
+  const entityRef = useRef<Cesium.Entity | null>(null);
+  const [menuVisible, setMenuVisible] = useState(true);
+  const [availableRoutes, setAvailableRoutes] = useState<string[]>([]);
+  const [currentRoute, setCurrentRoute] = useState<string | null>(null);
+  const [showRouteSelector, setShowRouteSelector] = useState(false);
+  const [isIntroComplete, setIsIntroComplete] = useState(false);
+
+  // Initialize viewer
+  useViewerInit(containerRef, viewerRef);
+
+  // Get route from URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const gpxFile = urlParams.get('gpx');
+    if (gpxFile) {
+      setCurrentRoute(`/${gpxFile}`);
+    }
+  }, []);
+
+  // Load GPX route
+  const { trackPoints, timeRange, isLoading, error } = useRoute(currentRoute);
+
+  // Setup animation and camera
+  useEffect(() => {
+    if (!viewerRef.current || !trackPoints.length || !timeRange) return;
+
+    const entity = useCesiumAnimation({
+      viewer: viewerRef.current,
+      trackPoints,
+      startTime: timeRange.startTime,
+      stopTime: timeRange.stopTime
+    });
+
+    if (entity) {
+      entityRef.current = entity;
+      useCesiumCamera({
+        viewer: viewerRef.current,
+        targetEntity: entity,
+        hikerEntity: entity,
+        isIntroComplete: true,
+        enableCollisionDetection: false,
+        smoothFactor: 0.9
+      });
+      setIsIntroComplete(true);
+    }
+
+    return () => {
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.entities.removeAll();
+      }
+      entityRef.current = null;
+    };
+  }, [trackPoints, timeRange]);
+
+  // Toggle menu visibility
+  useEffect(() => {
+    if (viewerRef.current) {
+      const viewer = viewerRef.current;
+      const animationContainer = viewer.animation?.container as HTMLElement;
+      const timelineContainer = viewer.timeline?.container as HTMLElement;
+
+      if (animationContainer) {
+        animationContainer.style.display = menuVisible ? 'block' : 'none';
+      }
+      if (timelineContainer) {
+        timelineContainer.style.display = menuVisible ? 'block' : 'none';
+      }
+    }
+  }, [menuVisible]);
+
+  const toggleMenu = () => {
+    setMenuVisible(!menuVisible);
+  };
+
+  const handleRouteChange = (route: string) => {
+    window.location.href = `?gpx=${encodeURIComponent(route)}`;
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const content = e.target?.result;
+        if (typeof content !== 'string') return;
+
+        if (!content.includes('<?xml') || !content.includes('<gpx')) {
+          alert('Invalid GPX file format');
+          return;
+        }
+
+        const blob = new Blob([content], { type: 'application/gpx+xml' });
+        const blobUrl = URL.createObjectURL(blob);
+        setAvailableRoutes(prev => [...prev, file.name]);
+        window.location.href = `?gpx=${encodeURIComponent(file.name)}`;
+      };
+      reader.readAsText(file);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Error uploading file');
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
+
+      {error && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'rgba(255, 0, 0, 0.8)',
+          color: 'white',
+          padding: '1rem',
+          borderRadius: '4px',
+        }}>
+          {error}
+        </div>
+      )}
+
+      {isLoading && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          color: 'white',
+          padding: '1rem',
+          borderRadius: '4px',
+        }}>
+          Loading route...
+        </div>
+      )}
+
+      {/* Control Panel */}
+      <div style={{
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <button
+          onClick={toggleMenu}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: 'rgba(42, 42, 42, 0.8)',
+            color: 'white',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontFamily: 'sans-serif'
+          }}
+        >
+          {menuVisible ? 'Hide Controls' : 'Show Controls'}
+        </button>
+
+        <button
+          onClick={() => setShowRouteSelector(!showRouteSelector)}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: 'rgba(42, 42, 42, 0.8)',
+            color: 'white',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontFamily: 'sans-serif'
+          }}
+        >
+          {showRouteSelector ? 'Hide Routes' : 'Load Route'}
+        </button>
+
+        {/* Route Selector Panel */}
+        {showRouteSelector && (
+          <div style={{
+            padding: '12px',
+            backgroundColor: 'rgba(42, 42, 42, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+            minWidth: '200px',
+            maxHeight: '300px',
+            overflowY: 'auto'
+          }}>
+            <h3 style={{
+              margin: '0 0 12px 0',
+              color: 'white',
+              fontSize: '14px',
+              fontFamily: 'sans-serif',
+              fontWeight: 'bold'
+            }}>
+              Available Routes
+            </h3>
+
+            {/* Route List */}
+            <div style={{ marginBottom: '12px' }}>
+              {availableRoutes.map((route) => (
+                <div
+                  key={route}
+                  onClick={() => handleRouteChange(route)}
+                  style={{
+                    padding: '8px',
+                    marginBottom: '4px',
+                    backgroundColor: currentRoute === route
+                      ? 'rgba(100, 149, 237, 0.3)'
+                      : 'rgba(255, 255, 255, 0.1)',
+                    border: currentRoute === route
+                      ? '1px solid rgba(100, 149, 237, 0.5)'
+                      : '1px solid transparent',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontSize: '13px',
+                    fontFamily: 'sans-serif',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentRoute !== route) {
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentRoute !== route) {
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
+                    }
+                  }}
+                >
+                  {route.replace('.gpx', '')}
+                </div>
+              ))}
+            </div>
+
+            {/* File Upload */}
+            <div>
+              <label
+                htmlFor="gpx-upload"
+                style={{
+                  display: 'block',
+                  padding: '8px',
+                  backgroundColor: 'rgba(34, 139, 34, 0.3)',
+                  border: '1px solid rgba(34, 139, 34, 0.5)',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontFamily: 'sans-serif',
+                  textAlign: 'center',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.5)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.3)';
+                }}
+              >
+                📁 Upload GPX
+              </label>
+              <input
+                id="gpx-upload"
+                type="file"
+                accept=".gpx"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+  useViewerInit(containerRef, viewerRef);
+
+  // Get route from URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const gpxFile = urlParams.get('gpx');
+    if (gpxFile) {
+      setCurrentRoute(`/${gpxFile}`);
+    }
+  }, []);
+
+  // Load GPX route
+  const { trackPoints, timeRange, isLoading, error } = useRoute(currentRoute);
+
+  // Setup animation
+  useEffect(() => {
+    if (!viewerRef.current || !trackPoints.length || !timeRange) return;
+
+    const entity = useCesiumAnimation({
+      viewer: viewerRef.current,
+      trackPoints,
+      startTime: timeRange.startTime,
+      stopTime: timeRange.stopTime
+    });
+
+  }, [viewerRef.current, trackPoints, timeRange]);
+
+        // Camera animation states
+        let isIntroComplete = false
+        let isOutroStarted = false
+        const INTRO_DURATION = 5 // 5 seconds intro for smoother animation
+        const OUTRO_DURATION = 4 // 4 seconds outro
+        const OUTRO_START_OFFSET = 6 // Start outro 6 seconds before end
+
+
+
+        // Position camera at starting position but don't start intro yet
+        const startingPosition = hikerEntity.position?.getValue(startTime)
+        if (startingPosition && viewer) {
+          const startingCartographic = Cesium.Cartographic.fromCartesian(startingPosition)
+
+          // Position camera at a lower, angled view to emphasize 3D perspective
+          viewer.camera.setView({
+            destination: Cesium.Cartesian3.fromRadians(
+              startingCartographic.longitude,
+              startingCartographic.latitude,
+              30000 // 30km high - angled overview for stronger 3D feel
+            ),
+            orientation: {
+              heading: Cesium.Math.toRadians(0),
+              pitch: Cesium.Math.toRadians(-30), // Angled toward horizon for better 3D perception
+              roll: 0
+            }
+          })
+          console.log('✓ Camera positioned at start (angled overview)')
+        }
+
+        viewer.scene.postRender.addEventListener(() => {
+          try {
+            if (!viewer || !hikerEntity || !hikerEntity.position) return
+
+            const currentTime = viewer.clock.currentTime
+
+            // Outro animation removed in headless/recording mode — keep playback stable until the end
+
+            // Exit early if intro not complete
+            if (!isIntroComplete) return
+
+            // Get position for tracking (only when intro complete and outro not started)
+            const position = hikerEntity.position.getValue(currentTime)
+            if (!position) return
+
+            // Validate position object
+            if (!position.x && position.x !== 0) return
+
+            // Calculate camera position relative to hiker using a terrain-relative offset
+            const transform = Cesium.Transforms.eastNorthUpToFixedFrame(position)
+
+            // Determine terrain height at current position (may be undefined if not available yet)
+            let terrainHeight = 0
+            try {
+              const cart = Cesium.Cartographic.fromCartesian(position)
+              const h = viewer.scene.globe.getHeight(cart)
+              if (typeof h === 'number' && Number.isFinite(h)) terrainHeight = h
+            } catch (e) {
+              // ignore
+            }
+
+            // Compute dynamic offset: keep minimum safe height but scale up when terrain is high
+            const dynamicHeight = Math.max(CAMERA_BASE_HEIGHT, terrainHeight * 0.2 + 800)
+            const dynamicBack = Math.max(1200, Math.min(8000, CAMERA_BASE_BACK + terrainHeight * 0.05))
+
+            // Apply exponential smoothing (EMA) to reduce jitter when terrain heights change rapidly
+            smoothedBack = smoothedBack * (1 - CAMERA_SMOOTH_ALPHA) + dynamicBack * CAMERA_SMOOTH_ALPHA
+            smoothedHeight = smoothedHeight * (1 - CAMERA_SMOOTH_ALPHA) + dynamicHeight * CAMERA_SMOOTH_ALPHA
+
+            const cameraOffsetLocal = new Cesium.Cartesian3(-smoothedBack, 0, smoothedHeight)
+            const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3())
+
+              // Point camera at hiker from offset position
+            try {
+              viewer.camera.position = cameraPosition
+              // Use safe lookAt: ensure position is defined
+              if (position) viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(800, dynamicHeight * 0.5))) // Look at hiker, more horizon tilt
+            } catch (camErr) {
+              console.warn('Camera update failed, skipping this frame:', camErr)
+            }
+          } catch (outerErr) {
+            // Catch any Cesium DeveloperErrors or unexpected runtime errors to avoid stopping the render loop
+            console.error('Error in postRender handler (ignored):', outerErr)
+            // Optionally set a flag for diagnostics
+            ;(window as any).CESIUM_RENDER_ERROR = true
+            // If this is a DeveloperError from Cesium, disable camera tracking to avoid repeated failures
+            try {
+              const msg = outerErr && ((outerErr as any).message || String(outerErr))
+              if (msg && msg.toLowerCase().includes('developererror')) {
+                console.warn('Detected DeveloperError in render loop — disabling camera tracking for stability')
+                if (viewer) viewer.trackedEntity = undefined
+                // Dump diagnostics to logs for investigation
+                try { (window as any).CESIUM_DUMP && (window as any).CESIUM_DUMP('postRender DeveloperError', outerErr) } catch (e) {}
+              }
+            } catch (e) {
+              // ignore
+            }
+          }
+        })
+
+        // Enable smooth camera movement
+        viewer.scene.screenSpaceCameraController.enableCollisionDetection = false
+        viewer.scene.screenSpaceCameraController.inertiaTranslate = 0.9 // Smooth panning
+        viewer.scene.screenSpaceCameraController.inertiaSpin = 0.9 // Smooth rotation
+        viewer.scene.screenSpaceCameraController.inertiaZoom = 0.8 // Smooth zoom
+
+        console.log('Camera tracking set to follow hiker at 2400m distance')
+
+        // Create the full route polyline (shows planned path)
+        // Create the full route polyline (shows planned path) - filter invalid points first
+        const fullRoutePositions = trackPoints
+          .map(point => {
+            const lon = Number(point.lon)
+            const lat = Number(point.lat)
+            const ele = Number(point.ele) || 0
+            if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null
+            return Cesium.Cartesian3.fromDegrees(lon, lat, ele)
+          })
+          .filter(Boolean) as Cesium.Cartesian3[]
+
+        if (fullRoutePositions.length > 1) {
+          viewer.entities.add({
+            polyline: {
+              positions: fullRoutePositions,
+              width: 3,
+              material: new Cesium.PolylineOutlineMaterialProperty({
+                color: Cesium.Color.WHITE.withAlpha(0.5),
+                outlineWidth: 1,
+                outlineColor: Cesium.Color.BLUE.withAlpha(0.3)
+              }),
+              clampToGround: true
+            }
+          })
+          console.log('Full route polyline added')
+        } else {
+          console.warn('Not enough valid points to draw full route polyline')
+        }
+
+        console.log('Full route polyline added')
+
+        // Create a dynamic trail that follows the hiker
+        const trailPositions: Cesium.Cartesian3[] = []
+
+        // Use CallbackProperty for dynamic updates without flickering
+        const trailEntity = viewer.entities.add({
+          polyline: {
+            positions: new Cesium.CallbackProperty(() => trailPositions, false),
+            width: 5,
+            material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
+            depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
+            clampToGround: true,
+            show: true
+          }
+        })
+
+        console.log('Trail entity created')
+
+        // Update trail positions on each frame using the hiker's stable position
+        let lastAddedTime = Cesium.JulianDate.clone(startTime)
+        const ADD_INTERVAL_SECONDS = 0.5 // Reduced frequency for better performance
+        const MAX_TRAIL_POINTS = 500 // Limit trail length to prevent performance issues
+
+        viewer.scene.preRender.addEventListener(() => {
+          try {
+            if (!viewer || !hikerEntity || !hikerEntity.position) return
+            const currentTime = viewer.clock.currentTime
+
+            // Reset trail when animation loops back to start
+            if (Cesium.JulianDate.compare(currentTime, lastAddedTime) < 0) {
+              console.log('Animation looped, resetting trail')
+              trailPositions.length = 0
+              lastAddedTime = Cesium.JulianDate.clone(startTime)
+              return
+            }
+
+            const currentPosition = hikerEntity.position.getValue(currentTime)
+            if (!currentPosition) return
+
+            const dt = Cesium.JulianDate.secondsDifference(currentTime, lastAddedTime)
+            if (dt < ADD_INTERVAL_SECONDS && trailPositions.length > 0) return
+
+            // Use the entity's current position (already height-stable via pre-sampled data)
+            try {
+              trailPositions.push(currentPosition.clone())
+            } catch (e) {
+              console.warn('Failed to clone currentPosition for trail, skipping point:', e)
+            }
+
+            // Keep a small snapshot of recent trail positions for diagnostics
+            try {
+              const snap = trailPositions.slice(-20).map(p => {
+                try {
+                  const c = Cesium.Cartographic.fromCartesian(p)
+                  return { lon: Cesium.Math.toDegrees(c.longitude), lat: Cesium.Math.toDegrees(c.latitude), h: c.height }
+                } catch (e) { return { error: true } }
+              })
+              ;(window as any).__lastTrailSnapshot = snap
+            } catch (e) {
+              // ignore
+            }
+
+            // Limit trail length by removing old points (keep most recent trail)
+            if (trailPositions.length > MAX_TRAIL_POINTS) {
+              trailPositions.shift() // Remove oldest point
+            }
+
+            lastAddedTime = Cesium.JulianDate.clone(currentTime)
+          } catch (err) {
+            console.error('Error in preRender handler (ignored):', err)
+            ;(window as any).CESIUM_RENDER_ERROR = true
+          }
+        })
+
+  console.log('✓ Route loaded and animation started! (intro/outro disabled)')
+        console.log('✓ Animation clock:', {
+          startTime: Cesium.JulianDate.toIso8601(viewer.clock.startTime),
+          stopTime: Cesium.JulianDate.toIso8601(viewer.clock.stopTime),
+          multiplier: viewer.clock.multiplier
+        })
+
+        // Verify tracking is still active after trail setup
+        setTimeout(() => {
+          if (viewer && viewer.trackedEntity === hikerEntity) {
+            console.log('✓ Camera tracking confirmed active')
+            const pos = viewer.camera.positionCartographic
+            console.log('✓ Current camera:', {
+              lat: Cesium.Math.toDegrees(pos.latitude),
+              lon: Cesium.Math.toDegrees(pos.longitude),
+              height: pos.height
+            })
+          } else {
+            console.warn('⚠️ Camera tracking was disabled, re-enabling')
+            if (viewer) viewer.trackedEntity = hikerEntity
+          }
+        }, 1000)
+
+        // Signal to recording script that animation is ready immediately
+        isIntroComplete = true
+        ;(window as any).CESIUM_ANIMATION_READY = true
+        console.log('✅ Animation ready (intro/outro animations disabled)')
+
+      } catch (error) {
+        console.error('Error initializing Cesium:', error)
+      }
+  }
+
+    initViewer()
+
+    return () => {
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        viewerRef.current.destroy();
+      }
+    }
+  }, [])
+
+  // Get GPX file from URL parameter
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const gpxFile = urlParams.get('gpx');
+    if (gpxFile) {
+      setCurrentRoute(gpxFile);
+    }
+  }, []);
+
+  // Toggle menu visibility
+  useEffect(() => {
+    if (viewerRef.current) {
+      const viewer = viewerRef.current;
+      const animationContainer = viewer.animation?.container as HTMLElement;
+      const timelineContainer = viewer.timeline?.container as HTMLElement;
+
+      if (animationContainer) {
+        animationContainer.style.display = menuVisible ? 'block' : 'none';
+      }
+      if (timelineContainer) {
+        timelineContainer.style.display = menuVisible ? 'block' : 'none';
+      }
+    }
+  }, [menuVisible]);
+
+  const toggleMenu = () => {
+    setMenuVisible(!menuVisible);
+  };
+
+  const handleRouteChange = (route: string) => {
+    window.location.href = `?gpx=${encodeURIComponent(route)}`;
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const content = e.target?.result;
+        if (typeof content !== 'string') return;
+
+        if (!content.includes('<?xml') || !content.includes('<gpx')) {
+          alert('Invalid GPX file format');
+          return;
+        }
+
+        const blob = new Blob([content], { type: 'application/gpx+xml' });
+        const blobUrl = URL.createObjectURL(blob);
+        setAvailableRoutes(prev => [...prev, file.name]);
+        window.location.href = `?gpx=${encodeURIComponent(file.name)}`;
+      };
+      reader.readAsText(file);
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      alert('Error uploading file');
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+      <div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
+
+      {error && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'rgba(255, 0, 0, 0.8)',
+          color: 'white',
+          padding: '1rem',
+          borderRadius: '4px',
+        }}>
+          {error}
+        </div>
+      )}
+
+      {isLoading && (
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          color: 'white',
+          padding: '1rem',
+          borderRadius: '4px',
+        }}>
+          Loading route...
+        </div>
+      )}
+
+      {/* Control Panel */}
+      <div style={{
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px'
+      }}>
+        <button
+          onClick={toggleMenu}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: 'rgba(42, 42, 42, 0.8)',
+            color: 'white',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontFamily: 'sans-serif'
+          }}
+        >
+          {menuVisible ? 'Hide Controls' : 'Show Controls'}
+        </button>
+
+        <button
+          onClick={() => setShowRouteSelector(!showRouteSelector)}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: 'rgba(42, 42, 42, 0.8)',
+            color: 'white',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            fontFamily: 'sans-serif'
+          }}
+        >
+          {showRouteSelector ? 'Hide Routes' : 'Load Route'}
+        </button>
+
+        {/* Route Selector Panel */}
+        {showRouteSelector && (
+          <div style={{
+            padding: '12px',
+            backgroundColor: 'rgba(42, 42, 42, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            borderRadius: '4px',
+            minWidth: '200px',
+            maxHeight: '300px',
+            overflowY: 'auto'
+          }}>
+            <h3 style={{
+              margin: '0 0 12px 0',
+              color: 'white',
+              fontSize: '14px',
+              fontFamily: 'sans-serif',
+              fontWeight: 'bold'
+            }}>
+              Available Routes
+            </h3>
+
+            {/* Route List */}
+            <div style={{ marginBottom: '12px' }}>
+              {availableRoutes.map((route) => (
+                <div
+                  key={route}
+                  onClick={() => handleRouteChange(route)}
+                  style={{
+                    padding: '8px',
+                    marginBottom: '4px',
+                    backgroundColor: currentRoute === route
+                      ? 'rgba(100, 149, 237, 0.3)'
+                      : 'rgba(255, 255, 255, 0.1)',
+                    border: currentRoute === route
+                      ? '1px solid rgba(100, 149, 237, 0.5)'
+                      : '1px solid transparent',
+                    borderRadius: '3px',
+                    cursor: 'pointer',
+                    color: 'white',
+                    fontSize: '13px',
+                    fontFamily: 'sans-serif',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (currentRoute !== route) {
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (currentRoute !== route) {
+                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'
+                    }
+                  }}
+                >
+                  {route.replace('.gpx', '')}
+                </div>
+              ))}
+            </div>
+
+            {/* File Upload */}
+            <div>
+              <label
+                htmlFor="gpx-upload"
+                style={{
+                  display: 'block',
+                  padding: '8px',
+                  backgroundColor: 'rgba(34, 139, 34, 0.3)',
+                  border: '1px solid rgba(34, 139, 34, 0.5)',
+                  borderRadius: '3px',
+                  cursor: 'pointer',
+                  color: 'white',
+                  fontSize: '13px',
+                  fontFamily: 'sans-serif',
+                  textAlign: 'center',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.5)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.3)'
+                }}
+              >
+                📁 Upload GPX
+              </label>
+              <input
+                id="gpx-upload"
+                type="file"
+                accept=".gpx"
+                onChange={handleFileUpload}
+                style={{ display: 'none' }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
