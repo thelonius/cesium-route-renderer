@@ -42,9 +42,60 @@ export default function useCesiumAnimation({
     viewer.clock.multiplier = 50; // Adjust speed as needed
     viewer.clock.shouldAnimate = true;
 
-    // Create position property for smooth animation
+    // Filter and simplify track points to reduce jerkiness
+    const filterTrackPoints = (points: TrackPoint[]) => {
+      if (points.length < 3) return points;
+      
+      const filtered: TrackPoint[] = [points[0]]; // Always keep first point
+      const DISTANCE_THRESHOLD = 5; // meters - skip points closer than this
+      const TIME_THRESHOLD = 5; // seconds - minimum time between points
+      
+      for (let i = 1; i < points.length - 1; i++) {
+        const prev = filtered[filtered.length - 1];
+        const curr = points[i];
+        
+        // Calculate distance from last kept point
+        const R = 6371000; // Earth radius in meters
+        const lat1 = prev.lat * Math.PI / 180;
+        const lat2 = curr.lat * Math.PI / 180;
+        const deltaLat = (curr.lat - prev.lat) * Math.PI / 180;
+        const deltaLon = (curr.lon - prev.lon) * Math.PI / 180;
+        
+        const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+                  Math.cos(lat1) * Math.cos(lat2) *
+                  Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c;
+        
+        // Calculate time difference
+        const prevTime = new Date(prev.time).getTime();
+        const currTime = new Date(curr.time).getTime();
+        const timeDiff = (currTime - prevTime) / 1000;
+        
+        // Keep point if it's far enough OR enough time has passed
+        if (distance >= DISTANCE_THRESHOLD || timeDiff >= TIME_THRESHOLD) {
+          filtered.push(curr);
+        }
+      }
+      
+      filtered.push(points[points.length - 1]); // Always keep last point
+      
+      console.log(`Filtered track points: ${points.length} -> ${filtered.length}`);
+      return filtered;
+    };
+
+    const filteredPoints = filterTrackPoints(trackPoints);
+
+    // Create position property with Hermite interpolation for smooth animation
     const hikerPositions = new Cesium.SampledPositionProperty();
-    trackPoints.forEach(point => {
+    
+    // Set interpolation options for smooth movement
+    hikerPositions.setInterpolationOptions({
+      interpolationDegree: 2, // Hermite spline interpolation
+      interpolationAlgorithm: Cesium.HermitePolynomialApproximation
+    });
+    
+    filteredPoints.forEach(point => {
       const time = Cesium.JulianDate.fromIso8601(point.time);
       const position = Cesium.Cartesian3.fromDegrees(point.lon, point.lat, point.ele);
       hikerPositions.addSample(time, position);
@@ -77,8 +128,8 @@ export default function useCesiumAnimation({
 
     setEntity(hikerEntity);
 
-    // Create full route polyline
-    const fullRoutePositions = trackPoints
+    // Create full route polyline using filtered points for smoother line
+    const fullRoutePositions = filteredPoints
       .map(point => {
         const lon = Number(point.lon);
         const lat = Number(point.lat);
