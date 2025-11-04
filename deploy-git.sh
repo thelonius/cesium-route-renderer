@@ -62,7 +62,7 @@ docker build -t cesium-route-recorder .
 # Restart services
 echo "♻️  Restarting services..."
 pm2 restart cesium-api || pm2 start server/index.js --name cesium-api
-pm2 restart telegram-bot || pm2 start telegram-bot/index.js --name telegram-bot
+pm2 restart telegram-bot || pm2 start telegram-bot/index.js --name telegram-bot --env PUBLIC_URL="http://195.133.27.96:3000"
 pm2 save
 
 echo "✅ Deployment complete!"
