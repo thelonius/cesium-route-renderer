@@ -154,18 +154,44 @@ bot.on('document', async (msg) => {
       renderResponse = await axios.post(`${API_SERVER}/render-route`, formData, {
         headers: formData.getHeaders(),
         maxBodyLength: Infinity,
-        maxContentLength: Infinity
+        maxContentLength: Infinity,
+        timeout: 600000, // 10 minute timeout (rendering can take several minutes)
+        validateStatus: () => true // Don't throw on any status code, we'll handle it
       });
     } catch (err) {
       // Surface HTTP / network errors with any response body for easier debugging
       const respData = err.response && err.response.data ? err.response.data : null;
       console.error('Render API request failed:', err.message, respData || 'no response body');
+
+      // Check if it's a timeout
+      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+        throw new Error('Render timed out after 10 minutes. The route might be too long or complex. Please try a shorter route.');
+      }
+
       throw new Error('Render API request failed: ' + (respData ? JSON.stringify(respData) : err.message));
     }
 
     const result = renderResponse.data;
 
     console.log('Render API response:', JSON.stringify(result, null, 2));
+    console.log('HTTP status:', renderResponse.status);
+
+    // Store outputId if available (for logs access even on failure)
+    if (result && result.outputId) {
+      activeRenders.set(chatId, {
+        status: result.success ? 'completed' : 'failed',
+        outputId: result.outputId,
+        fileName: doc.file_name,
+        videoPath: result.videoUrl
+      });
+    }
+
+    // Check for non-2xx status codes
+    if (renderResponse.status !== 200 && renderResponse.status !== 201) {
+      console.error('Render API returned error status:', renderResponse.status);
+      const errorMsg = result && (result.error || result.details) ? (result.error || result.details) : JSON.stringify(result);
+      throw new Error(`Render failed (HTTP ${renderResponse.status}): ${errorMsg}`);
+    }
 
     if (!result || !result.success) {
       console.error('Render API returned unsuccessful response:', result);

@@ -63,7 +63,13 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   console.log('Running Docker command:', dockerCommand);
 
   // Increase maxBuffer to capture larger Docker/Chromium logs and return them on error (trimmed)
-  exec(dockerCommand, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+  // Set timeout to 10 minutes (600000ms) - rendering should complete well before this
+  const execOptions = {
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: 600000 // 10 minutes
+  };
+
+  exec(dockerCommand, execOptions, (error, stdout, stderr) => {
     // Clean up uploaded file
     fs.unlinkSync(gpxFile.path);
 
@@ -82,8 +88,11 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
       return res.status(500).json({
         error: 'Failed to render video',
         details: error.message,
+        outputId, // Include outputId so logs can be accessed
         stdout: trim(stdout),
-        stderr: trim(stderr)
+        stderr: trim(stderr),
+        logsUrl: `/logs/${outputId}`,
+        logsTextUrl: `/logs/${outputId}/text`
       });
     }
 
@@ -109,8 +118,11 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
       console.error('Video file not created. Docker stdout/stderr included in response.');
       res.status(500).json({
         error: 'Video file not created',
+        outputId, // Include outputId so logs can be accessed
         stdout: trim(stdout),
-        stderr: trim(stderr)
+        stderr: trim(stderr),
+        logsUrl: `/logs/${outputId}`,
+        logsTextUrl: `/logs/${outputId}/text`
       });
     }
   });
