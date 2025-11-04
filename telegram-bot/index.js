@@ -44,7 +44,8 @@ bot.onText(/\/help/, (msg) => {
     '/start - Start the bot\n' +
     '/help - Show this help\n' +
     '/status - Check current render status\n' +
-    '/logs - View detailed logs for your last render'
+    '/logs - View detailed logs for your last render\n' +
+    '/cleanup - Delete renders older than 7 days (admin)'
   );
 });
 
@@ -104,6 +105,39 @@ bot.onText(/\/logs/, async (msg) => {
     await bot.sendMessage(chatId,
       '❌ Failed to fetch logs.\n' +
       (error.response?.status === 404 ? 'Logs not found for this render.' : error.message)
+    );
+  }
+});
+
+// Cleanup command - clear old renders
+bot.onText(/\/cleanup/, async (msg) => {
+  const chatId = msg.chat.id;
+  
+  try {
+    await bot.sendMessage(chatId, '🧹 Cleaning up old renders...');
+    
+    // Call API to get list of output directories
+    const outputResponse = await axios.get(`${API_SERVER}/cleanup`, {
+      params: { daysOld: 7 } // Delete renders older than 7 days
+    });
+    
+    const result = outputResponse.data;
+    
+    if (result.success) {
+      await bot.sendMessage(chatId,
+        `✅ Cleanup complete!\n\n` +
+        `🗑️ Deleted: ${result.deletedCount} old renders\n` +
+        `💾 Space freed: ${(result.freedSpaceMB || 0).toFixed(2)} MB\n` +
+        `📁 Remaining: ${result.remainingCount} renders`
+      );
+    } else {
+      await bot.sendMessage(chatId, '❌ Cleanup failed: ' + (result.error || 'Unknown error'));
+    }
+  } catch (error) {
+    console.error('Error during cleanup:', error);
+    await bot.sendMessage(chatId,
+      '❌ Failed to cleanup old renders.\n' +
+      (error.response?.data?.error || error.message)
     );
   }
 });

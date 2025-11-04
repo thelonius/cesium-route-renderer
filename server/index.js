@@ -246,6 +246,68 @@ app.get('/logs/:outputId/text', (req, res) => {
   res.type('text/plain').send(output);
 });
 
+// Cleanup old renders
+app.get('/cleanup', (req, res) => {
+  const daysOld = parseInt(req.query.daysOld) || 7; // Default to 7 days
+  const outputBaseDir = path.join(__dirname, '../output');
+  
+  try {
+    const now = Date.now();
+    const cutoffTime = now - (daysOld * 24 * 60 * 60 * 1000);
+    
+    let deletedCount = 0;
+    let freedSpaceBytes = 0;
+    let remainingCount = 0;
+    
+    // Get all route directories
+    const entries = fs.readdirSync(outputBaseDir);
+    
+    for (const entry of entries) {
+      if (!entry.startsWith('route_')) continue;
+      
+      const dirPath = path.join(outputBaseDir, entry);
+      const stats = fs.statSync(dirPath);
+      
+      if (!stats.isDirectory()) continue;
+      
+      // Check if older than cutoff
+      if (stats.mtimeMs < cutoffTime) {
+        // Calculate size before deletion
+        const videoPath = path.join(dirPath, 'route-video.mp4');
+        if (fs.existsSync(videoPath)) {
+          const videoStats = fs.statSync(videoPath);
+          freedSpaceBytes += videoStats.size;
+        }
+        
+        // Delete the directory
+        try {
+          fs.rmSync(dirPath, { recursive: true, force: true });
+          deletedCount++;
+          console.log(`Deleted old render: ${entry}`);
+        } catch (err) {
+          console.error(`Failed to delete ${entry}:`, err);
+        }
+      } else {
+        remainingCount++;
+      }
+    }
+    
+    res.json({
+      success: true,
+      deletedCount,
+      freedSpaceMB: freedSpaceBytes / 1024 / 1024,
+      remainingCount,
+      daysOld
+    });
+  } catch (error) {
+    console.error('Cleanup error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
