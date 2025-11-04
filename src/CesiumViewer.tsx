@@ -18,11 +18,25 @@ export default function CesiumViewer() {
   const [routeValidated, setRouteValidated] = useState(false);
   const [isDockerMode, setIsDockerMode] = useState(false);
 
-  // Check if running in Docker mode (environment variable set)
+  // Check if running in Docker mode (URL parameter or environment variable)
   useEffect(() => {
-    // Check for Docker environment variable
-    const dockerRoute = (import.meta as any).env?.VITE_GPX_ROUTE;
-    if (dockerRoute) {
+    // Check URL parameters first (Docker mode with Puppeteer)
+    const urlParams = new URLSearchParams(window.location.search);
+    const gpxFromUrl = urlParams.get('gpx');
+
+    // Check environment variable (alternative Docker mode)
+    const gpxFromEnv = import.meta.env.VITE_GPX_ROUTE;
+
+    console.log('Docker mode detection:', {
+      urlParam: gpxFromUrl,
+      envVar: gpxFromEnv,
+      allEnv: import.meta.env
+    });
+
+    // URL parameter takes precedence (Puppeteer passes it this way)
+    const dockerRoute = gpxFromUrl || gpxFromEnv;
+
+    if (dockerRoute && typeof dockerRoute === 'string' && dockerRoute.trim()) {
       console.log('Running in Docker mode with route:', dockerRoute);
       setIsDockerMode(true);
       setCurrentRoute(dockerRoute);
