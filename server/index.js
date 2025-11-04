@@ -95,7 +95,9 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         success: true,
         videoUrl: `/output/${outputId}/route-video.mp4`,
         outputId,
-        fileSize: stats.size
+        fileSize: stats.size,
+        logsUrl: `/logs/${outputId}`,
+        logsTextUrl: `/logs/${outputId}/text`
       });
     } else {
       // If no video was created, include trimmed logs for debugging
@@ -125,17 +127,111 @@ app.get('/status/:outputId', (req, res) => {
     res.json({
       status: 'complete',
       videoUrl: `/output/${outputId}/route-video.mp4`,
-      fileSize: stats.size
+      fileSize: stats.size,
+      logsUrl: `/logs/${outputId}`
     });
   } else if (fs.existsSync(outputDir)) {
     res.json({
-      status: 'processing'
+      status: 'processing',
+      logsUrl: `/logs/${outputId}`
     });
   } else {
     res.status(404).json({
       status: 'not_found'
     });
   }
+});
+
+// Get logs for a render job
+app.get('/logs/:outputId', (req, res) => {
+  const outputId = req.params.outputId;
+  const outputDir = path.join(__dirname, '../output', outputId);
+  const logPath = path.join(outputDir, 'recorder.log');
+  const errorLogPath = path.join(outputDir, 'recorder-error.log');
+
+  if (!fs.existsSync(outputDir)) {
+    return res.status(404).json({ error: 'Output directory not found' });
+  }
+
+  const logs = {
+    outputId,
+    standardLog: '',
+    errorLog: '',
+    timestamp: new Date().toISOString()
+  };
+
+  // Read standard log
+  if (fs.existsSync(logPath)) {
+    try {
+      logs.standardLog = fs.readFileSync(logPath, 'utf8');
+    } catch (error) {
+      logs.standardLog = `Error reading log: ${error.message}`;
+    }
+  } else {
+    logs.standardLog = 'Log file not yet created';
+  }
+
+  // Read error log
+  if (fs.existsSync(errorLogPath)) {
+    try {
+      logs.errorLog = fs.readFileSync(errorLogPath, 'utf8');
+    } catch (error) {
+      logs.errorLog = `Error reading error log: ${error.message}`;
+    }
+  } else {
+    logs.errorLog = 'No errors logged';
+  }
+
+  res.json(logs);
+});
+
+// Get logs for a render job in text format (useful for Telegram)
+app.get('/logs/:outputId/text', (req, res) => {
+  const outputId = req.params.outputId;
+  const outputDir = path.join(__dirname, '../output', outputId);
+  const logPath = path.join(outputDir, 'recorder.log');
+  const errorLogPath = path.join(outputDir, 'recorder-error.log');
+
+  if (!fs.existsSync(outputDir)) {
+    return res.status(404).send('Output directory not found');
+  }
+
+  let output = `=== Logs for ${outputId} ===\n`;
+  output += `Timestamp: ${new Date().toISOString()}\n\n`;
+
+  // Read standard log
+  output += '=== Standard Log ===\n';
+  if (fs.existsSync(logPath)) {
+    try {
+      const logContent = fs.readFileSync(logPath, 'utf8');
+      // Limit to last 4000 characters for Telegram's message limit
+      if (logContent.length > 4000) {
+        output += '...TRUNCATED...\n';
+        output += logContent.slice(-4000);
+      } else {
+        output += logContent;
+      }
+    } catch (error) {
+      output += `Error reading log: ${error.message}\n`;
+    }
+  } else {
+    output += 'Log file not yet created\n';
+  }
+
+  output += '\n\n=== Error Log ===\n';
+  // Read error log
+  if (fs.existsSync(errorLogPath)) {
+    try {
+      const errorLogContent = fs.readFileSync(errorLogPath, 'utf8');
+      output += errorLogContent;
+    } catch (error) {
+      output += `Error reading error log: ${error.message}\n`;
+    }
+  } else {
+    output += 'No errors logged\n';
+  }
+
+  res.type('text/plain').send(output);
 });
 
 // Health check

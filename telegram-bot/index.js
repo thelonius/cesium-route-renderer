@@ -119,6 +119,8 @@ bot.on('document', async (msg) => {
 
     const result = renderResponse.data;
 
+    console.log('Render API response:', JSON.stringify(result, null, 2));
+
     if (!result || !result.success) {
       console.error('Render API returned unsuccessful response:', result);
       const details = result && (result.error || result.details) ? (result.error || result.details) : JSON.stringify(result);
@@ -140,23 +142,82 @@ bot.on('document', async (msg) => {
     );
 
     // Send the video
-    const videoPath = path.join(__dirname, '..', result.videoUrl.substring(1)); // Remove leading /
+    // Try multiple path resolutions
+    let videoPath = path.join(__dirname, '..', result.videoUrl.substring(1)); // Remove leading /
+    
+    // If not found, try resolving from output directory
+    if (!fs.existsSync(videoPath)) {
+      videoPath = path.join(__dirname, '../output', result.outputId, 'route-video.mp4');
+    }
+    
+    console.log('Looking for video at:', videoPath);
+    console.log('Video exists:', fs.existsSync(videoPath));
 
     if (fs.existsSync(videoPath)) {
-      await bot.sendVideo(chatId, videoPath, {
-        caption: `🎬 Your route video: ${doc.file_name}\n\n` +
-                 `📊 Size: ${(result.fileSize / 1024 / 1024).toFixed(2)} MB\n` +
-                 `🎥 Format: 1080x1920 (Vertical)\n` +
-                 `⚡ Animation: 100x speed`,
-        supports_streaming: true
-      });
+      console.log('Sending video to chat:', chatId);
+      
+      const fileSizeMB = result.fileSize / 1024 / 1024;
+      const TELEGRAM_MAX_SIZE_MB = 50; // Telegram's limit for bots
+      
+      // Check if file is too large for Telegram
+      if (fileSizeMB > TELEGRAM_MAX_SIZE_MB) {
+        console.warn(`Video is too large (${fileSizeMB.toFixed(2)}MB). Telegram limit is ${TELEGRAM_MAX_SIZE_MB}MB`);
+        
+        await bot.sendMessage(chatId,
+          '⚠️ Video is too large for Telegram!\n\n' +
+          `📊 File size: ${fileSizeMB.toFixed(2)} MB\n` +
+          `📏 Telegram limit: ${TELEGRAM_MAX_SIZE_MB} MB\n\n` +
+          '📥 Download your video here:\n' +
+          `${API_SERVER}${result.videoUrl}\n\n` +
+          '💡 Tip: We\'re working on reducing file sizes automatically.'
+        );
+      } else {
+        // File is within limits, send normally
+        try {
+          await bot.sendVideo(chatId, videoPath, {
+            caption: `🎬 Your route video: ${doc.file_name}\n\n` +
+                     `📊 Size: ${fileSizeMB.toFixed(2)} MB\n` +
+                     `🎥 Format: 1080x1920 (Vertical)\n` +
+                     `⚡ Animation: 100x speed`,
+            supports_streaming: true
+          });
 
-      await bot.sendMessage(chatId,
-        '🎉 Done! Send another GPX file to create more videos.\n\n' +
-        'Use /help for more information.'
-      );
+          await bot.sendMessage(chatId,
+            '🎉 Done! Send another GPX file to create more videos.\n\n' +
+            'Use /help for more information.'
+          );
+        } catch (telegramError) {
+          // Handle Telegram API errors (e.g., file still too large)
+          console.error('Error sending video to Telegram:', telegramError.message);
+          
+          if (telegramError.message.includes('413') || telegramError.message.includes('Too Large')) {
+            await bot.sendMessage(chatId,
+              '⚠️ Telegram rejected the video (too large)\n\n' +
+              `📊 File size: ${fileSizeMB.toFixed(2)} MB\n\n` +
+              '📥 Download your video here:\n' +
+              `${API_SERVER}${result.videoUrl}\n\n` +
+              '💡 We\'ve noted this issue and will improve compression.'
+            );
+          } else {
+            throw telegramError; // Re-throw if it's a different error
+          }
+        }
+      }
     } else {
-      throw new Error('Video file not found');
+      // Log available info for debugging
+      console.error('Video file not found!');
+      console.error('Expected path:', videoPath);
+      console.error('Result data:', JSON.stringify(result, null, 2));
+      
+      // Try to list output directory to help debug
+      const outputDir = path.join(__dirname, '../output', result.outputId);
+      if (fs.existsSync(outputDir)) {
+        console.error('Output directory exists. Contents:', fs.readdirSync(outputDir));
+      } else {
+        console.error('Output directory does not exist:', outputDir);
+      }
+      
+      throw new Error(`Video file not found at: ${videoPath}`);
     }
 
     // Cleanup

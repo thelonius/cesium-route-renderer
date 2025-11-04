@@ -309,10 +309,10 @@ async function recordRoute() {
       height: RECORD_HEIGHT,
     },
     aspectRatio: '9:16',
-    videoCrf: 23, // Balanced quality (18 is too slow, 23 is good balance)
+    videoCrf: 28, // Higher CRF = smaller file (18=high quality, 28=medium, 32=lower quality)
     videoCodec: 'libx264',
-    videoPreset: 'ultrafast', // Fastest encoding for better real-time performance
-    videoBitrate: '5000k', // Fixed bitrate for consistent performance
+    videoPreset: 'medium', // Better compression than ultrafast
+    videoBitrate: '2500k', // Reduced from 5000k to keep under 50MB for Telegram
   });
 
   let recordingStarted = false;
