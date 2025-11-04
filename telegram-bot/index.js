@@ -109,6 +109,68 @@ bot.onText(/\/logs/, async (msg) => {
   }
 });
 
+// Callback query handler for inline keyboard buttons
+bot.on('callback_query', async (query) => {
+  const chatId = query.message.chat.id;
+  const data = query.data;
+
+  // Handle "View Logs" button
+  if (data.startsWith('logs_')) {
+    const outputId = data.substring(5); // Remove 'logs_' prefix
+
+    try {
+      await bot.answerCallbackQuery(query.id, { text: '📋 Fetching logs...' });
+
+      const logsUrl = `${API_SERVER}/logs/${outputId}/text`;
+      const response = await axios.get(logsUrl);
+
+      const logs = response.data;
+
+      // Telegram has a 4096 character limit per message
+      if (logs.length <= 4096) {
+        await bot.sendMessage(chatId, `📋 Logs for \`${outputId}\`:\n\n\`\`\`\n${logs}\n\`\`\``, { 
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔄 Refresh Logs', callback_data: `logs_${outputId}` }
+            ]]
+          }
+        });
+      } else {
+        // Split into chunks or send as file
+        const tempLogFile = path.join(__dirname, 'temp', `logs-${outputId}.txt`);
+        fs.mkdirSync(path.dirname(tempLogFile), { recursive: true });
+        fs.writeFileSync(tempLogFile, logs);
+
+        await bot.sendDocument(chatId, tempLogFile, {
+          caption: `📋 Full logs for render: ${outputId}`,
+          reply_markup: {
+            inline_keyboard: [[
+              { text: '🔄 Refresh Logs', callback_data: `logs_${outputId}` }
+            ]]
+          }
+        }, {
+          filename: `logs-${outputId}.txt`,
+          contentType: 'text/plain'
+        });
+
+        // Cleanup
+        try { fs.unlinkSync(tempLogFile); } catch (e) { /* ignore */ }
+      }
+    } catch (error) {
+      console.error('Error fetching logs:', error);
+      await bot.answerCallbackQuery(query.id, { 
+        text: '❌ Failed to fetch logs', 
+        show_alert: true 
+      });
+      await bot.sendMessage(chatId,
+        '❌ Failed to fetch logs.\n' +
+        (error.response?.status === 404 ? 'Logs not found yet. The render may still be starting.' : error.message)
+      );
+    }
+  }
+});
+
 // Cleanup command - clear old renders
 bot.onText(/\/cleanup/, async (msg) => {
   const chatId = msg.chat.id;
@@ -170,18 +232,34 @@ bot.on('document', async (msg) => {
     fs.mkdirSync(path.dirname(tempPath), { recursive: true });
     fs.writeFileSync(tempPath, gpxBuffer);
 
-    await bot.sendMessage(chatId, '🚀 Starting video rendering...');
+    // Submit to render API
+    const formData = new FormData();
+    formData.append('gpx', fs.createReadStream(tempPath));
+
+    // Generate outputId immediately
+    const outputId = `render-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    await bot.sendMessage(chatId, 
+      '🚀 Starting video rendering...\n\n' +
+      `📋 Render ID: \`${outputId}\`\n\n` +
+      '⏱️ This may take several minutes for long routes.\n' +
+      'You can check logs to monitor progress.',
+      { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '📋 View Logs', callback_data: `logs_${outputId}` }
+          ]]
+        }
+      }
+    );
 
     // Track this render
     activeRenders.set(chatId, {
       status: 'rendering',
-      outputId: null,
+      outputId: outputId,
       fileName: doc.file_name
     });
-
-    // Submit to render API
-    const formData = new FormData();
-    formData.append('gpx', fs.createReadStream(tempPath));
 
     let renderResponse;
     try {
@@ -189,7 +267,7 @@ bot.on('document', async (msg) => {
         headers: formData.getHeaders(),
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
-        timeout: 600000, // 10 minute timeout (rendering can take several minutes)
+        timeout: 3600000, // 60 minute timeout (long routes can take 30-45 minutes)
         validateStatus: () => true // Don't throw on any status code, we'll handle it
       });
     } catch (err) {
@@ -199,7 +277,7 @@ bot.on('document', async (msg) => {
 
       // Check if it's a timeout
       if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-        throw new Error('Render timed out after 10 minutes. The route might be too long or complex. Please try a shorter route.');
+        throw new Error('Render timed out after 60 minutes. The route is extremely long. Please try splitting it into shorter segments.');
       }
 
       throw new Error('Render API request failed: ' + (respData ? JSON.stringify(respData) : err.message));
@@ -210,15 +288,16 @@ bot.on('document', async (msg) => {
     console.log('Render API response:', JSON.stringify(result, null, 2));
     console.log('HTTP status:', renderResponse.status);
 
+    // Update status with server's outputId if different, or keep our generated one
+    const finalOutputId = (result && result.outputId) ? result.outputId : outputId;
+    
     // Store outputId if available (for logs access even on failure)
-    if (result && result.outputId) {
-      activeRenders.set(chatId, {
-        status: result.success ? 'completed' : 'failed',
-        outputId: result.outputId,
-        fileName: doc.file_name,
-        videoPath: result.videoUrl
-      });
-    }
+    activeRenders.set(chatId, {
+      status: result && result.success ? 'completed' : 'failed',
+      outputId: finalOutputId,
+      fileName: doc.file_name,
+      videoPath: result ? result.videoUrl : null
+    });
 
     // Check for non-2xx status codes
     if (renderResponse.status !== 200 && renderResponse.status !== 201) {
@@ -290,7 +369,14 @@ bot.on('document', async (msg) => {
 
           await bot.sendMessage(chatId,
             '🎉 Done! Send another GPX file to create more videos.\n\n' +
-            'Use /help for more information.'
+            'Use /help for more information.',
+            {
+              reply_markup: {
+                inline_keyboard: [[
+                  { text: '📋 View Logs', callback_data: `logs_${finalOutputId}` }
+                ]]
+              }
+            }
           );
         } catch (telegramError) {
           // Handle Telegram API errors (e.g., file still too large)
@@ -358,7 +444,16 @@ bot.on('document', async (msg) => {
         await bot.sendMessage(chatId,
           '❌ Error processing your GPX file:\n' +
           detailText + '\n\n' +
-          'Please try again or contact support.'
+          'Please try again or contact support.' +
+          (render && render.outputId ? `\n\n📋 Render ID: \`${render.outputId}\`` : ''),
+          {
+            parse_mode: 'Markdown',
+            reply_markup: render && render.outputId ? {
+              inline_keyboard: [[
+                { text: '📋 View Full Logs', callback_data: `logs_${render.outputId}` }
+              ]]
+            } : undefined
+          }
         );
       } else {
         // Write the long error to a temporary file and send as a document
@@ -368,10 +463,25 @@ bot.on('document', async (msg) => {
         fs.writeFileSync(errFilePath, detailText);
 
         await bot.sendMessage(chatId,
-          '❌ Error processing your GPX file. Details too long to display here — sending as a file.'
+          '❌ Error processing your GPX file. Details too long to display here — sending as a file.' +
+          (render && render.outputId ? `\n\n📋 Render ID: \`${render.outputId}\`` : ''),
+          {
+            parse_mode: 'Markdown',
+            reply_markup: render && render.outputId ? {
+              inline_keyboard: [[
+                { text: '📋 View Full Logs', callback_data: `logs_${render.outputId}` }
+              ]]
+            } : undefined
+          }
         );
 
-        await bot.sendDocument(chatId, errFilePath, {}, { filename: 'render-error.txt' });
+        await bot.sendDocument(chatId, errFilePath, {
+          reply_markup: render && render.outputId ? {
+            inline_keyboard: [[
+              { text: '📋 View Server Logs', callback_data: `logs_${render.outputId}` }
+            ]]
+          } : undefined
+        }, { filename: 'render-error.txt' });
 
         // Cleanup
         try { fs.unlinkSync(errFilePath); } catch (e) { /* ignore */ }

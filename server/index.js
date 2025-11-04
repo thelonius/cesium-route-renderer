@@ -63,10 +63,10 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   console.log('Running Docker command:', dockerCommand);
 
   // Increase maxBuffer to capture larger Docker/Chromium logs and return them on error (trimmed)
-  // Set timeout to 10 minutes (600000ms) - rendering should complete well before this
+  // Set timeout to 60 minutes (3600000ms) - long routes can take 30-45 minutes to encode
   const execOptions = {
     maxBuffer: 10 * 1024 * 1024,
-    timeout: 600000 // 10 minutes
+    timeout: 3600000 // 60 minutes
   };
 
   exec(dockerCommand, execOptions, (error, stdout, stderr) => {
