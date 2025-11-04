@@ -301,6 +301,19 @@ async function recordRoute() {
 
   // NOW start recording after everything is loaded
   console.log('Setting up screen recorder...');
+  
+  // Calculate expected file size based on duration and bitrate
+  const recordDurationMinutes = RECORD_DURATION / 1000 / 60;
+  const bitrateKbps = 2500; // Must match videoBitrate below
+  const estimatedSizeMB = (recordDurationMinutes * bitrateKbps * 60) / 8 / 1024;
+  console.log(`Expected video duration: ${recordDurationMinutes.toFixed(2)} minutes`);
+  console.log(`Estimated file size: ${estimatedSizeMB.toFixed(2)} MB (at ${bitrateKbps}k bitrate)`);
+  
+  if (estimatedSizeMB > 50) {
+    console.warn(`⚠️  WARNING: Estimated file size (${estimatedSizeMB.toFixed(2)} MB) exceeds Telegram's 50MB limit!`);
+    console.warn('Consider reducing bitrate or using shorter routes.');
+  }
+  
   const recorder = new PuppeteerScreenRecorder(page, {
     followNewTab: false,
     fps: TARGET_FPS, // configurable target FPS

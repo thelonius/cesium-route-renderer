@@ -5,7 +5,8 @@ const path = require('path');
 const axios = require('axios');
 
 const BOT_TOKEN = '8418496404:AAGLdVNW_Pla_u1bMVfFia-s9klwRsgYZhs';
-const API_SERVER = 'http://localhost:3000';
+const API_SERVER = process.env.API_SERVER || 'http://localhost:3000';
+const PUBLIC_URL = process.env.PUBLIC_URL || 'http://195.133.27.96:3000'; // Public URL for downloads
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
@@ -213,8 +214,8 @@ bot.on('document', async (msg) => {
           `📊 File size: ${fileSizeMB.toFixed(2)} MB\n` +
           `📏 Telegram limit: ${TELEGRAM_MAX_SIZE_MB} MB\n\n` +
           '📥 Download your video here:\n' +
-          `${API_SERVER}${result.videoUrl}\n\n` +
-          '💡 Tip: We\'re working on reducing file sizes automatically.'
+          `${PUBLIC_URL}${result.videoUrl}\n\n` +
+          '💡 The video file will be available for download from our server.'
         );
       } else {
         // File is within limits, send normally
@@ -240,8 +241,8 @@ bot.on('document', async (msg) => {
               '⚠️ Telegram rejected the video (too large)\n\n' +
               `📊 File size: ${fileSizeMB.toFixed(2)} MB\n\n` +
               '📥 Download your video here:\n' +
-              `${API_SERVER}${result.videoUrl}\n\n` +
-              '💡 We\'ve noted this issue and will improve compression.'
+              `${PUBLIC_URL}${result.videoUrl}\n\n` +
+              '💡 The video file is available for download from our server.'
             );
           } else {
             throw telegramError; // Re-throw if it's a different error
