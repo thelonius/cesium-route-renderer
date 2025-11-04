@@ -128,7 +128,7 @@ bot.on('callback_query', async (query) => {
 
       // Telegram has a 4096 character limit per message
       if (logs.length <= 4096) {
-        await bot.sendMessage(chatId, `📋 Logs for \`${outputId}\`:\n\n\`\`\`\n${logs}\n\`\`\``, { 
+        await bot.sendMessage(chatId, `📋 Logs for \`${outputId}\`:\n\n\`\`\`\n${logs}\n\`\`\``, {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [[
@@ -159,9 +159,9 @@ bot.on('callback_query', async (query) => {
       }
     } catch (error) {
       console.error('Error fetching logs:', error);
-      await bot.answerCallbackQuery(query.id, { 
-        text: '❌ Failed to fetch logs', 
-        show_alert: true 
+      await bot.answerCallbackQuery(query.id, {
+        text: '❌ Failed to fetch logs',
+        show_alert: true
       });
       await bot.sendMessage(chatId,
         '❌ Failed to fetch logs.\n' +
@@ -174,17 +174,17 @@ bot.on('callback_query', async (query) => {
 // Cleanup command - clear old renders
 bot.onText(/\/cleanup/, async (msg) => {
   const chatId = msg.chat.id;
-  
+
   try {
     await bot.sendMessage(chatId, '🧹 Cleaning up old renders...');
-    
+
     // Call API to get list of output directories
     const outputResponse = await axios.get(`${API_SERVER}/cleanup`, {
       params: { daysOld: 7 } // Delete renders older than 7 days
     });
-    
+
     const result = outputResponse.data;
-    
+
     if (result.success) {
       await bot.sendMessage(chatId,
         `✅ Cleanup complete!\n\n` +
@@ -238,13 +238,13 @@ bot.on('document', async (msg) => {
 
     // Generate outputId immediately
     const outputId = `render-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    
-    await bot.sendMessage(chatId, 
+
+    await bot.sendMessage(chatId,
       '🚀 Starting video rendering...\n\n' +
       `📋 Render ID: \`${outputId}\`\n\n` +
       '⏱️ This may take several minutes for long routes.\n' +
       'You can check logs to monitor progress.',
-      { 
+      {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
@@ -290,7 +290,7 @@ bot.on('document', async (msg) => {
 
     // Update status with server's outputId if different, or keep our generated one
     const finalOutputId = (result && result.outputId) ? result.outputId : outputId;
-    
+
     // Store outputId if available (for logs access even on failure)
     activeRenders.set(chatId, {
       status: result && result.success ? 'completed' : 'failed',
