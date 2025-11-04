@@ -76,12 +76,12 @@ bot.onText(/\/logs/, async (msg) => {
 
   try {
     await bot.sendMessage(chatId, '📋 Fetching logs...');
-    
+
     const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
     const response = await axios.get(logsUrl);
-    
+
     const logs = response.data;
-    
+
     // Telegram has a 4096 character limit per message
     if (logs.length <= 4096) {
       await bot.sendMessage(chatId, `\`\`\`\n${logs}\n\`\`\``, { parse_mode: 'Markdown' });
@@ -90,18 +90,18 @@ bot.onText(/\/logs/, async (msg) => {
       const tempLogFile = path.join(__dirname, 'temp', `logs-${render.outputId}.txt`);
       fs.mkdirSync(path.dirname(tempLogFile), { recursive: true });
       fs.writeFileSync(tempLogFile, logs);
-      
-      await bot.sendDocument(chatId, tempLogFile, {}, { 
+
+      await bot.sendDocument(chatId, tempLogFile, {}, {
         filename: `logs-${render.outputId}.txt`,
         contentType: 'text/plain'
       });
-      
+
       // Cleanup
       try { fs.unlinkSync(tempLogFile); } catch (e) { /* ignore */ }
     }
   } catch (error) {
     console.error('Error fetching logs:', error);
-    await bot.sendMessage(chatId, 
+    await bot.sendMessage(chatId,
       '❌ Failed to fetch logs.\n' +
       (error.response?.status === 404 ? 'Logs not found for this render.' : error.message)
     );
@@ -190,25 +190,25 @@ bot.on('document', async (msg) => {
     // Send the video
     // Try multiple path resolutions
     let videoPath = path.join(__dirname, '..', result.videoUrl.substring(1)); // Remove leading /
-    
+
     // If not found, try resolving from output directory
     if (!fs.existsSync(videoPath)) {
       videoPath = path.join(__dirname, '../output', result.outputId, 'route-video.mp4');
     }
-    
+
     console.log('Looking for video at:', videoPath);
     console.log('Video exists:', fs.existsSync(videoPath));
 
     if (fs.existsSync(videoPath)) {
       console.log('Sending video to chat:', chatId);
-      
+
       const fileSizeMB = result.fileSize / 1024 / 1024;
       const TELEGRAM_MAX_SIZE_MB = 50; // Telegram's limit for bots
-      
+
       // Check if file is too large for Telegram
       if (fileSizeMB > TELEGRAM_MAX_SIZE_MB) {
         console.warn(`Video is too large (${fileSizeMB.toFixed(2)}MB). Telegram limit is ${TELEGRAM_MAX_SIZE_MB}MB`);
-        
+
         await bot.sendMessage(chatId,
           '⚠️ Video is too large for Telegram!\n\n' +
           `📊 File size: ${fileSizeMB.toFixed(2)} MB\n` +
@@ -235,7 +235,7 @@ bot.on('document', async (msg) => {
         } catch (telegramError) {
           // Handle Telegram API errors (e.g., file still too large)
           console.error('Error sending video to Telegram:', telegramError.message);
-          
+
           if (telegramError.message.includes('413') || telegramError.message.includes('Too Large')) {
             await bot.sendMessage(chatId,
               '⚠️ Telegram rejected the video (too large)\n\n' +
@@ -254,7 +254,7 @@ bot.on('document', async (msg) => {
       console.error('Video file not found!');
       console.error('Expected path:', videoPath);
       console.error('Result data:', JSON.stringify(result, null, 2));
-      
+
       // Try to list output directory to help debug
       const outputDir = path.join(__dirname, '../output', result.outputId);
       if (fs.existsSync(outputDir)) {
@@ -262,7 +262,7 @@ bot.on('document', async (msg) => {
       } else {
         console.error('Output directory does not exist:', outputDir);
       }
-      
+
       throw new Error(`Video file not found at: ${videoPath}`);
     }
 
