@@ -42,12 +42,13 @@ bot.onText(/\/help/, (msg) => {
     'Commands:\n' +
     '/start - Start the bot\n' +
     '/help - Show this help\n' +
-    '/status - Check current render status'
+    '/status - Check current render status\n' +
+    '/logs - View detailed logs for your last render'
   );
 });
 
 // Status command
-bot.onText(/\/status/, (msg) => {
+bot.onText(/\/status/, async (msg) => {
   const chatId = msg.chat.id;
   const render = activeRenders.get(chatId);
 
@@ -60,6 +61,50 @@ bot.onText(/\/status/, (msg) => {
     `⏳ Current status: ${render.status}\n` +
     `📊 Output ID: ${render.outputId || 'pending'}`
   );
+});
+
+// Logs command
+bot.onText(/\/logs/, async (msg) => {
+  const chatId = msg.chat.id;
+  const render = activeRenders.get(chatId);
+
+  if (!render || !render.outputId) {
+    bot.sendMessage(chatId, '❌ No render to show logs for. Complete a render first!');
+    return;
+  }
+
+  try {
+    await bot.sendMessage(chatId, '📋 Fetching logs...');
+    
+    const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
+    const response = await axios.get(logsUrl);
+    
+    const logs = response.data;
+    
+    // Telegram has a 4096 character limit per message
+    if (logs.length <= 4096) {
+      await bot.sendMessage(chatId, `\`\`\`\n${logs}\n\`\`\``, { parse_mode: 'Markdown' });
+    } else {
+      // Split into chunks or send as file
+      const tempLogFile = path.join(__dirname, 'temp', `logs-${render.outputId}.txt`);
+      fs.mkdirSync(path.dirname(tempLogFile), { recursive: true });
+      fs.writeFileSync(tempLogFile, logs);
+      
+      await bot.sendDocument(chatId, tempLogFile, {}, { 
+        filename: `logs-${render.outputId}.txt`,
+        contentType: 'text/plain'
+      });
+      
+      // Cleanup
+      try { fs.unlinkSync(tempLogFile); } catch (e) { /* ignore */ }
+    }
+  } catch (error) {
+    console.error('Error fetching logs:', error);
+    await bot.sendMessage(chatId, 
+      '❌ Failed to fetch logs.\n' +
+      (error.response?.status === 404 ? 'Logs not found for this render.' : error.message)
+    );
+  }
 });
 
 // Handle document (GPX file)
@@ -227,6 +272,9 @@ bot.on('document', async (msg) => {
   } catch (error) {
     console.error('Error processing GPX:', error);
 
+    // Get the render info if available
+    const render = activeRenders.get(chatId);
+
     // Prepare a safe short message for Telegram (avoid sending massive error bodies)
     const MAX_TELEGRAM_TEXT = 3500;
 
@@ -266,6 +314,14 @@ bot.on('document', async (msg) => {
 
         // Cleanup
         try { fs.unlinkSync(errFilePath); } catch (e) { /* ignore */ }
+      }
+
+      // If we have an outputId, offer to send detailed logs
+      if (render && render.outputId) {
+        await bot.sendMessage(chatId,
+          '📋 Detailed logs available.\n' +
+          'Use /logs to view full rendering logs.'
+        );
       }
     } catch (sendErr) {
       // If sending the message/document fails, ensure we still log it to server console
