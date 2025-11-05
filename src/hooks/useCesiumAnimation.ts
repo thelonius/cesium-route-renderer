@@ -247,28 +247,18 @@ export default function useCesiumAnimation({
         }
 
         const dynamicHeight = Math.max(CAMERA_BASE_HEIGHT, terrainHeight * 0.2 + 800);
-        const dynamicBack = Math.max(600, Math.min(4000, CAMERA_BASE_BACK + terrainHeight * 0.05));
+        const dynamicBack = Math.max(1200, Math.min(8000, CAMERA_BASE_BACK + terrainHeight * 0.05));
 
         smoothedBackRef.current = smoothedBackRef.current * (1 - CAMERA_SMOOTH_ALPHA) + dynamicBack * CAMERA_SMOOTH_ALPHA;
         smoothedHeightRef.current = smoothedHeightRef.current * (1 - CAMERA_SMOOTH_ALPHA) + dynamicHeight * CAMERA_SMOOTH_ALPHA;
 
-        // Camera offset: behind (south) and above in local ENU frame
-        const cameraOffsetLocal = new Cesium.Cartesian3(0, -smoothedBackRef.current, smoothedHeightRef.current);
+        const cameraOffsetLocal = new Cesium.Cartesian3(-smoothedBackRef.current, 0, smoothedHeightRef.current);
         const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
 
         try {
           viewer.camera.position = cameraPosition;
           if (position) {
-            // Calculate direction from camera to hiker
-            const direction = Cesium.Cartesian3.subtract(position, cameraPosition, new Cesium.Cartesian3());
-            Cesium.Cartesian3.normalize(direction, direction);
-
-            // Set camera direction and up vector
-            viewer.camera.direction = direction;
-
-            // Up vector should point away from Earth center
-            const up = Cesium.Cartesian3.normalize(position, new Cesium.Cartesian3());
-            viewer.camera.up = up;
+            viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(800, dynamicHeight * 0.5)));
           }
         } catch (e) {
           console.warn('Camera update failed:', e);
