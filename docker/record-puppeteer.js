@@ -204,7 +204,7 @@ async function recordRoute() {
   console.log(`Recording target FPS: ${TARGET_FPS}, resolution: ${RECORD_WIDTH}x${RECORD_HEIGHT}`)
 
   const browser = await puppeteer.launch({
-    headless: true, // Use true headless mode - no browser UI at all
+    headless: false, // Need headful for --app mode to work properly with Xvfb
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -222,8 +222,13 @@ async function recordRoute() {
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
       '--force-device-scale-factor=1', // Ensure 1:1 devicePixelRatio for consistent pixels
       '--hide-scrollbars',
-      '--mute-audio'
+      '--mute-audio',
+      '--disable-infobars',
+      '--disable-features=TranslateUI',
+      '--no-default-browser-check',
+      '--no-first-run'
     ],
+    defaultViewport: null, // Let page control viewport
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
 
@@ -292,6 +297,22 @@ async function recordRoute() {
   console.log('Hiding Cesium UI elements...');
   await page.addStyleTag({
     content: `
+      /* Remove all margins and make page full screen */
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        overflow: hidden !important;
+      }
+
+      #root {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
       /* Hide all Cesium widgets and credits */
       .cesium-viewer-toolbar,
       .cesium-viewer-animationContainer,
@@ -314,9 +335,7 @@ async function recordRoute() {
         height: 100% !important;
       }
     `
-  });
-
-  // Wait for the animation ready marker (terrain + imagery loaded)
+  });  // Wait for the animation ready marker (terrain + imagery loaded)
   console.log('Waiting for animation to be ready...');
   try {
     await page.waitForFunction(
