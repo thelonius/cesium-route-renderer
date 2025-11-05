@@ -9,8 +9,8 @@ interface UseCesiumAnimationProps {
   stopTime: Cesium.JulianDate | undefined;
 }
 
-const CAMERA_BASE_BACK = 2400;
-const CAMERA_BASE_HEIGHT = 1200;
+const CAMERA_BASE_BACK = 9600;    // Increased 4x from 2400
+const CAMERA_BASE_HEIGHT = 4800;  // Increased 4x from 1200
 const CAMERA_SMOOTH_ALPHA = 0.15;
 const ADD_INTERVAL_SECONDS = 0.5;
 const MAX_TRAIL_POINTS = 500;
@@ -275,8 +275,8 @@ export default function useCesiumAnimation({
       // Set initial altitude based on route size
       // For small routes (< 1km radius), use closer view
       // For larger routes, scale appropriately
-      const baseAltitude = Math.max(radius * 2.5, 2000); // Minimum 2km altitude
-      const cappedAltitude = Math.min(baseAltitude, 15000); // Maximum 15km altitude
+      const baseAltitude = Math.max(radius * 10, 8000); // Increased 4x: minimum 8km altitude (was 2km)
+      const cappedAltitude = Math.min(baseAltitude, 60000); // Increased 4x: maximum 60km altitude (was 15km)
 
       const startingCartographic = Cesium.Cartographic.fromCartesian(startingPosition);
       viewer.camera.setView({
@@ -286,8 +286,8 @@ export default function useCesiumAnimation({
           cappedAltitude
         ),
         orientation: {
-          heading: Cesium.Math.toRadians(0),
-          pitch: Cesium.Math.toRadians(-45),
+          heading: Cesium.Math.toRadians(0),    // North
+          pitch: Cesium.Math.toRadians(-30),    // More slant angle: -30° (was -45°) for more overhead view
           roll: 0
         }
       });

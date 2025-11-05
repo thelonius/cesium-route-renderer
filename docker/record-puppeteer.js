@@ -222,7 +222,8 @@ async function recordRoute() {
       '--js-flags=--max-old-space-size=4096', // Increase JS heap for better performance
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
       '--force-device-scale-factor=1', // Ensure 1:1 devicePixelRatio for consistent pixels
-      '--start-maximized'
+      '--start-maximized',
+      '--app=data:text/html,<html></html>' // Run in app mode to remove browser UI (title bar, etc.)
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
