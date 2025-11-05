@@ -9,8 +9,8 @@ interface UseCesiumAnimationProps {
   stopTime: Cesium.JulianDate | undefined;
 }
 
-const CAMERA_BASE_BACK = 9600;    // Increased 4x from 2400
-const CAMERA_BASE_HEIGHT = 4800;  // Increased 4x from 1200
+const CAMERA_BASE_BACK = 4800;    // 2x from original 2400
+const CAMERA_BASE_HEIGHT = 2400;  // 2x from original 1200
 const CAMERA_SMOOTH_ALPHA = 0.15;
 const ADD_INTERVAL_SECONDS = 0.5;
 const MAX_TRAIL_POINTS = 500;
@@ -116,10 +116,10 @@ export default function useCesiumAnimation({
       ]),
       position: hikerPositions,
       point: {
-        pixelSize: 12,
+        pixelSize: 20,  // Increased from 12 for better visibility
         color: Cesium.Color.RED,
         outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2,
+        outlineWidth: 3,  // Increased from 2 for better visibility
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       },
@@ -173,9 +173,9 @@ export default function useCesiumAnimation({
     const trailEntity = viewer.entities.add({
       polyline: {
         positions: new Cesium.CallbackProperty(() => trailPositionsRef.current, false),
-        width: 5,
+        width: 8,  // Increased from 5 for better visibility
         material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
-        depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
+        depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.6)),
         clampToGround: true,
         show: true
       }
@@ -235,7 +235,34 @@ export default function useCesiumAnimation({
         const position = hikerEntity.position.getValue(currentTime);
         if (!position || !position.x) return;
 
-        const transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+        // Get hiker's velocity to determine direction of travel
+        const velocity = hikerEntity.position.getValue(currentTime, new Cesium.Cartesian3());
+
+        // Try to get velocity from the position property
+        let movementDirection = new Cesium.Cartesian3(0, 1, 0); // Default: north
+        try {
+          // Sample position slightly ahead and behind to calculate direction
+          const deltaTime = 2; // seconds
+          const futureTime = Cesium.JulianDate.addSeconds(currentTime, deltaTime, new Cesium.JulianDate());
+          const pastTime = Cesium.JulianDate.addSeconds(currentTime, -deltaTime, new Cesium.JulianDate());
+
+          const futurePos = hikerEntity.position.getValue(futureTime);
+          const pastPos = hikerEntity.position.getValue(pastTime);
+
+          if (futurePos && pastPos) {
+            // Calculate movement direction in world space
+            const worldDirection = Cesium.Cartesian3.subtract(futurePos, pastPos, new Cesium.Cartesian3());
+            Cesium.Cartesian3.normalize(worldDirection, worldDirection);
+
+            // Convert to local ENU frame
+            const transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+            const inverseTransform = Cesium.Matrix4.inverse(transform, new Cesium.Matrix4());
+            movementDirection = Cesium.Matrix4.multiplyByPointAsVector(inverseTransform, worldDirection, new Cesium.Cartesian3());
+            Cesium.Cartesian3.normalize(movementDirection, movementDirection);
+          }
+        } catch (e) {
+          // Use default direction if calculation fails
+        }
 
         let terrainHeight = 0;
         try {
@@ -247,12 +274,19 @@ export default function useCesiumAnimation({
         }
 
         const dynamicHeight = Math.max(CAMERA_BASE_HEIGHT, terrainHeight * 0.2 + 800);
-        const dynamicBack = Math.max(1200, Math.min(8000, CAMERA_BASE_BACK + terrainHeight * 0.05));
+        const dynamicBack = Math.max(800, Math.min(6000, CAMERA_BASE_BACK + terrainHeight * 0.05));
 
         smoothedBackRef.current = smoothedBackRef.current * (1 - CAMERA_SMOOTH_ALPHA) + dynamicBack * CAMERA_SMOOTH_ALPHA;
         smoothedHeightRef.current = smoothedHeightRef.current * (1 - CAMERA_SMOOTH_ALPHA) + dynamicHeight * CAMERA_SMOOTH_ALPHA;
 
-        const cameraOffsetLocal = new Cesium.Cartesian3(-smoothedBackRef.current, 0, smoothedHeightRef.current);
+        // Place camera BEHIND the direction of movement (opposite to movement direction)
+        const cameraOffsetLocal = new Cesium.Cartesian3(
+          -movementDirection.x * smoothedBackRef.current,
+          -movementDirection.y * smoothedBackRef.current,
+          smoothedHeightRef.current
+        );
+
+        const transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
         const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
 
         try {
@@ -290,8 +324,8 @@ export default function useCesiumAnimation({
       // Set initial altitude based on route size
       // For small routes (< 1km radius), use closer view
       // For larger routes, scale appropriately
-      const baseAltitude = Math.max(radius * 10, 8000); // Increased 4x: minimum 8km altitude (was 2km)
-      const cappedAltitude = Math.min(baseAltitude, 60000); // Increased 4x: maximum 60km altitude (was 15km)
+      const baseAltitude = Math.max(radius * 5, 4000); // 2x: minimum 4km altitude
+      const cappedAltitude = Math.min(baseAltitude, 30000); // 2x: maximum 30km altitude
 
       const startingCartographic = Cesium.Cartographic.fromCartesian(startingPosition);
       viewer.camera.setView({

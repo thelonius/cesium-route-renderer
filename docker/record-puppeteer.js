@@ -204,16 +204,15 @@ async function recordRoute() {
   console.log(`Recording target FPS: ${TARGET_FPS}, resolution: ${RECORD_WIDTH}x${RECORD_HEIGHT}`)
 
   const browser = await puppeteer.launch({
-    headless: false, // Use Xvfb virtual display instead of headless mode
+    headless: true, // Use true headless mode - no browser UI at all
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--enable-webgl',
-      '--use-gl=swiftshader', // Use SwiftShader software GL in containers for stability
-      '--enable-unsafe-swiftshader', // Opt into SwiftShader (lower security; OK for trusted content)
+      '--use-gl=angle',
+      '--use-angle=swiftshader',
       '--ignore-gpu-blacklist',
-      '--disable-gpu', // Disable GPU to force software rendering
       '--disable-gpu-vsync', // Disable vsync for unlimited FPS
       '--disable-frame-rate-limit', // Remove frame rate limit
       '--disable-background-timer-throttling', // Prevent timer throttling
@@ -222,9 +221,8 @@ async function recordRoute() {
       '--js-flags=--max-old-space-size=4096', // Increase JS heap for better performance
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
       '--force-device-scale-factor=1', // Ensure 1:1 devicePixelRatio for consistent pixels
-      '--start-maximized',
-      '--kiosk', // Full kiosk mode - removes all browser UI including title bar
-      '--kiosk-printing' // Enable printing in kiosk mode (if needed)
+      '--hide-scrollbars',
+      '--mute-audio'
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
@@ -289,6 +287,34 @@ async function recordRoute() {
   } catch (error) {
     console.warn('Cesium viewer selector not found, continuing anyway...');
   }
+
+  // Inject CSS to hide all Cesium UI elements
+  console.log('Hiding Cesium UI elements...');
+  await page.addStyleTag({
+    content: `
+      /* Hide all Cesium widgets and credits */
+      .cesium-viewer-toolbar,
+      .cesium-viewer-animationContainer,
+      .cesium-viewer-timelineContainer,
+      .cesium-viewer-bottom,
+      .cesium-credit-lightbox,
+      .cesium-credit-lightbox-overlay,
+      .cesium-widget-credits,
+      .cesium-credit-textContainer {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+      }
+
+      /* Ensure full screen for viewer */
+      .cesium-viewer,
+      .cesium-widget,
+      .cesium-widget canvas {
+        width: 100% !important;
+        height: 100% !important;
+      }
+    `
+  });
 
   // Wait for the animation ready marker (terrain + imagery loaded)
   console.log('Waiting for animation to be ready...');
