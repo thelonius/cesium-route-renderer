@@ -5,7 +5,7 @@
 
 set -e
 
-SERVER="kykyryzik@195.133.27.96"
+SERVER="theo@195.133.27.96"
 DEPLOY_DIR="cesium-route-renderer"
 BRANCH="${1:-main}"
 

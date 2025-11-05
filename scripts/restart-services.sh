@@ -4,14 +4,14 @@ set -euo pipefail
 # Restart and deploy services on the host.
 # Usage: ./scripts/restart-services.sh
 
-REPO_DIR="/home/kykyryzik/cesium-route-renderer"
+REPO_DIR="/home/theo/cesium-route-renderer"
 BRANCH="main"
 DOCKER_IMAGE_NAME="cesium-route-recorder"
 
 echo "-- Restart script starting at $(date -u +%Y-%m-%dT%H:%M:%SZ) --"
 
 if [ "$EUID" -eq 0 ]; then
-  echo "Warning: running as root. Recommended to run as the deploy user (kykyryzik)."
+  echo "Warning: running as root. Recommended to run as the deploy user (theo)."
 fi
 
 if [ ! -d "$REPO_DIR" ]; then

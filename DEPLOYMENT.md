@@ -1,13 +1,13 @@
 # Deployment to Custom Server
 
 Server: **195.133.27.96**
-User: **kykyryzik**
+User: **theo**
 Password: **plow2018**
 
 ## Step 1: Connect to Server
 
 ```bash
-ssh kykyryzik@195.133.27.96
+ssh theo@195.133.27.96
 # Password: plow2018
 ```
 
@@ -59,7 +59,7 @@ From your **local machine**:
 
 ```bash
 # Create deployment directory
-ssh kykyryzik@195.133.27.96 "mkdir -p ~/cesium-route-renderer"
+ssh theo@195.133.27.96 "mkdir -p ~/cesium-route-renderer"
 
 # Upload project (excluding large files)
 cd /Users/eddubnitsky/cesium/cesium-vite-react
@@ -70,7 +70,7 @@ rsync -avz -e ssh \
   --exclude 'dist' \
   --exclude 'temp' \
   --exclude 'public/cesium' \
-  ./ kykyryzik@195.133.27.96:~/cesium-route-renderer/
+  ./ theo@195.133.27.96:~/cesium-route-renderer/
 ```
 
 ## Step 5: Build on Server
@@ -198,7 +198,7 @@ To update the deployment:
 rsync -avz -e ssh \
   --exclude 'node_modules' \
   --exclude 'output' \
-  ./ kykyryzik@195.133.27.96:~/cesium-route-renderer/
+  ./ theo@195.133.27.96:~/cesium-route-renderer/
 
 # On server, restart services
 pm2 restart all
