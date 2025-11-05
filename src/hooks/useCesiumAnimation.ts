@@ -200,6 +200,18 @@ export default function useCesiumAnimation({
         const dt = Cesium.JulianDate.secondsDifference(currentTime, lastAddedTimeRef.current);
         if (dt < ADD_INTERVAL_SECONDS && trailPositionsRef.current.length > 0) return;
 
+        // Check for large gaps to prevent lines across the globe
+        if (trailPositionsRef.current.length > 0) {
+          const lastPosition = trailPositionsRef.current[trailPositionsRef.current.length - 1];
+          const distance = Cesium.Cartesian3.distance(lastPosition, currentPosition);
+
+          // If distance is > 10km, there's a discontinuity - reset trail
+          if (distance > 10000) {
+            console.warn('Large gap detected in trail, resetting');
+            trailPositionsRef.current = [];
+          }
+        }
+
         try {
           trailPositionsRef.current.push(currentPosition.clone());
         } catch (e) {
@@ -287,7 +299,7 @@ export default function useCesiumAnimation({
         ),
         orientation: {
           heading: Cesium.Math.toRadians(0),    // North
-          pitch: Cesium.Math.toRadians(-30),    // More slant angle: -30° (was -45°) for more overhead view
+          pitch: Cesium.Math.toRadians(-45),
           roll: 0
         }
       });
