@@ -9,8 +9,8 @@ interface UseCesiumAnimationProps {
   stopTime: Cesium.JulianDate | undefined;
 }
 
-const CAMERA_BASE_BACK = 2400;    // Original distance
-const CAMERA_BASE_HEIGHT = 1200;  // Original distance
+const CAMERA_BASE_BACK = 2400;
+const CAMERA_BASE_HEIGHT = 1200;
 const CAMERA_SMOOTH_ALPHA = 0.15;
 const ADD_INTERVAL_SECONDS = 0.5;
 const MAX_TRAIL_POINTS = 500;
@@ -116,10 +116,10 @@ export default function useCesiumAnimation({
       ]),
       position: hikerPositions,
       point: {
-        pixelSize: 20,  // Increased from 12 for better visibility
+        pixelSize: 12,
         color: Cesium.Color.RED,
         outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 3,  // Increased from 2 for better visibility
+        outlineWidth: 2,
         heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       },
@@ -173,9 +173,9 @@ export default function useCesiumAnimation({
     const trailEntity = viewer.entities.add({
       polyline: {
         positions: new Cesium.CallbackProperty(() => trailPositionsRef.current, false),
-        width: 8,  // Increased from 5 for better visibility
+        width: 5,
         material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
-        depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.6)),
+        depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
         clampToGround: true,
         show: true
       }
@@ -199,18 +199,6 @@ export default function useCesiumAnimation({
 
         const dt = Cesium.JulianDate.secondsDifference(currentTime, lastAddedTimeRef.current);
         if (dt < ADD_INTERVAL_SECONDS && trailPositionsRef.current.length > 0) return;
-
-        // Check for large gaps to prevent lines across the globe
-        if (trailPositionsRef.current.length > 0) {
-          const lastPosition = trailPositionsRef.current[trailPositionsRef.current.length - 1];
-          const distance = Cesium.Cartesian3.distance(lastPosition, currentPosition);
-
-          // If distance is > 10km, there's a discontinuity - reset trail
-          if (distance > 10000) {
-            console.warn('Large gap detected in trail, resetting');
-            trailPositionsRef.current = [];
-          }
-        }
 
         try {
           trailPositionsRef.current.push(currentPosition.clone());
@@ -271,6 +259,12 @@ export default function useCesiumAnimation({
     viewer.scene.preRender.addEventListener(preRenderListener);
     viewer.scene.postRender.addEventListener(postRenderListener);
 
+    // Enable smooth camera controls
+    viewer.scene.screenSpaceCameraController.enableCollisionDetection = false;
+    viewer.scene.screenSpaceCameraController.inertiaTranslate = 0.9;
+    viewer.scene.screenSpaceCameraController.inertiaSpin = 0.9;
+    viewer.scene.screenSpaceCameraController.inertiaZoom = 0.8;
+
     // Position camera at starting position with appropriate zoom based on route extent
     const startingPosition = hikerEntity.position?.getValue(startTime);
     if (startingPosition && fullRoutePositions.length > 1) {
@@ -281,8 +275,8 @@ export default function useCesiumAnimation({
       // Set initial altitude based on route size
       // For small routes (< 1km radius), use closer view
       // For larger routes, scale appropriately
-      const baseAltitude = Math.max(radius * 3, 2000); // Original: minimum 2km altitude
-      const cappedAltitude = Math.min(baseAltitude, 15000); // Original: maximum 15km altitude
+      const baseAltitude = Math.max(radius * 2.5, 2000); // Minimum 2km altitude
+      const cappedAltitude = Math.min(baseAltitude, 15000); // Maximum 15km altitude
 
       const startingCartographic = Cesium.Cartographic.fromCartesian(startingPosition);
       viewer.camera.setView({
@@ -292,7 +286,7 @@ export default function useCesiumAnimation({
           cappedAltitude
         ),
         orientation: {
-          heading: Cesium.Math.toRadians(0),    // North
+          heading: Cesium.Math.toRadians(0),
           pitch: Cesium.Math.toRadians(-45),
           roll: 0
         }
