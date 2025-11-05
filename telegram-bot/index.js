@@ -254,6 +254,68 @@ bot.on('document', async (msg) => {
     fs.mkdirSync(path.dirname(tempPath), { recursive: true });
     fs.writeFileSync(tempPath, gpxBuffer);
 
+    // Analyze GPX to estimate render time
+    await bot.sendMessage(chatId, '🔍 Analyzing route...');
+
+    const gpxContent = gpxBuffer.toString('utf8');
+    let routeDurationMinutes = null;
+    let estimatedRenderMinutes = null;
+    let animationSpeed = 100;
+
+    try {
+      const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
+
+      if (timeMatches && timeMatches.length >= 2) {
+        const firstTime = new Date(timeMatches[0].replace(/<\/?time>/g, ''));
+        const lastTime = new Date(timeMatches[timeMatches.length - 1].replace(/<\/?time>/g, ''));
+        routeDurationMinutes = (lastTime - firstTime) / 1000 / 60;
+
+        // Calculate adaptive animation speed (same logic as server)
+        const MAX_VIDEO_MINUTES = 5;
+        const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
+
+        if (requiredSpeed > 100) {
+          animationSpeed = requiredSpeed;
+        }
+
+        // Estimate render time
+        // Recording duration in seconds
+        const recordingSeconds = (routeDurationMinutes * 60 / animationSpeed) + 19;
+        const recordingMinutes = recordingSeconds / 60;
+
+        // Encoding is ~7x slower than real-time for current settings
+        const ENCODING_RATIO = 7;
+        const encodingMinutes = recordingMinutes * ENCODING_RATIO;
+
+        // Total with overhead
+        const overheadMinutes = 1.5; // ~90 seconds
+        estimatedRenderMinutes = Math.ceil(recordingMinutes + encodingMinutes + overheadMinutes);
+
+        // Estimate file size
+        const bitrateKbps = 2500;
+        const estimatedSizeMB = Math.ceil((recordingSeconds * bitrateKbps) / 8 / 1024);
+
+        let statusMsg = '📊 Route Analysis:\n\n';
+        statusMsg += `📍 Route duration: ${routeDurationMinutes.toFixed(0)} minutes\n`;
+        statusMsg += `⚡ Animation speed: ${animationSpeed}x\n`;
+        statusMsg += `🎬 Video length: ~${recordingMinutes.toFixed(1)} minutes\n`;
+        statusMsg += `📦 Estimated size: ~${estimatedSizeMB} MB\n`;
+        statusMsg += `⏱️ Estimated render time: ~${estimatedRenderMinutes} minutes\n\n`;
+
+        if (estimatedSizeMB > 50) {
+          statusMsg += '⚠️ File will exceed 50MB Telegram limit\n';
+          statusMsg += '📥 Download link will be provided\n\n';
+        }
+
+        statusMsg += 'Starting render...';
+
+        await bot.sendMessage(chatId, statusMsg);
+      }
+    } catch (err) {
+      console.warn('Could not analyze GPX:', err.message);
+      await bot.sendMessage(chatId, '⚠️ Could not analyze route, proceeding with default settings...');
+    }
+
     // Submit to render API
     const formData = new FormData();
     formData.append('gpx', fs.createReadStream(tempPath));

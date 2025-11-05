@@ -38,6 +38,38 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const absGpxPath = path.resolve(gpxPath);
   const absOutputDir = path.resolve(outputDir);
 
+  // Calculate adaptive animation speed based on route length
+  // Goal: Keep video under 5 minutes and file size under 50MB
+  const MAX_VIDEO_MINUTES = 5;
+  const MAX_FILE_SIZE_MB = 50;
+
+  // Parse GPX to estimate route duration
+  let animationSpeed = 100; // Default
+  try {
+    const gpxContent = fs.readFileSync(gpxPath, 'utf8');
+    const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
+
+    if (timeMatches && timeMatches.length >= 2) {
+      const firstTime = new Date(timeMatches[0].replace(/<\/?time>/g, ''));
+      const lastTime = new Date(timeMatches[timeMatches.length - 1].replace(/<\/?time>/g, ''));
+      const routeDurationMinutes = (lastTime - firstTime) / 1000 / 60;
+
+      console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
+
+      // Calculate required speed to keep video under MAX_VIDEO_MINUTES
+      // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
+      const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
+
+      if (requiredSpeed > 100) {
+        animationSpeed = requiredSpeed;
+        console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
+        console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+      }
+    }
+  } catch (err) {
+    console.warn('Could not parse GPX for duration, using default speed:', err.message);
+  }
+
   // Run Docker container with the GPX file and filename
   // Don't pass RECORD_DURATION - let the script auto-calculate from GPX
   // Defaults for recorder envs - these can be overridden by setting the corresponding
@@ -54,7 +86,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     -v "${absGpxPath}:/app/dist/${gpxFilename}:ro" \
     -v "${absOutputDir}:/output" \
     -e GPX_FILENAME=${gpxFilename} \
-    -e ANIMATION_SPEED=100 \
+    -e ANIMATION_SPEED=${animationSpeed} \
     -e HEADLESS=${dockerHeadless} \
     -e RECORD_FPS=${dockerRecordFps} \
     -e RECORD_WIDTH=${dockerRecordWidth} \
