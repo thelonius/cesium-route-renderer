@@ -299,6 +299,10 @@ export default function useCesiumAnimation({
       });
     }
 
+    // Signal that animation is ready for recording
+    (window as any).CESIUM_ANIMATION_READY = true;
+    console.log('Animation setup complete, ready for recording');
+
     return () => {
       viewer.scene.preRender.removeEventListener(preRenderListener);
       viewer.scene.postRender.removeEventListener(postRenderListener);
