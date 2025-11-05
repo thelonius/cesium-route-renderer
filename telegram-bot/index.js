@@ -258,8 +258,9 @@ bot.on('document', async (msg) => {
     const formData = new FormData();
     formData.append('gpx', fs.createReadStream(tempPath));
 
-    // Generate outputId immediately
+    // Generate outputId immediately and send it to the server
     const outputId = `render-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    formData.append('outputId', outputId);
 
     await bot.sendMessage(chatId,
       '🚀 Starting video rendering...\n\n' +

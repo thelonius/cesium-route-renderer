@@ -16,7 +16,8 @@ app.use('/output', express.static(path.join(__dirname, '../output')));
 
 app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const gpxFile = req.file;
-  const outputId = `route_${Date.now()}`;
+  // Use client-provided outputId if available, otherwise generate one
+  const outputId = req.body.outputId || `route_${Date.now()}`;
   const outputDir = path.join(__dirname, '../output', outputId);
 
   if (!gpxFile) {
