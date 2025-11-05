@@ -233,6 +233,28 @@ async function recordRoute() {
   });
 
   const page = await browser.newPage();
+
+  // Try to maximize window and remove chrome using CDP
+  const session = await page.target().createCDPSession();
+
+  // Set window bounds to full screen without decorations
+  try {
+    const {windowId} = await session.send('Browser.getWindowForTarget');
+    await session.send('Browser.setWindowBounds', {
+      windowId,
+      bounds: {
+        left: 0,
+        top: 0,
+        width: RECORD_WIDTH,
+        height: RECORD_HEIGHT,
+        windowState: 'normal'
+      }
+    });
+    console.log('Set window bounds to remove decorations');
+  } catch (e) {
+    console.warn('Could not set window bounds:', e.message);
+  }
+
   // Set viewport with explicit deviceScaleFactor=1 to match the window-size and avoid HiDPI scaling
   await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 })
 
@@ -293,8 +315,8 @@ async function recordRoute() {
     console.warn('Cesium viewer selector not found, continuing anyway...');
   }
 
-  // Inject CSS to hide all Cesium UI elements
-  console.log('Hiding Cesium UI elements...');
+  // Inject CSS to hide all Cesium UI elements (only in Docker/recording mode)
+  console.log('Hiding Cesium UI elements for recording...');
   await page.addStyleTag({
     content: `
       /* Remove all margins and make page full screen */
@@ -313,7 +335,7 @@ async function recordRoute() {
         padding: 0 !important;
       }
 
-      /* Hide all Cesium widgets and credits */
+      /* Hide all Cesium widgets and credits in Docker mode */
       .cesium-viewer-toolbar,
       .cesium-viewer-animationContainer,
       .cesium-viewer-timelineContainer,
@@ -321,7 +343,11 @@ async function recordRoute() {
       .cesium-credit-lightbox,
       .cesium-credit-lightbox-overlay,
       .cesium-widget-credits,
-      .cesium-credit-textContainer {
+      .cesium-credit-textContainer,
+      .cesium-viewer-navigationHelpButtonContainer,
+      .cesium-navigationHelpButton-wrapper,
+      .cesium-button,
+      .cesium-toolbar-button {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
@@ -335,7 +361,41 @@ async function recordRoute() {
         height: 100% !important;
       }
     `
-  });  // Wait for the animation ready marker (terrain + imagery loaded)
+  });
+
+  // Also use JavaScript to aggressively hide all Cesium UI elements (Docker mode only)
+  await page.evaluate(() => {
+    // Hide all Cesium UI containers
+    const selectorsToHide = [
+      '.cesium-viewer-toolbar',
+      '.cesium-viewer-animationContainer',
+      '.cesium-viewer-timelineContainer',
+      '.cesium-viewer-bottom',
+      '.cesium-credit-lightbox',
+      '.cesium-credit-lightbox-overlay',
+      '.cesium-widget-credits',
+      '.cesium-credit-textContainer',
+      '.cesium-viewer-navigationHelpButtonContainer',
+      '.cesium-navigationHelpButton-wrapper',
+      '.cesium-button',
+      '.cesium-toolbar-button'
+    ];
+
+    selectorsToHide.forEach(selector => {
+      const elements = document.querySelectorAll(selector);
+      elements.forEach(el => {
+        if (el instanceof HTMLElement) {
+          el.style.display = 'none';
+          el.style.visibility = 'hidden';
+          el.style.opacity = '0';
+        }
+      });
+    });
+
+    console.log('Docker mode: Aggressively hidden all Cesium UI elements for clean recording');
+  });
+
+  // Wait for the animation ready marker (terrain + imagery loaded)
   console.log('Waiting for animation to be ready...');
   try {
     await page.waitForFunction(

@@ -9,8 +9,8 @@ interface UseCesiumAnimationProps {
   stopTime: Cesium.JulianDate | undefined;
 }
 
-const CAMERA_BASE_BACK = 2400;
-const CAMERA_BASE_HEIGHT = 1200;
+const CAMERA_BASE_BACK = 3600;    // Increased 1.5x from 2400
+const CAMERA_BASE_HEIGHT = 1800;  // Increased 1.5x from 1200
 const CAMERA_SMOOTH_ALPHA = 0.15;
 const ADD_INTERVAL_SECONDS = 0.5;
 const MAX_TRAIL_POINTS = 500;
@@ -199,6 +199,18 @@ export default function useCesiumAnimation({
 
         const dt = Cesium.JulianDate.secondsDifference(currentTime, lastAddedTimeRef.current);
         if (dt < ADD_INTERVAL_SECONDS && trailPositionsRef.current.length > 0) return;
+
+        // Check for large gaps to prevent lines across the globe
+        if (trailPositionsRef.current.length > 0) {
+          const lastPosition = trailPositionsRef.current[trailPositionsRef.current.length - 1];
+          const distance = Cesium.Cartesian3.distance(lastPosition, currentPosition);
+          const GAP_THRESHOLD = 10000; // 10km - if points are farther apart, reset trail
+
+          if (distance > GAP_THRESHOLD) {
+            console.log(`Large gap detected (${(distance/1000).toFixed(1)}km), resetting trail to prevent line across globe`);
+            trailPositionsRef.current = [];
+          }
+        }
 
         try {
           trailPositionsRef.current.push(currentPosition.clone());

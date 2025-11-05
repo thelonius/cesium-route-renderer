@@ -57,18 +57,26 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
       console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
 
-      // Calculate required speed to keep video under MAX_VIDEO_MINUTES
-      // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
-      const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
+      // If duration is too small (< 1 minute), fall back to distance calculation
+      if (routeDurationMinutes < 1) {
+        console.log('Duration too small or invalid, falling back to distance calculation...');
+        // Fall through to distance calculation below
+      } else {
+        // Calculate required speed to keep video under MAX_VIDEO_MINUTES
+        // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
+        const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
 
-      if (requiredSpeed > 100) {
-        animationSpeed = requiredSpeed;
-        console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
-        console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+        if (requiredSpeed > 100) {
+          animationSpeed = requiredSpeed;
+          console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
+          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+        }
       }
-    } else {
-      // No timestamps - estimate from distance
-      console.log('No timestamps found, estimating from route distance...');
+    }
+
+    // No timestamps or invalid duration - estimate from distance
+    if (animationSpeed === 100) { // Only calculate if we haven't set speed yet
+      console.log('Estimating from route distance...');
       const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
 
       if (trkptMatches && trkptMatches.length > 1) {
