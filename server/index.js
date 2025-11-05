@@ -58,10 +58,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
       console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
 
       // If duration is too small (< 1 minute), fall back to distance calculation
-      if (routeDurationMinutes < 1) {
-        console.log('Duration too small or invalid, falling back to distance calculation...');
-        // Fall through to distance calculation below
-      } else {
+      if (routeDurationMinutes >= 1) {
         // Calculate required speed to keep video under MAX_VIDEO_MINUTES
         // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
@@ -71,11 +68,13 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
           console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
         }
+      } else {
+        console.log('Duration too small, falling back to distance calculation...');
       }
     }
-
+    
     // No timestamps or invalid duration - estimate from distance
-    if (animationSpeed === 100) { // Only calculate if we haven't set speed yet
+    if (animationSpeed === 100) {
       console.log('Estimating from route distance...');
       const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
 

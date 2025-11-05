@@ -204,15 +204,16 @@ async function recordRoute() {
   console.log(`Recording target FPS: ${TARGET_FPS}, resolution: ${RECORD_WIDTH}x${RECORD_HEIGHT}`)
 
   const browser = await puppeteer.launch({
-    headless: false, // Need headful for --app mode to work properly with Xvfb
+    headless: false, // Use Xvfb virtual display instead of headless mode
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--enable-webgl',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
+      '--use-gl=swiftshader', // Use SwiftShader software GL in containers for stability
+      '--enable-unsafe-swiftshader', // Opt into SwiftShader (lower security; OK for trusted content)
       '--ignore-gpu-blacklist',
+      '--disable-gpu', // Disable GPU to force software rendering
       '--disable-gpu-vsync', // Disable vsync for unlimited FPS
       '--disable-frame-rate-limit', // Remove frame rate limit
       '--disable-background-timer-throttling', // Prevent timer throttling
@@ -221,40 +222,12 @@ async function recordRoute() {
       '--js-flags=--max-old-space-size=4096', // Increase JS heap for better performance
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
       '--force-device-scale-factor=1', // Ensure 1:1 devicePixelRatio for consistent pixels
-      '--hide-scrollbars',
-      '--mute-audio',
-      '--disable-infobars',
-      '--disable-features=TranslateUI',
-      '--no-default-browser-check',
-      '--no-first-run'
+      '--start-maximized'
     ],
-    defaultViewport: null, // Let page control viewport
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
 
   const page = await browser.newPage();
-
-  // Try to maximize window and remove chrome using CDP
-  const session = await page.target().createCDPSession();
-
-  // Set window bounds to full screen without decorations
-  try {
-    const {windowId} = await session.send('Browser.getWindowForTarget');
-    await session.send('Browser.setWindowBounds', {
-      windowId,
-      bounds: {
-        left: 0,
-        top: 0,
-        width: RECORD_WIDTH,
-        height: RECORD_HEIGHT,
-        windowState: 'normal'
-      }
-    });
-    console.log('Set window bounds to remove decorations');
-  } catch (e) {
-    console.warn('Could not set window bounds:', e.message);
-  }
-
   // Set viewport with explicit deviceScaleFactor=1 to match the window-size and avoid HiDPI scaling
   await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 })
 
@@ -314,86 +287,6 @@ async function recordRoute() {
   } catch (error) {
     console.warn('Cesium viewer selector not found, continuing anyway...');
   }
-
-  // Inject CSS to hide all Cesium UI elements (only in Docker/recording mode)
-  console.log('Hiding Cesium UI elements for recording...');
-  await page.addStyleTag({
-    content: `
-      /* Remove all margins and make page full screen */
-      html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        overflow: hidden !important;
-      }
-
-      #root {
-        width: 100% !important;
-        height: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-      }
-
-      /* Hide all Cesium widgets and credits in Docker mode */
-      .cesium-viewer-toolbar,
-      .cesium-viewer-animationContainer,
-      .cesium-viewer-timelineContainer,
-      .cesium-viewer-bottom,
-      .cesium-credit-lightbox,
-      .cesium-credit-lightbox-overlay,
-      .cesium-widget-credits,
-      .cesium-credit-textContainer,
-      .cesium-viewer-navigationHelpButtonContainer,
-      .cesium-navigationHelpButton-wrapper,
-      .cesium-button,
-      .cesium-toolbar-button {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-      }
-
-      /* Ensure full screen for viewer */
-      .cesium-viewer,
-      .cesium-widget,
-      .cesium-widget canvas {
-        width: 100% !important;
-        height: 100% !important;
-      }
-    `
-  });
-
-  // Also use JavaScript to aggressively hide all Cesium UI elements (Docker mode only)
-  await page.evaluate(() => {
-    // Hide all Cesium UI containers
-    const selectorsToHide = [
-      '.cesium-viewer-toolbar',
-      '.cesium-viewer-animationContainer',
-      '.cesium-viewer-timelineContainer',
-      '.cesium-viewer-bottom',
-      '.cesium-credit-lightbox',
-      '.cesium-credit-lightbox-overlay',
-      '.cesium-widget-credits',
-      '.cesium-credit-textContainer',
-      '.cesium-viewer-navigationHelpButtonContainer',
-      '.cesium-navigationHelpButton-wrapper',
-      '.cesium-button',
-      '.cesium-toolbar-button'
-    ];
-
-    selectorsToHide.forEach(selector => {
-      const elements = document.querySelectorAll(selector);
-      elements.forEach(el => {
-        if (el instanceof HTMLElement) {
-          el.style.display = 'none';
-          el.style.visibility = 'hidden';
-          el.style.opacity = '0';
-        }
-      });
-    });
-
-    console.log('Docker mode: Aggressively hidden all Cesium UI elements for clean recording');
-  });
 
   // Wait for the animation ready marker (terrain + imagery loaded)
   console.log('Waiting for animation to be ready...');
