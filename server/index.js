@@ -18,13 +18,14 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const gpxFile = req.file;
   // Use client-provided outputId if available, otherwise generate one
   const outputId = req.body.outputId || `route_${Date.now()}`;
+  const userName = req.body.userName || 'Hiker'; // Get user's display name
   const outputDir = path.join(__dirname, '../output', outputId);
 
   if (!gpxFile) {
     return res.status(400).json({ error: 'No GPX file provided' });
   }
 
-  console.log(`Starting render for output ID: ${outputId}`);
+  console.log(`Starting render for output ID: ${outputId}, user: ${userName}`);
 
   // Create output directory
   fs.mkdirSync(outputDir, { recursive: true});
@@ -65,6 +66,51 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
         console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
       }
+    } else {
+      // No timestamps - estimate from distance
+      console.log('No timestamps found, estimating from route distance...');
+      const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
+
+      if (trkptMatches && trkptMatches.length > 1) {
+        let totalDistance = 0;
+        const points = trkptMatches.map(match => {
+          const latMatch = match.match(/lat="([^"]+)"/);
+          const lonMatch = match.match(/lon="([^"]+)"/);
+          return {
+            lat: parseFloat(latMatch[1]),
+            lon: parseFloat(lonMatch[1])
+          };
+        });
+
+        // Calculate total distance
+        for (let i = 1; i < points.length; i++) {
+          const R = 6371000; // Earth radius in meters
+          const lat1 = points[i-1].lat * Math.PI / 180;
+          const lat2 = points[i].lat * Math.PI / 180;
+          const deltaLat = (points[i].lat - points[i-1].lat) * Math.PI / 180;
+          const deltaLon = (points[i].lon - points[i-1].lon) * Math.PI / 180;
+
+          const a = Math.sin(deltaLat/2) * Math.sin(deltaLat/2) +
+                    Math.cos(lat1) * Math.cos(lat2) *
+                    Math.sin(deltaLon/2) * Math.sin(deltaLon/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+          totalDistance += R * c;
+        }
+
+        const distanceKm = totalDistance / 1000;
+        const walkingSpeed = 5; // km/h assumption
+        const routeDurationMinutes = (distanceKm / walkingSpeed) * 60;
+
+        console.log(`Estimated route: ${distanceKm.toFixed(1)}km, ~${routeDurationMinutes.toFixed(0)} minutes at 5km/h`);
+
+        const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
+
+        if (requiredSpeed > 100) {
+          animationSpeed = requiredSpeed;
+          console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
+          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+        }
+      }
     }
   } catch (err) {
     console.warn('Could not parse GPX for duration, using default speed:', err.message);
@@ -87,6 +133,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     -v "${absOutputDir}:/output" \
     -e GPX_FILENAME=${gpxFilename} \
     -e ANIMATION_SPEED=${animationSpeed} \
+    -e USER_NAME="${userName}" \
     -e HEADLESS=${dockerHeadless} \
     -e RECORD_FPS=${dockerRecordFps} \
     -e RECORD_WIDTH=${dockerRecordWidth} \

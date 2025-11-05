@@ -124,7 +124,14 @@ export default function useCesiumAnimation({
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       },
       label: {
-        text: 'Mikael Norhairovich',
+        text: (() => {
+          const userName = new URLSearchParams(window.location.search).get('userName') || 'Hiker';
+          // Easter egg for Mikael 🎉
+          if (userName.toLowerCase().includes('mikael') || userName.toLowerCase().includes('ayrapetyan')) {
+            return 'Микаэл, джан, дорогой!';
+          }
+          return userName;
+        })(),
         font: '14pt sans-serif',
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
         outlineWidth: 2,

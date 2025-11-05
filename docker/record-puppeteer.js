@@ -258,10 +258,11 @@ async function recordRoute() {
   if (!gpxFilename) {
     throw new Error('GPX_FILENAME environment variable is required');
   }
-  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}`;
+  const userName = process.env.USER_NAME || 'Hiker';
+  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}`;
 
   // Navigate to the app FIRST
-  console.log(`Loading Cesium app with GPX: ${gpxFilename}`);
+  console.log(`Loading Cesium app with GPX: ${gpxFilename}, user: ${userName}`);
   await page.goto(appUrl, {
     waitUntil: 'domcontentloaded',
     timeout: 30000
@@ -334,14 +335,29 @@ async function recordRoute() {
     recordingStarted = true;
     console.log('Recording started');
 
-    console.log(`Recording animation for ${RECORD_DURATION / 1000} seconds...`);
+    const recordingSeconds = RECORD_DURATION / 1000;
+    console.log(`Recording animation for ${recordingSeconds} seconds...`);
 
-    // Wait for animation duration
-    await page.waitForTimeout(RECORD_DURATION);
+    // Log progress every 30 seconds during recording
+    const progressInterval = 30000; // 30 seconds
+    const totalIntervals = Math.ceil(RECORD_DURATION / progressInterval);
+
+    for (let i = 0; i < totalIntervals; i++) {
+      const waitTime = Math.min(progressInterval, RECORD_DURATION - (i * progressInterval));
+      await page.waitForTimeout(waitTime);
+
+      const elapsedSeconds = Math.min((i + 1) * (progressInterval / 1000), recordingSeconds);
+      const percentComplete = Math.round((elapsedSeconds / recordingSeconds) * 100);
+
+      if (elapsedSeconds < recordingSeconds) {
+        console.log(`📹 Recording progress: ${elapsedSeconds.toFixed(0)}/${recordingSeconds.toFixed(0)}s (${percentComplete}%)`);
+      }
+    }
 
     console.log('Stopping recording...');
     await recorder.stop();
     console.log('Recorder stopped successfully');
+    console.log('🎬 Starting video encoding (this may take several minutes)...');
   } catch (err) {
     console.error('Error during recording lifecycle:', err && err.stack ? err.stack : err);
     try { fs.appendFileSync(ERROR_LOG_PATH, `[${new Date().toISOString()}] recording error: ${err && err.stack ? err.stack : err}\n`); } catch (e) {}

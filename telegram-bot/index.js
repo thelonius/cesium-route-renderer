@@ -324,6 +324,10 @@ bot.on('document', async (msg) => {
     const outputId = `render-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     formData.append('outputId', outputId);
 
+    // Pass user's display name for personalization
+    const userName = msg.from.username || msg.from.first_name || 'Hiker';
+    formData.append('userName', userName);
+
     await bot.sendMessage(chatId,
       '🚀 Starting video rendering...\n\n' +
       `📋 Render ID: \`${outputId}\`\n\n` +
@@ -346,6 +350,50 @@ bot.on('document', async (msg) => {
       fileName: doc.file_name
     });
 
+    // Start progress monitoring (sends updates every 2 minutes)
+    let lastLogLength = 0;
+    const progressInterval = setInterval(async () => {
+      try {
+        const logsResponse = await axios.get(`${API_SERVER}/logs/${outputId}/text`, {
+          timeout: 5000,
+          validateStatus: () => true
+        });
+
+        if (logsResponse.status === 200 && logsResponse.data) {
+          const logs = logsResponse.data;
+
+          // Only send update if logs have grown significantly
+          if (logs.length > lastLogLength + 500) {
+            lastLogLength = logs.length;
+
+            // Extract last interesting line (with emoji or percentage)
+            const lines = logs.split('\n').filter(l => l.trim());
+            const lastLine = lines[lines.length - 1] || '';
+
+            // Look for progress indicators
+            const progressMatch = lastLine.match(/(\d+)%|\d+\/\d+s|Recording|Encoding|complete/i);
+
+            if (progressMatch) {
+              await bot.sendMessage(chatId,
+                `⏳ Render in progress...\n\n` +
+                `Latest: ${lastLine.substring(0, 200)}`,
+                {
+                  reply_markup: {
+                    inline_keyboard: [[
+                      { text: '📋 View Full Logs', callback_data: `logs_${outputId}` }
+                    ]]
+                  }
+                }
+              ).catch(err => console.warn('Failed to send progress update:', err.message));
+            }
+          }
+        }
+      } catch (err) {
+        // Silently ignore errors (logs might not be available yet)
+        console.log('Progress check:', err.message);
+      }
+    }, 120000); // Every 2 minutes
+
     let renderResponse;
     try {
       renderResponse = await axios.post(`${API_SERVER}/render-route`, formData, {
@@ -366,6 +414,9 @@ bot.on('document', async (msg) => {
       }
 
       throw new Error('Render API request failed: ' + (respData ? JSON.stringify(respData) : err.message));
+    } finally {
+      // Stop progress monitoring
+      clearInterval(progressInterval);
     }
 
     const result = renderResponse.data;
