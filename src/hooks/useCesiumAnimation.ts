@@ -42,6 +42,9 @@ export default function useCesiumAnimation({
     viewer.clock.multiplier = 50; // Adjust speed as needed
     viewer.clock.shouldAnimate = true;
 
+    // TEMPORARILY DISABLED: Filtering was causing "cartesian is required" errors
+    // TODO: Re-enable with better filtering logic that ensures enough points remain
+    /*
     // Filter and simplify track points to reduce jerkiness
     const filterTrackPoints = (points: TrackPoint[]) => {
       if (points.length < 3) return points;
@@ -85,14 +88,19 @@ export default function useCesiumAnimation({
     };
 
     const filteredPoints = filterTrackPoints(trackPoints);
+    */
 
-    // Create position property with Hermite interpolation for smooth animation
+    // Use original track points without filtering to avoid interpolation issues
+    const filteredPoints = trackPoints;
+
+    // Create position property with linear interpolation (most stable)
     const hikerPositions = new Cesium.SampledPositionProperty();
 
-    // Set interpolation options for smooth movement
+    // Use linear interpolation for stability
+    // TODO: Test Hermite interpolation after fixing filtering
     hikerPositions.setInterpolationOptions({
-      interpolationDegree: 2, // Hermite spline interpolation
-      interpolationAlgorithm: Cesium.HermitePolynomialApproximation
+      interpolationDegree: 1,
+      interpolationAlgorithm: Cesium.LinearApproximation
     });
 
     filteredPoints.forEach(point => {

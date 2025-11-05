@@ -159,14 +159,36 @@ bot.on('callback_query', async (query) => {
       }
     } catch (error) {
       console.error('Error fetching logs:', error);
+
+      let errorMessage = '❌ Failed to fetch logs.\n';
+
+      if (error.response?.status === 404) {
+        errorMessage += '\n⏳ **Logs not found yet**\n\n';
+        errorMessage += 'The render may still be starting. Please wait a few seconds and try again.\n\n';
+        errorMessage += 'The render process:\n';
+        errorMessage += '1. ⬆️ Uploading GPX file\n';
+        errorMessage += '2. 🐳 Starting Docker container\n';
+        errorMessage += '3. 📹 Recording animation\n';
+        errorMessage += '4. 🎬 Encoding video\n';
+        errorMessage += '5. ✅ Complete!\n\n';
+        errorMessage += 'Logs will appear after step 2.';
+      } else {
+        errorMessage += error.message;
+      }
+
       await bot.answerCallbackQuery(query.id, {
-        text: '❌ Failed to fetch logs',
-        show_alert: true
+        text: '⏳ Logs not available yet',
+        show_alert: false
       });
-      await bot.sendMessage(chatId,
-        '❌ Failed to fetch logs.\n' +
-        (error.response?.status === 404 ? 'Logs not found yet. The render may still be starting.' : error.message)
-      );
+
+      await bot.sendMessage(chatId, errorMessage, {
+        parse_mode: 'Markdown',
+        reply_markup: {
+          inline_keyboard: [[
+            { text: '🔄 Try Again', callback_data: `logs_${outputId}` }
+          ]]
+        }
+      });
     }
   }
 });
