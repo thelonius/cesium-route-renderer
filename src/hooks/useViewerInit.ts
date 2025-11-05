@@ -33,6 +33,14 @@ export default function useViewerInit(
       viewer.scene.postProcessStages.fxaa.enabled = false;
     }
 
+    // Hide Cesium credits/attribution in Docker mode
+    if (isDocker) {
+      const creditContainer = viewer.bottomContainer as HTMLElement;
+      if (creditContainer) {
+        creditContainer.style.display = 'none';
+      }
+    }
+
     // Force continuous rendering in Docker
     if (isDocker) {
       viewer.scene.requestRenderMode = false;

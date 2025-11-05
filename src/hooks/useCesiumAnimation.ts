@@ -258,7 +258,16 @@ export default function useCesiumAnimation({
         try {
           viewer.camera.position = cameraPosition;
           if (position) {
-            viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(800, dynamicHeight * 0.5)));
+            // Calculate direction from camera to hiker
+            const direction = Cesium.Cartesian3.subtract(position, cameraPosition, new Cesium.Cartesian3());
+            Cesium.Cartesian3.normalize(direction, direction);
+
+            // Set camera direction and up vector
+            viewer.camera.direction = direction;
+
+            // Up vector should point away from Earth center
+            const up = Cesium.Cartesian3.normalize(position, new Cesium.Cartesian3());
+            viewer.camera.up = up;
           }
         } catch (e) {
           console.warn('Camera update failed:', e);
@@ -270,12 +279,6 @@ export default function useCesiumAnimation({
 
     viewer.scene.preRender.addEventListener(preRenderListener);
     viewer.scene.postRender.addEventListener(postRenderListener);
-
-    // Enable smooth camera controls
-    viewer.scene.screenSpaceCameraController.enableCollisionDetection = false;
-    viewer.scene.screenSpaceCameraController.inertiaTranslate = 0.9;
-    viewer.scene.screenSpaceCameraController.inertiaSpin = 0.9;
-    viewer.scene.screenSpaceCameraController.inertiaZoom = 0.8;
 
     // Position camera at starting position with appropriate zoom based on route extent
     const startingPosition = hikerEntity.position?.getValue(startTime);

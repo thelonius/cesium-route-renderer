@@ -299,8 +299,8 @@ export default function CesiumViewer() {
         </div>
       )}
 
-      {/* Control Panel - Only show after route is loaded */}
-      {routeValidated && !error && (
+      {/* Control Panel - Only show in web mode (not Docker) after route is loaded */}
+      {!isDockerMode && routeValidated && !error && (
         <div style={{
           position: 'absolute',
           top: '10px',

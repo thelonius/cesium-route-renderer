@@ -223,7 +223,8 @@ async function recordRoute() {
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
       '--force-device-scale-factor=1', // Ensure 1:1 devicePixelRatio for consistent pixels
       '--start-maximized',
-      '--app=data:text/html,<html></html>' // Run in app mode to remove browser UI (title bar, etc.)
+      '--kiosk', // Full kiosk mode - removes all browser UI including title bar
+      '--kiosk-printing' // Enable printing in kiosk mode (if needed)
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
