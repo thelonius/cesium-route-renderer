@@ -300,6 +300,11 @@ async function recordRoute() {
     console.warn('Animation ready marker not found after 60s, starting recording anyway...');
   }
 
+  // Wait additional time for terrain and imagery tiles to fully load and settle
+  console.log('Waiting 15 seconds for map tiles to fully load and camera to settle...');
+  await page.waitForTimeout(15000); // 15 seconds
+  console.log('Map should be fully loaded now');
+
   // NOW start recording after everything is loaded
   console.log('Setting up screen recorder...');
 
@@ -334,6 +339,11 @@ async function recordRoute() {
     await recorder.start('/output/route-video.mp4');
     recordingStarted = true;
     console.log('Recording started');
+    
+    // Wait a bit more after recording starts to ensure first frames are stable
+    console.log('Waiting 3 seconds for first frames to stabilize...');
+    await page.waitForTimeout(3000);
+    console.log('Starting animation playback...');
 
     const recordingSeconds = RECORD_DURATION / 1000;
     console.log(`Recording animation for ${recordingSeconds} seconds...`);
