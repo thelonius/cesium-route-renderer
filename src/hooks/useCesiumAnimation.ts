@@ -97,14 +97,14 @@ export default function useCesiumAnimation({
     // Use original track points without filtering to avoid interpolation issues
     const filteredPoints = trackPoints;
 
-    // Create position property with Hermite interpolation for smooth curved movement
+    // Create position property with linear interpolation (most stable)
     const hikerPositions = new Cesium.SampledPositionProperty();
 
-    // Use Hermite polynomial interpolation for natural smooth curves
-    // Degree 2 provides good balance between smoothness and stability
+    // Use linear interpolation for stability
+    // Hermite caused crashes when enabled with all track points (Nov 7, 2025)
     hikerPositions.setInterpolationOptions({
-      interpolationDegree: 2,
-      interpolationAlgorithm: Cesium.HermitePolynomialApproximation
+      interpolationDegree: 1,
+      interpolationAlgorithm: Cesium.LinearApproximation
     });
 
     filteredPoints.forEach(point => {
