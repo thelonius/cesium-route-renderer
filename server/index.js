@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
@@ -135,44 +135,74 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const dockerRecordWidth = process.env.RECORD_WIDTH || '720';
   const dockerRecordHeight = process.env.RECORD_HEIGHT || '1280';
 
-  const dockerCommand = `docker run --rm \
-    --cpus="4" \
-    --memory="4g" \
-    --shm-size=2g \
-    -v "${absGpxPath}:/app/dist/${gpxFilename}:ro" \
-    -v "${absOutputDir}:/output" \
-    -e GPX_FILENAME=${gpxFilename} \
-    -e ANIMATION_SPEED=${animationSpeed} \
-    -e USER_NAME="${userName}" \
-    -e HEADLESS=${dockerHeadless} \
-    -e RECORD_FPS=${dockerRecordFps} \
-    -e RECORD_WIDTH=${dockerRecordWidth} \
-    -e RECORD_HEIGHT=${dockerRecordHeight} \
-    cesium-route-recorder`;
-
-  console.log('Running Docker command:', dockerCommand);
-
   // Log to file so Telegram bot can read it
   const logPath = path.join(outputDir, 'recorder.log');
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] 🐳 Starting Docker container...\n`);
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${animationSpeed}x, Duration: ${expectedDuration.toFixed(1)}s\n`);
 
-  // Increase maxBuffer to capture larger Docker/Chromium logs and return them on error (trimmed)
-  // Set timeout to 60 minutes (3600000ms) - long routes can take 30-45 minutes to encode
-  const execOptions = {
-    maxBuffer: 10 * 1024 * 1024,
-    timeout: 3600000 // 60 minutes
-  };
+  // Use spawn instead of exec to stream Docker output in real-time
+  const dockerArgs = [
+    'run', '--rm',
+    '--cpus=4',
+    '--memory=4g',
+    '--shm-size=2g',
+    '-v', `${absGpxPath}:/app/dist/${gpxFilename}:ro`,
+    '-v', `${absOutputDir}:/output`,
+    '-e', `GPX_FILENAME=${gpxFilename}`,
+    '-e', `ANIMATION_SPEED=${animationSpeed}`,
+    '-e', `USER_NAME=${userName}`,
+    '-e', `HEADLESS=${dockerHeadless}`,
+    '-e', `RECORD_FPS=${dockerRecordFps}`,
+    '-e', `RECORD_WIDTH=${dockerRecordWidth}`,
+    '-e', `RECORD_HEIGHT=${dockerRecordHeight}`,
+    'cesium-route-recorder'
+  ];
 
-  exec(dockerCommand, execOptions, (error, stdout, stderr) => {
+  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
+
+  const dockerProcess = spawn('docker', dockerArgs, {
+    timeout: 3600000 // 60 minutes
+  });
+
+  let stdoutBuffer = '';
+  let stderrBuffer = '';
+
+  // Stream stdout to log file in real-time
+  dockerProcess.stdout.on('data', (data) => {
+    const text = data.toString();
+    stdoutBuffer += text;
+    fs.appendFileSync(logPath, text);
+    console.log('Docker stdout:', text.trim());
+  });
+
+  // Stream stderr to log file in real-time
+  dockerProcess.stderr.on('data', (data) => {
+    const text = data.toString();
+    stderrBuffer += text;
+    fs.appendFileSync(logPath, text);
+    console.error('Docker stderr:', text.trim());
+  });
+
+  dockerProcess.on('error', (error) => {
+    console.error('Docker spawn error:', error);
     // Clean up uploaded file
     fs.unlinkSync(gpxFile.path);
 
-    if (stdout) console.log('Docker stdout:', stdout);
-    if (stderr) console.error('Docker stderr:', stderr);
+    return res.status(500).json({
+      error: 'Failed to start Docker container',
+      details: error.message,
+      outputId,
+      logsUrl: `/logs/${outputId}`,
+      logsTextUrl: `/logs/${outputId}/text`
+    });
+  });
 
-    if (error) {
-      console.error('Docker execution error:', error);
+  dockerProcess.on('close', (code) => {
+    // Clean up uploaded file
+    fs.unlinkSync(gpxFile.path);
+
+    if (code !== 0) {
+      console.error(`Docker process exited with code ${code}`);
 
       // Helper to trim logs to a sensible size for API responses
       const trim = (s, n = 8000) => {
@@ -182,10 +212,10 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
       return res.status(500).json({
         error: 'Failed to render video',
-        details: error.message,
-        outputId, // Include outputId so logs can be accessed
-        stdout: trim(stdout),
-        stderr: trim(stderr),
+        details: `Docker exited with code ${code}`,
+        outputId,
+        stdout: trim(stdoutBuffer),
+        stderr: trim(stderrBuffer),
         logsUrl: `/logs/${outputId}`,
         logsTextUrl: `/logs/${outputId}/text`
       });

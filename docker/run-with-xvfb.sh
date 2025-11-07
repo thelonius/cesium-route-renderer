@@ -1,7 +1,9 @@
 #!/bin/bash
 set -e
 
-echo "Starting Xvfb with GLX support and optimizations..."
+LOG_FILE="/output/recorder.log"
+
+echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Starting Xvfb with GLX support and optimizations..." | tee -a "$LOG_FILE"
 # Increase color depth to 24-bit and add performance flags
 Xvfb :99 -screen 0 1080x1920x24 -ac +extension GLX +render -noreset -nolisten tcp -dpi 96 &
 XVFB_PID=$!
@@ -14,7 +16,7 @@ sleep 2
 export LIBGL_ALWAYS_SOFTWARE=0
 export GALLIUM_DRIVER=llvmpipe
 
-echo "Running recording script..."
+echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Running recording script..." | tee -a "$LOG_FILE"
 node record-puppeteer.js
 
 # Cleanup
