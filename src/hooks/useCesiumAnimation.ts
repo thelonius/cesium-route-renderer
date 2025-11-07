@@ -205,7 +205,7 @@ export default function useCesiumAnimation({
           const lastPosition = trailPositionsRef.current[trailPositionsRef.current.length - 1];
           const distance = Cesium.Cartesian3.distance(lastPosition, currentPosition);
           const GAP_THRESHOLD = 10000; // 10km - if points are farther apart, reset trail
-          
+
           if (distance > GAP_THRESHOLD) {
             console.log(`Large gap detected (${(distance/1000).toFixed(1)}km), resetting trail`);
             trailPositionsRef.current = [];

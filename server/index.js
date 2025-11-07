@@ -57,7 +57,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
       console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
 
-      // If duration is too small (< 1 minute), fall back to distance calculation
+      // If duration is invalid (< 1 minute or negative), fall back to distance calculation
       if (routeDurationMinutes >= 1) {
         // Calculate required speed to keep video under MAX_VIDEO_MINUTES
         // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
@@ -69,10 +69,10 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
           console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
         }
       } else {
-        console.log('Duration too small, falling back to distance calculation...');
+        console.log('Duration invalid or too small, falling back to distance calculation...');
       }
     }
-    
+
     // No timestamps or invalid duration - estimate from distance
     if (animationSpeed === 100) {
       console.log('Estimating from route distance...');
@@ -111,12 +111,15 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         console.log(`Estimated route: ${distanceKm.toFixed(1)}km, ~${routeDurationMinutes.toFixed(0)} minutes at 5km/h`);
 
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
+        console.log(`Calculated required speed: ${requiredSpeed}x for ${MAX_VIDEO_MINUTES} min video`);
 
         if (requiredSpeed > 100) {
           animationSpeed = requiredSpeed;
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
-          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+        } else {
+          console.log(`✓ Using default speed ${animationSpeed}x`);
         }
+        console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
       }
     }
   } catch (err) {

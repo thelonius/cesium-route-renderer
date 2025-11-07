@@ -272,7 +272,7 @@ bot.on('document', async (msg) => {
     // Calculate render time estimation based on analysis
     if (analysis.success && analysis.statistics.duration) {
       const routeDurationMinutes = analysis.statistics.duration.minutes;
-      
+
       // Calculate adaptive animation speed (same logic as server)
       const MAX_VIDEO_MINUTES = 5;
       let animationSpeed = 100;
