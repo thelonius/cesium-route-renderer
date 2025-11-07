@@ -259,10 +259,11 @@ async function recordRoute() {
     throw new Error('GPX_FILENAME environment variable is required');
   }
   const userName = process.env.USER_NAME || 'Hiker';
-  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}`;
+  const animationSpeed = process.env.ANIMATION_SPEED || '100';
+  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   // Navigate to the app FIRST
-  console.log(`Loading Cesium app with GPX: ${gpxFilename}, user: ${userName}`);
+  console.log(`Loading Cesium app with GPX: ${gpxFilename}, user: ${userName}, speed: ${animationSpeed}x`);
   await page.goto(appUrl, {
     waitUntil: 'domcontentloaded',
     timeout: 30000

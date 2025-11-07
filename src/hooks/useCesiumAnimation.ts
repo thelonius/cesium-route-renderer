@@ -7,6 +7,7 @@ interface UseCesiumAnimationProps {
   trackPoints: TrackPoint[];
   startTime: Cesium.JulianDate | undefined;
   stopTime: Cesium.JulianDate | undefined;
+  animationSpeed?: number; // Optional animation speed multiplier (default 100x)
 }
 
 const CAMERA_BASE_BACK = 2400;
@@ -19,7 +20,8 @@ export default function useCesiumAnimation({
   viewer,
   trackPoints,
   startTime,
-  stopTime
+  stopTime,
+  animationSpeed = 100 // Default to 100x if not provided
 }: UseCesiumAnimationProps) {
 
   const trailPositionsRef = useRef<Cesium.Cartesian3[]>([]);
@@ -39,8 +41,10 @@ export default function useCesiumAnimation({
     viewer.clock.stopTime = Cesium.JulianDate.clone(stopTime);
     viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
     viewer.clock.clockRange = Cesium.ClockRange.LOOP_STOP;
-    viewer.clock.multiplier = 50; // Adjust speed as needed
+    viewer.clock.multiplier = animationSpeed; // Use dynamic animation speed
     viewer.clock.shouldAnimate = true;
+
+    console.log(`Animation speed set to: ${animationSpeed}x`);
 
     // TEMPORARILY DISABLED: Filtering was causing "cartesian is required" errors
     // TODO: Re-enable with better filtering logic that ensures enough points remain
@@ -93,14 +97,14 @@ export default function useCesiumAnimation({
     // Use original track points without filtering to avoid interpolation issues
     const filteredPoints = trackPoints;
 
-    // Create position property with linear interpolation (most stable)
+    // Create position property with Hermite interpolation for smooth curved movement
     const hikerPositions = new Cesium.SampledPositionProperty();
 
-    // Use linear interpolation for stability
-    // TODO: Test Hermite interpolation after fixing filtering
+    // Use Hermite polynomial interpolation for natural smooth curves
+    // Degree 2 provides good balance between smoothness and stability
     hikerPositions.setInterpolationOptions({
-      interpolationDegree: 1,
-      interpolationAlgorithm: Cesium.LinearApproximation
+      interpolationDegree: 2,
+      interpolationAlgorithm: Cesium.HermitePolynomialApproximation
     });
 
     filteredPoints.forEach(point => {

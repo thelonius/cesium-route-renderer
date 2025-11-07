@@ -23,12 +23,14 @@ export default function CesiumViewer() {
     // Check URL parameters first (Docker mode with Puppeteer)
     const urlParams = new URLSearchParams(window.location.search);
     const gpxFromUrl = urlParams.get('gpx');
+    const animationSpeedParam = urlParams.get('animationSpeed');
 
     // Check environment variable (alternative Docker mode)
     const gpxFromEnv = import.meta.env.VITE_GPX_ROUTE;
 
     console.log('Docker mode detection:', {
       urlParam: gpxFromUrl,
+      animationSpeed: animationSpeedParam,
       envVar: gpxFromEnv,
       allEnv: import.meta.env
     });
@@ -37,7 +39,7 @@ export default function CesiumViewer() {
     const dockerRoute = gpxFromUrl || gpxFromEnv;
 
     if (dockerRoute && typeof dockerRoute === 'string' && dockerRoute.trim()) {
-      console.log('Running in Docker mode with route:', dockerRoute);
+      console.log('Running in Docker mode with route:', dockerRoute, 'animation speed:', animationSpeedParam || 'default');
       setIsDockerMode(true);
       setCurrentRoute(dockerRoute);
       setRouteValidated(true);
@@ -54,12 +56,20 @@ export default function CesiumViewer() {
   // Load GPX route only if validated
   const { trackPoints, timeRange, isLoading, error } = useRoute(routeValidated ? currentRoute : null);
 
+  // Get animation speed from URL params (for Docker mode)
+  const animationSpeed = React.useMemo(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const speedParam = urlParams.get('animationSpeed');
+    return speedParam ? parseInt(speedParam, 10) : 100; // Default to 100x if not specified
+  }, []);
+
   // Setup animation - called at top level
   const entity = useCesiumAnimation({
     viewer: viewerRef.current,
     trackPoints,
     startTime: timeRange?.startTime,
-    stopTime: timeRange?.stopTime
+    stopTime: timeRange?.stopTime,
+    animationSpeed
   });
 
   // Setup camera - called at top level
