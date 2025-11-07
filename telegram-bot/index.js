@@ -352,8 +352,11 @@ bot.on('document', async (msg) => {
       fileName: doc.file_name
     });
 
-    // Start progress monitoring (sends updates every 2 minutes)
+    // Start progress monitoring (sends updates based on log content)
     let lastLogLength = 0;
+    let lastProgressMessage = '';
+    let progressStage = 'starting';
+
     const progressInterval = setInterval(async () => {
       try {
         const logsResponse = await axios.get(`${API_SERVER}/logs/${outputId}/text`, {
@@ -364,29 +367,62 @@ bot.on('document', async (msg) => {
         if (logsResponse.status === 200 && logsResponse.data) {
           const logs = logsResponse.data;
 
-          // Only send update if logs have grown significantly
-          if (logs.length > lastLogLength + 500) {
+          // Only process if logs have grown
+          if (logs.length > lastLogLength + 100) {
             lastLogLength = logs.length;
 
-            // Extract last interesting line (with emoji or percentage)
-            const lines = logs.split('\n').filter(l => l.trim());
-            const lastLine = lines[lines.length - 1] || '';
+            // Detect current stage from logs
+            let newStage = progressStage;
+            let statusMessage = '';
 
-            // Look for progress indicators
-            const progressMatch = lastLine.match(/(\d+)%|\d+\/\d+s|Recording|Encoding|complete/i);
+            if (logs.includes('Recording process complete')) {
+              newStage = 'finalizing';
+              statusMessage = '✅ Encoding complete! Finalizing...\n\n' +
+                            '📦 Preparing video file for upload';
+            } else if (logs.includes('Video encoding complete')) {
+              newStage = 'encoding-done';
+              statusMessage = '✅ Video encoded successfully!\n\n' +
+                            '📦 File is ready, wrapping up...';
+            } else if (logs.includes('Starting video encoding')) {
+              newStage = 'encoding';
+              statusMessage = '🎬 Recording complete! Encoding video...\n\n' +
+                            '⏳ This step takes the longest (several minutes)\n' +
+                            '📦 Compressing video for optimal quality';
+            } else if (logs.includes('Recording progress:')) {
+              // Extract recording progress
+              const progressMatch = logs.match(/Recording progress: (\d+)\/(\d+)s \((\d+)%\)/);
+              if (progressMatch) {
+                const [, current, total, percent] = progressMatch;
+                newStage = 'recording';
+                statusMessage = `📹 Recording animation: ${percent}%\n\n` +
+                              `⏱️ Progress: ${current}/${total} seconds`;
+              }
+            } else if (logs.includes('Waiting for map tiles to fully load')) {
+              newStage = 'loading';
+              statusMessage = '🗺️ Loading map tiles and terrain...\n\n' +
+                            '⏳ Waiting for all imagery to download';
+            } else if (logs.includes('Cesium app loaded')) {
+              newStage = 'initializing';
+              statusMessage = '🌍 Initializing 3D globe...\n\n' +
+                            '⏳ Setting up camera and route';
+            } else if (logs.includes('Starting Docker container')) {
+              newStage = 'docker';
+              statusMessage = '🐳 Starting rendering environment...\n\n' +
+                            '⏳ Launching containerized browser';
+            }
 
-            if (progressMatch) {
-              await bot.sendMessage(chatId,
-                `⏳ Render in progress...\n\n` +
-                `Latest: ${lastLine.substring(0, 200)}`,
-                {
-                  reply_markup: {
-                    inline_keyboard: [[
-                      { text: '📋 View Full Logs', callback_data: `logs_${outputId}` }
-                    ]]
-                  }
+            // Only send update if stage changed or it's a recording progress update
+            if (statusMessage && (newStage !== progressStage || statusMessage !== lastProgressMessage)) {
+              progressStage = newStage;
+              lastProgressMessage = statusMessage;
+
+              await bot.sendMessage(chatId, statusMessage, {
+                reply_markup: {
+                  inline_keyboard: [[
+                    { text: '📋 View Full Logs', callback_data: `logs_${outputId}` }
+                  ]]
                 }
-              ).catch(err => console.warn('Failed to send progress update:', err.message));
+              }).catch(err => console.warn('Failed to send progress update:', err.message));
             }
           }
         }
@@ -394,7 +430,7 @@ bot.on('document', async (msg) => {
         // Silently ignore errors (logs might not be available yet)
         console.log('Progress check:', err.message);
       }
-    }, 120000); // Every 2 minutes
+    }, 20000); // Check every 20 seconds (was 2 minutes)
 
     let renderResponse;
     try {

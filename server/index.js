@@ -151,6 +151,11 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     cesium-route-recorder`;
 
   console.log('Running Docker command:', dockerCommand);
+  
+  // Log to file so Telegram bot can read it
+  const logPath = path.join(outputDir, 'recorder.log');
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] 🐳 Starting Docker container...\n`);
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${animationSpeed}x, Duration: ${expectedDuration.toFixed(1)}s\n`);
 
   // Increase maxBuffer to capture larger Docker/Chromium logs and return them on error (trimmed)
   // Set timeout to 60 minutes (3600000ms) - long routes can take 30-45 minutes to encode

@@ -339,7 +339,7 @@ async function recordRoute() {
     await recorder.start('/output/route-video.mp4');
     recordingStarted = true;
     console.log('Recording started');
-    
+
     // Wait a bit more after recording starts to ensure first frames are stable
     console.log('Waiting 3 seconds for first frames to stabilize...');
     await page.waitForTimeout(3000);
@@ -364,10 +364,14 @@ async function recordRoute() {
       }
     }
 
-    console.log('Stopping recording...');
-    await recorder.stop();
-    console.log('Recorder stopped successfully');
+    console.log('📹 Recording frames complete! Stopping recorder...');
     console.log('🎬 Starting video encoding (this may take several minutes)...');
+    console.log('⏳ Encoding is ~7x slower than real-time recording');
+    
+    await recorder.stop();
+    
+    console.log('✅ Video encoding complete!');
+    console.log('📦 Video saved to /output/route-video.mp4');
   } catch (err) {
     console.error('Error during recording lifecycle:', err && err.stack ? err.stack : err);
     try { fs.appendFileSync(ERROR_LOG_PATH, `[${new Date().toISOString()}] recording error: ${err && err.stack ? err.stack : err}\n`); } catch (e) {}
@@ -377,7 +381,7 @@ async function recordRoute() {
     try { server.close(); } catch (e) { console.warn('Error closing server:', e && e.message); }
   }
 
-  console.log('Recording complete! Video saved to /output/route-video.mp4');
+  console.log('🎉 Recording process complete!');
 }
 
 recordRoute().catch((error) => {
