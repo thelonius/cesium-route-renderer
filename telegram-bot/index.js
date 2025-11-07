@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { analyzeGPX, formatAnalytics } = require('./gpxAnalyzer');
+const { getUserLanguage, setUserLanguage, t, formatMessage } = require('./i18n');
 
 const BOT_TOKEN = '8418496404:AAGLdVNW_Pla_u1bMVfFia-s9klwRsgYZhs';
 const API_SERVER = process.env.API_SERVER || 'http://localhost:3000';
@@ -19,65 +20,67 @@ const activeRenders = new Map();
 // Welcome message
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId,
-    '🗺️ Welcome to GPX Route Video Renderer!\n\n' +
-    'Send me a GPX file and I\'ll create a beautiful 3D video animation of your route.\n\n' +
-    '📱 Video format: Vertical (1080x1920) perfect for mobile\n' +
-    '🎥 Features: Intro/outro animations, smooth camera tracking\n' +
-    '⏱️ Processing time: ~2-3 minutes per route\n\n' +
-    'Just send me your GPX file to get started!'
-  );
+  const userLang = msg.from.language_code || 'en';
+  const message = formatMessage(chatId, 'welcome', {}, userLang);
+
+  bot.sendMessage(chatId, message);
 });
 
 // Help command
 bot.onText(/\/help/, (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId,
-    '📖 How to use:\n\n' +
-    '1️⃣ Send me a GPX file (as document)\n' +
-    '2️⃣ Wait for processing (you\'ll get progress updates)\n' +
-    '3️⃣ Receive your video!\n\n' +
-    '💡 Tips:\n' +
-    '• Routes without timestamps will use 5 km/h walking speed\n' +
-    '• Animation plays at 100x speed\n' +
-    '• Video includes 5s intro and 4s outro\n\n' +
-    'Commands:\n' +
-    '/start - Start the bot\n' +
-    '/help - Show this help\n' +
-    '/status - Check current render status\n' +
-    '/logs - View detailed logs for your last render\n' +
-    '/cleanup - Delete renders older than 7 days (admin)'
-  );
+  const userLang = msg.from.language_code || 'en';
+  const message = formatMessage(chatId, 'help', {}, userLang);
+
+  bot.sendMessage(chatId, message);
+});
+
+// Language command
+bot.onText(/\/language/, (msg) => {
+  const chatId = msg.chat.id;
+  const userLang = msg.from.language_code || 'en';
+  const currentLang = getUserLanguage(chatId, userLang);
+
+  bot.sendMessage(chatId, t(chatId, 'language.select', {}, userLang), {
+    reply_markup: {
+      inline_keyboard: [[
+        { text: '🇺🇸 English', callback_data: 'lang_en' },
+        { text: '🇷🇺 Русский', callback_data: 'lang_ru' }
+      ]]
+    }
+  });
 });
 
 // Status command
 bot.onText(/\/status/, async (msg) => {
   const chatId = msg.chat.id;
+  const userLang = msg.from.language_code || 'en';
   const render = activeRenders.get(chatId);
 
   if (!render) {
-    bot.sendMessage(chatId, '❌ No active renders. Send me a GPX file to start!');
+    bot.sendMessage(chatId, t(chatId, 'status.noActive', {}, userLang));
     return;
   }
 
-  bot.sendMessage(chatId,
-    `⏳ Current status: ${render.status}\n` +
-    `📊 Output ID: ${render.outputId || 'pending'}`
-  );
+  bot.sendMessage(chatId, t(chatId, 'status.current', {
+    status: render.status,
+    outputId: render.outputId || 'pending'
+  }, userLang));
 });
 
 // Logs command
 bot.onText(/\/logs/, async (msg) => {
   const chatId = msg.chat.id;
+  const userLang = msg.from.language_code || 'en';
   const render = activeRenders.get(chatId);
 
   if (!render || !render.outputId) {
-    bot.sendMessage(chatId, '❌ No render to show logs for. Complete a render first!');
+    bot.sendMessage(chatId, t(chatId, 'errors.noLogs', {}, userLang));
     return;
   }
 
   try {
-    await bot.sendMessage(chatId, '📋 Fetching logs...');
+    await bot.sendMessage(chatId, t(chatId, 'logs.fetching', {}, userLang));
 
     const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
     const response = await axios.get(logsUrl);
@@ -104,8 +107,8 @@ bot.onText(/\/logs/, async (msg) => {
   } catch (error) {
     console.error('Error fetching logs:', error);
     await bot.sendMessage(chatId,
-      '❌ Failed to fetch logs.\n' +
-      (error.response?.status === 404 ? 'Logs not found for this render.' : error.message)
+      t(chatId, 'errors.logsFailed', {}, userLang) + '\n' +
+      (error.response?.status === 404 ? t(chatId, 'errors.logsNotFound', {}, userLang) : error.message)
     );
   }
 });
@@ -114,13 +117,27 @@ bot.onText(/\/logs/, async (msg) => {
 bot.on('callback_query', async (query) => {
   const chatId = query.message.chat.id;
   const data = query.data;
+  const userLang = query.from.language_code || 'en';
+
+  // Handle language change
+  if (data.startsWith('lang_')) {
+    const newLang = data.substring(5); // Remove 'lang_' prefix
+    if (setUserLanguage(chatId, newLang)) {
+      await bot.answerCallbackQuery(query.id, {
+        text: newLang === 'ru' ? '✅ Язык изменён на Русский' : '✅ Language changed to English',
+        show_alert: false
+      });
+      await bot.sendMessage(chatId, t(chatId, 'language.changed', {}, newLang));
+    }
+    return;
+  }
 
   // Handle "View Logs" button
   if (data.startsWith('logs_')) {
     const outputId = data.substring(5); // Remove 'logs_' prefix
 
     try {
-      await bot.answerCallbackQuery(query.id, { text: '📋 Fetching logs...' });
+      await bot.answerCallbackQuery(query.id, { text: t(chatId, 'logs.fetching', {}, userLang) });
 
       const logsUrl = `${API_SERVER}/logs/${outputId}/text`;
       const response = await axios.get(logsUrl);
@@ -129,11 +146,11 @@ bot.on('callback_query', async (query) => {
 
       // Telegram has a 4096 character limit per message
       if (logs.length <= 4096) {
-        await bot.sendMessage(chatId, `📋 Logs for \`${outputId}\`:\n\n\`\`\`\n${logs}\n\`\`\``, {
+        await bot.sendMessage(chatId, t(chatId, 'logs.title', { outputId }, userLang) + `\n\n\`\`\`\n${logs}\n\`\`\``, {
           parse_mode: 'Markdown',
           reply_markup: {
             inline_keyboard: [[
-              { text: '🔄 Refresh Logs', callback_data: `logs_${outputId}` }
+              { text: t(chatId, 'buttons.refreshLogs', {}, userLang), callback_data: `logs_${outputId}` }
             ]]
           }
         });
@@ -144,10 +161,10 @@ bot.on('callback_query', async (query) => {
         fs.writeFileSync(tempLogFile, logs);
 
         await bot.sendDocument(chatId, tempLogFile, {
-          caption: `📋 Full logs for render: ${outputId}`,
+          caption: t(chatId, 'logs.full', { outputId }, userLang),
           reply_markup: {
             inline_keyboard: [[
-              { text: '🔄 Refresh Logs', callback_data: `logs_${outputId}` }
+              { text: t(chatId, 'buttons.refreshLogs', {}, userLang), callback_data: `logs_${outputId}` }
             ]]
           }
         }, {
@@ -161,24 +178,16 @@ bot.on('callback_query', async (query) => {
     } catch (error) {
       console.error('Error fetching logs:', error);
 
-      let errorMessage = '❌ Failed to fetch logs.\n';
+      let errorMessage = t(chatId, 'errors.logsFailed', {}, userLang) + '\n';
 
       if (error.response?.status === 404) {
-        errorMessage += '\n⏳ **Logs not found yet**\n\n';
-        errorMessage += 'The render may still be starting. Please wait a few seconds and try again.\n\n';
-        errorMessage += 'The render process:\n';
-        errorMessage += '1. ⬆️ Uploading GPX file\n';
-        errorMessage += '2. 🐳 Starting Docker container\n';
-        errorMessage += '3. 📹 Recording animation\n';
-        errorMessage += '4. 🎬 Encoding video\n';
-        errorMessage += '5. ✅ Complete!\n\n';
-        errorMessage += 'Logs will appear after step 2.';
+        errorMessage += '\n' + t(chatId, 'logs.notAvailable', {}, userLang);
       } else {
         errorMessage += error.message;
       }
 
       await bot.answerCallbackQuery(query.id, {
-        text: '⏳ Logs not available yet',
+        text: getUserLanguage(chatId, userLang) === 'ru' ? '⏳ Логи пока недоступны' : '⏳ Logs not available yet',
         show_alert: false
       });
 
@@ -186,7 +195,7 @@ bot.on('callback_query', async (query) => {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
-            { text: '🔄 Try Again', callback_data: `logs_${outputId}` }
+            { text: t(chatId, 'buttons.tryAgain', {}, userLang), callback_data: `logs_${outputId}` }
           ]]
         }
       });
@@ -197,9 +206,10 @@ bot.on('callback_query', async (query) => {
 // Cleanup command - clear old renders
 bot.onText(/\/cleanup/, async (msg) => {
   const chatId = msg.chat.id;
+  const userLang = msg.from.language_code || 'en';
 
   try {
-    await bot.sendMessage(chatId, '🧹 Cleaning up old renders...');
+    await bot.sendMessage(chatId, t(chatId, 'cleanup.starting', {}, userLang));
 
     // Call API to get list of output directories
     const outputResponse = await axios.get(`${API_SERVER}/cleanup`, {
@@ -209,21 +219,21 @@ bot.onText(/\/cleanup/, async (msg) => {
     const result = outputResponse.data;
 
     if (result.success) {
-      await bot.sendMessage(chatId,
-        `✅ Cleanup complete!\n\n` +
-        `🗑️ Deleted: ${result.deletedCount} old renders\n` +
-        `💾 Space freed: ${(result.freedSpaceMB || 0).toFixed(2)} MB\n` +
-        `📁 Remaining: ${result.remainingCount} renders`
-      );
+      await bot.sendMessage(chatId, t(chatId, 'cleanup.complete', {
+        deleted: result.deletedCount,
+        space: (result.freedSpaceMB || 0).toFixed(2),
+        remaining: result.remainingCount
+      }, userLang));
     } else {
-      await bot.sendMessage(chatId, '❌ Cleanup failed: ' + (result.error || 'Unknown error'));
+      await bot.sendMessage(chatId, t(chatId, 'cleanup.failed', {
+        error: result.error || 'Unknown error'
+      }, userLang));
     }
   } catch (error) {
     console.error('Error during cleanup:', error);
-    await bot.sendMessage(chatId,
-      '❌ Failed to cleanup old renders.\n' +
-      (error.response?.data?.error || error.message)
-    );
+    await bot.sendMessage(chatId, t(chatId, 'cleanup.error', {
+      error: error.response?.data?.error || error.message
+    }, userLang));
   }
 });
 
@@ -231,16 +241,17 @@ bot.onText(/\/cleanup/, async (msg) => {
 bot.on('document', async (msg) => {
   const chatId = msg.chat.id;
   const doc = msg.document;
+  const userLang = msg.from.language_code || 'en';
 
   // Check if it's a GPX file
   if (!doc.file_name.toLowerCase().endsWith('.gpx')) {
-    bot.sendMessage(chatId, '❌ Please send a GPX file (.gpx extension)');
+    bot.sendMessage(chatId, t(chatId, 'errors.notGpx', {}, userLang));
     return;
   }
 
   try {
     // Send initial message
-    await bot.sendMessage(chatId, '📥 Downloading your GPX file...');
+    await bot.sendMessage(chatId, t(chatId, 'processing.downloading', {}, userLang));
 
     // Download the file
     const file = await bot.getFile(doc.file_id);
@@ -256,17 +267,21 @@ bot.on('document', async (msg) => {
     fs.writeFileSync(tempPath, gpxBuffer);
 
     // Analyze GPX and show analytics
-    await bot.sendMessage(chatId, '🔍 Analyzing route...');
+    await bot.sendMessage(chatId, t(chatId, 'processing.analyzing', {}, userLang));
 
     const gpxContent = gpxBuffer.toString('utf8');
     const analysis = analyzeGPX(gpxContent);
 
     if (analysis.success) {
-      // Send analytics to user
-      const analyticsMessage = formatAnalytics(analysis);
+      // Send analytics to user (with language support)
+      const lang = getUserLanguage(chatId, userLang);
+      const analyticsMessage = formatAnalytics(analysis, lang);
       await bot.sendMessage(chatId, analyticsMessage, { parse_mode: 'Markdown' });
     } else {
-      await bot.sendMessage(chatId, `⚠️ Could not analyze GPX: ${analysis.error}`);
+      const errorMsg = getUserLanguage(chatId, userLang) === 'ru'
+        ? `⚠️ Не удалось проанализировать GPX: ${analysis.error}`
+        : `⚠️ Could not analyze GPX: ${analysis.error}`;
+      await bot.sendMessage(chatId, errorMsg);
     }
 
     // Calculate render time estimation based on analysis
@@ -299,23 +314,23 @@ bot.on('document', async (msg) => {
       const bitrateKbps = 2500;
       const estimatedSizeMB = Math.ceil((recordingSeconds * bitrateKbps) / 8 / 1024);
 
-      let statusMsg = '🎬 Render Estimation:\n\n';
-      statusMsg += `⚡ Animation speed: ${animationSpeed}x\n`;
-      statusMsg += `📹 Video length: ~${recordingMinutes.toFixed(1)} minutes\n`;
-      statusMsg += `📦 Estimated size: ~${estimatedSizeMB} MB\n`;
-      statusMsg += `⏱️ Estimated render time: ~${estimatedRenderMinutes} minutes\n\n`;
+      const lang = getUserLanguage(chatId, userLang);
+      let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
+      statusMsg += t(chatId, 'estimation.speed', { speed: animationSpeed }, userLang) + '\n';
+      statusMsg += t(chatId, 'estimation.videoLength', { length: recordingMinutes.toFixed(1) }, userLang) + '\n';
+      statusMsg += t(chatId, 'estimation.size', { size: estimatedSizeMB }, userLang) + '\n';
+      statusMsg += t(chatId, 'estimation.time', { time: estimatedRenderMinutes }, userLang) + '\n\n';
 
       if (estimatedSizeMB > 50) {
-        statusMsg += '⚠️ File will exceed 50MB Telegram limit\n';
-        statusMsg += '📥 Download link will be provided\n\n';
+        statusMsg += t(chatId, 'estimation.tooLarge', {}, userLang) + '\n\n';
       }
 
-      statusMsg += 'Starting render...';
+      statusMsg += t(chatId, 'estimation.starting', {}, userLang);
 
       await bot.sendMessage(chatId, statusMsg);
     } else {
       // No duration available, can't estimate
-      await bot.sendMessage(chatId, '🎬 Starting render with default settings...');
+      await bot.sendMessage(chatId, t(chatId, 'estimation.default', {}, userLang));
     }
 
     // Submit to render API
@@ -331,15 +346,12 @@ bot.on('document', async (msg) => {
     formData.append('userName', userName);
 
     await bot.sendMessage(chatId,
-      '🚀 Starting video rendering...\n\n' +
-      `📋 Render ID: \`${outputId}\`\n\n` +
-      '⏱️ This may take several minutes for long routes.\n' +
-      'You can check logs to monitor progress.',
+      t(chatId, 'processing.starting', { outputId }, userLang),
       {
         parse_mode: 'Markdown',
         reply_markup: {
           inline_keyboard: [[
-            { text: '📋 View Logs', callback_data: `logs_${outputId}` }
+            { text: t(chatId, 'buttons.viewLogs', {}, userLang), callback_data: `logs_${outputId}` }
           ]]
         }
       }
@@ -377,38 +389,30 @@ bot.on('document', async (msg) => {
 
             if (logs.includes('Recording process complete')) {
               newStage = 'finalizing';
-              statusMessage = '✅ Encoding complete! Finalizing...\n\n' +
-                            '📦 Preparing video file for upload';
+              statusMessage = t(chatId, 'processing.finalizing', {}, userLang);
             } else if (logs.includes('Video encoding complete')) {
               newStage = 'encoding-done';
-              statusMessage = '✅ Video encoded successfully!\n\n' +
-                            '📦 File is ready, wrapping up...';
+              statusMessage = t(chatId, 'processing.encodingDone', {}, userLang);
             } else if (logs.includes('Starting video encoding')) {
               newStage = 'encoding';
-              statusMessage = '🎬 Recording complete! Encoding video...\n\n' +
-                            '⏳ This step takes the longest (several minutes)\n' +
-                            '📦 Compressing video for optimal quality';
+              statusMessage = t(chatId, 'processing.encoding', {}, userLang);
             } else if (logs.includes('Recording progress:')) {
               // Extract recording progress
               const progressMatch = logs.match(/Recording progress: (\d+)\/(\d+)s \((\d+)%\)/);
               if (progressMatch) {
                 const [, current, total, percent] = progressMatch;
                 newStage = 'recording';
-                statusMessage = `📹 Recording animation: ${percent}%\n\n` +
-                              `⏱️ Progress: ${current}/${total} seconds`;
+                statusMessage = t(chatId, 'processing.recording', { percent, current, total }, userLang);
               }
             } else if (logs.includes('Waiting for map tiles to fully load')) {
               newStage = 'loading';
-              statusMessage = '🗺️ Loading map tiles and terrain...\n\n' +
-                            '⏳ Waiting for all imagery to download';
+              statusMessage = t(chatId, 'processing.loading', {}, userLang);
             } else if (logs.includes('Cesium app loaded')) {
               newStage = 'initializing';
-              statusMessage = '🌍 Initializing 3D globe...\n\n' +
-                            '⏳ Setting up camera and route';
+              statusMessage = t(chatId, 'processing.initializing', {}, userLang);
             } else if (logs.includes('Starting Docker container')) {
               newStage = 'docker';
-              statusMessage = '🐳 Starting rendering environment...\n\n' +
-                            '⏳ Launching containerized browser';
+              statusMessage = t(chatId, 'processing.docker', {}, userLang);
             }
 
             // Only send update if stage changed or it's a recording progress update
@@ -419,7 +423,7 @@ bot.on('document', async (msg) => {
               await bot.sendMessage(chatId, statusMessage, {
                 reply_markup: {
                   inline_keyboard: [[
-                    { text: '📋 View Full Logs', callback_data: `logs_${outputId}` }
+                    { text: t(chatId, 'buttons.viewFullLogs', {}, userLang), callback_data: `logs_${outputId}` }
                   ]]
                 }
               }).catch(err => console.warn('Failed to send progress update:', err.message));
@@ -494,11 +498,9 @@ bot.on('document', async (msg) => {
       videoPath: result.videoUrl
     });
 
-    await bot.sendMessage(chatId,
-      '✅ Rendering complete!\n' +
-      `📁 File size: ${(result.fileSize / 1024 / 1024).toFixed(2)} MB\n` +
-      '📤 Uploading video to Telegram...'
-    );
+    await bot.sendMessage(chatId, t(chatId, 'processing.complete', {
+      size: (result.fileSize / 1024 / 1024).toFixed(2)
+    }, userLang));
 
     // Send the video
     // Try multiple path resolutions
@@ -522,48 +524,38 @@ bot.on('document', async (msg) => {
       if (fileSizeMB > TELEGRAM_MAX_SIZE_MB) {
         console.warn(`Video is too large (${fileSizeMB.toFixed(2)}MB). Telegram limit is ${TELEGRAM_MAX_SIZE_MB}MB`);
 
-        await bot.sendMessage(chatId,
-          '⚠️ Video is too large for Telegram!\n\n' +
-          `📊 File size: ${fileSizeMB.toFixed(2)} MB\n` +
-          `📏 Telegram limit: ${TELEGRAM_MAX_SIZE_MB} MB\n\n` +
-          '📥 Download your video here:\n' +
-          `${PUBLIC_URL}${result.videoUrl}\n\n` +
-          '💡 The video file will be available for download from our server.'
-        );
+        await bot.sendMessage(chatId, t(chatId, 'fileSize.tooLarge', {
+          size: fileSizeMB.toFixed(2),
+          limit: TELEGRAM_MAX_SIZE_MB,
+          url: `${PUBLIC_URL}${result.videoUrl}`
+        }, userLang));
       } else {
         // File is within limits, send normally
         try {
           await bot.sendVideo(chatId, videoPath, {
-            caption: `🎬 Your route video: ${doc.file_name}\n\n` +
-                     `📊 Size: ${fileSizeMB.toFixed(2)} MB\n` +
-                     `🎥 Format: 1080x1920 (Vertical)\n` +
-                     `⚡ Animation: 100x speed`,
+            caption: t(chatId, 'videoCaption', {
+              filename: doc.file_name,
+              size: fileSizeMB.toFixed(2)
+            }, userLang),
             supports_streaming: true
           });
 
-          await bot.sendMessage(chatId,
-            '🎉 Done! Send another GPX file to create more videos.\n\n' +
-            'Use /help for more information.',
-            {
-              reply_markup: {
-                inline_keyboard: [[
-                  { text: '📋 View Logs', callback_data: `logs_${finalOutputId}` }
-                ]]
-              }
+          await bot.sendMessage(chatId, t(chatId, 'processing.done', {}, userLang), {
+            reply_markup: {
+              inline_keyboard: [[
+                { text: t(chatId, 'buttons.viewLogs', {}, userLang), callback_data: `logs_${finalOutputId}` }
+              ]]
             }
-          );
+          });
         } catch (telegramError) {
           // Handle Telegram API errors (e.g., file still too large)
           console.error('Error sending video to Telegram:', telegramError.message);
 
           if (telegramError.message.includes('413') || telegramError.message.includes('Too Large')) {
-            await bot.sendMessage(chatId,
-              '⚠️ Telegram rejected the video (too large)\n\n' +
-              `📊 File size: ${fileSizeMB.toFixed(2)} MB\n\n` +
-              '📥 Download your video here:\n' +
-              `${PUBLIC_URL}${result.videoUrl}\n\n` +
-              '💡 The video file is available for download from our server.'
-            );
+            await bot.sendMessage(chatId, t(chatId, 'fileSize.rejected', {
+              size: fileSizeMB.toFixed(2),
+              url: `${PUBLIC_URL}${result.videoUrl}`
+            }, userLang));
           } else {
             throw telegramError; // Re-throw if it's a different error
           }
@@ -616,15 +608,13 @@ bot.on('document', async (msg) => {
     try {
       if (detailText.length <= MAX_TELEGRAM_TEXT) {
         await bot.sendMessage(chatId,
-          '❌ Error processing your GPX file:\n' +
-          detailText + '\n\n' +
-          'Please try again or contact support.' +
+          t(chatId, 'errors.processing', { error: detailText }, userLang) +
           (render && render.outputId ? `\n\n📋 Render ID: \`${render.outputId}\`` : ''),
           {
             parse_mode: 'Markdown',
             reply_markup: render && render.outputId ? {
               inline_keyboard: [[
-                { text: '📋 View Full Logs', callback_data: `logs_${render.outputId}` }
+                { text: t(chatId, 'buttons.viewFullLogs', {}, userLang), callback_data: `logs_${render.outputId}` }
               ]]
             } : undefined
           }
@@ -637,13 +627,13 @@ bot.on('document', async (msg) => {
         fs.writeFileSync(errFilePath, detailText);
 
         await bot.sendMessage(chatId,
-          '❌ Error processing your GPX file. Details too long to display here — sending as a file.' +
+          t(chatId, 'errors.processingLong', {}, userLang) +
           (render && render.outputId ? `\n\n📋 Render ID: \`${render.outputId}\`` : ''),
           {
             parse_mode: 'Markdown',
             reply_markup: render && render.outputId ? {
               inline_keyboard: [[
-                { text: '📋 View Full Logs', callback_data: `logs_${render.outputId}` }
+                { text: t(chatId, 'buttons.viewFullLogs', {}, userLang), callback_data: `logs_${render.outputId}` }
               ]]
             } : undefined
           }
@@ -652,7 +642,7 @@ bot.on('document', async (msg) => {
         await bot.sendDocument(chatId, errFilePath, {
           reply_markup: render && render.outputId ? {
             inline_keyboard: [[
-              { text: '📋 View Server Logs', callback_data: `logs_${render.outputId}` }
+              { text: t(chatId, 'buttons.viewServerLogs', {}, userLang), callback_data: `logs_${render.outputId}` }
             ]]
           } : undefined
         }, { filename: 'render-error.txt' });
@@ -663,10 +653,7 @@ bot.on('document', async (msg) => {
 
       // If we have an outputId, offer to send detailed logs
       if (render && render.outputId) {
-        await bot.sendMessage(chatId,
-          '📋 Detailed logs available.\n' +
-          'Use /logs to view full rendering logs.'
-        );
+        await bot.sendMessage(chatId, t(chatId, 'logs.available', {}, userLang));
       }
     } catch (sendErr) {
       // If sending the message/document fails, ensure we still log it to server console
@@ -680,16 +667,13 @@ bot.on('document', async (msg) => {
 // Handle other messages
 bot.on('message', (msg) => {
   const chatId = msg.chat.id;
+  const userLang = msg.from.language_code || 'en';
 
   // Ignore commands and documents (handled separately)
   if (msg.text && msg.text.startsWith('/')) return;
   if (msg.document) return;
 
-  bot.sendMessage(chatId,
-    '🤔 I can only process GPX files.\n\n' +
-    'Please send me a GPX file (as document) to create a route video.\n' +
-    'Use /help for more information.'
-  );
+  bot.sendMessage(chatId, t(chatId, 'errors.unknown', {}, userLang));
 });
 
 // Error handling

@@ -292,37 +292,103 @@ function getRecommendation(timestampAnalysis, duration) {
 
 /**
  * Format analytics for user display
+ * @param {object} analysis - Analysis result
+ * @param {string} lang - Language code ('en' or 'ru')
  */
-function formatAnalytics(analysis) {
+function formatAnalytics(analysis, lang = 'en') {
   if (!analysis.success) {
-    return `❌ Error: ${analysis.error}`;
+    return lang === 'ru' ? `❌ Ошибка: ${analysis.error}` : `❌ Error: ${analysis.error}`;
   }
 
   const stats = analysis.statistics;
   const ts = analysis.timestamps;
 
-  let message = '📊 **Track Analytics**\n\n';
+  const labels = {
+    en: {
+      title: '📊 **Track Analytics**',
+      routeInfo: '📍 **Route Info:**',
+      distance: '• Distance',
+      points: '• Points',
+      duration: '• Duration',
+      fromTimestamps: 'from timestamps',
+      estimated: 'estimated',
+      elevation: '⛰ **Elevation:**',
+      gain: '• Gain',
+      loss: '• Loss',
+      range: '• Range',
+      timestamps: '⏱ **Timestamps:**',
+      status: '• Status',
+      quality: '• Quality',
+      reason: '• Reason',
+      recTimestamp: '✅ Using accurate timestamp-based duration',
+      recDistance: '⚠️ Using distance-based estimation',
+      recPoor: '⚠️ Timestamp quality is poor. Using hybrid estimation',
+      asInvalid: 'as timestamps are'
+    },
+    ru: {
+      title: '📊 **Аналитика трека**',
+      routeInfo: '📍 **Информация о маршруте:**',
+      distance: '• Расстояние',
+      points: '• Точки',
+      duration: '• Длительность',
+      fromTimestamps: 'из временных меток',
+      estimated: 'оценка',
+      elevation: '⛰ **Высота:**',
+      gain: '• Набор',
+      loss: '• Спуск',
+      range: '• Диапазон',
+      timestamps: '⏱ **Временные метки:**',
+      status: '• Статус',
+      quality: '• Качество',
+      reason: '• Причина',
+      recTimestamp: '✅ Используется точная длительность из временных меток',
+      recDistance: '⚠️ Используется оценка на основе расстояния',
+      recPoor: '⚠️ Качество временных меток низкое. Используется гибридная оценка',
+      asInvalid: 'так как временные метки'
+    }
+  };
+
+  const l = labels[lang] || labels.en;
+
+  let message = `${l.title}\n\n`;
 
   // Basic stats
-  message += `📍 **Route Info:**\n`;
-  message += `• Distance: ${stats.distance.km} km\n`;
-  message += `• Points: ${stats.points}\n`;
-  message += `• Duration: ~${stats.duration.hours}h (${stats.duration.source === 'timestamps' ? 'from timestamps' : 'estimated'})\n\n`;
+  message += `${l.routeInfo}\n`;
+  message += `${l.distance}: ${stats.distance.km} км\n`;
+  message += `${l.points}: ${stats.points}\n`;
+  message += `${l.duration}: ~${stats.duration.hours}ч (${stats.duration.source === 'timestamps' ? l.fromTimestamps : l.estimated})\n\n`;
 
   // Elevation
-  message += `⛰ **Elevation:**\n`;
-  message += `• Gain: +${stats.elevation.gain}m\n`;
-  message += `• Loss: -${stats.elevation.loss}m\n`;
-  message += `• Range: ${stats.elevation.min}m - ${stats.elevation.max}m\n\n`;
+  message += `${l.elevation}\n`;
+  message += `${l.gain}: +${stats.elevation.gain}м\n`;
+  message += `${l.loss}: -${stats.elevation.loss}м\n`;
+  message += `${l.range}: ${stats.elevation.min}м - ${stats.elevation.max}м\n\n`;
 
   // Timestamp quality
-  message += `⏱ **Timestamps:**\n`;
-  message += `• Status: ${ts.status}\n`;
-  message += `• Quality: ${ts.quality}\n`;
-  message += `• Reason: ${ts.reason}\n\n`;
+  message += `${l.timestamps}\n`;
+  message += `${l.status}: ${ts.status}\n`;
+  message += `${l.quality}: ${ts.quality}\n`;
+  message += `${l.reason}: ${ts.reason}\n\n`;
 
   // Recommendation
-  message += `${analysis.recommendation}\n`;
+  const durationHours = stats.duration.hours;
+  let recommendation;
+
+  if (!ts.hasTimestamps || ts.quality === 'invalid') {
+    recommendation = lang === 'ru'
+      ? `${l.recDistance} (~${durationHours}ч) ${l.asInvalid} ${ts.status}`
+      : `${l.recDistance} (~${durationHours}h) ${l.asInvalid} ${ts.status}`;
+  } else if (ts.quality === 'poor') {
+    recommendation = lang === 'ru'
+      ? `${l.recPoor} (~${durationHours}ч)`
+      : `${l.recPoor} (~${durationHours}h)`;
+  } else {
+    recommendation = lang === 'ru'
+      ? `${l.recTimestamp} (~${durationHours}ч)`
+      : `${l.recTimestamp} (~${durationHours}h)`;
+  }
+
+  message += `${recommendation}\n`;
 
   return message;
 }

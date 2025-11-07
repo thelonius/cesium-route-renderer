@@ -367,9 +367,9 @@ async function recordRoute() {
     console.log('📹 Recording frames complete! Stopping recorder...');
     console.log('🎬 Starting video encoding (this may take several minutes)...');
     console.log('⏳ Encoding is ~7x slower than real-time recording');
-    
+
     await recorder.stop();
-    
+
     console.log('✅ Video encoding complete!');
     console.log('📦 Video saved to /output/route-video.mp4');
   } catch (err) {

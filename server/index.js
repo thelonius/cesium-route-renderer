@@ -151,7 +151,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     cesium-route-recorder`;
 
   console.log('Running Docker command:', dockerCommand);
-  
+
   // Log to file so Telegram bot can read it
   const logPath = path.join(outputDir, 'recorder.log');
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] 🐳 Starting Docker container...\n`);
