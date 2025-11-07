@@ -62,10 +62,63 @@ bot.onText(/\/status/, async (msg) => {
     return;
   }
 
-  bot.sendMessage(chatId, t(chatId, 'status.current', {
-    status: render.status,
-    outputId: render.outputId || 'pending'
-  }, userLang));
+  let statusMessage = `📊 **Output ID:** \`${render.outputId || 'pending'}\`\n`;
+  statusMessage += `⏱️ **Status:** ${render.status}\n\n`;
+
+  // Try to fetch actual progress from logs
+  if (render.outputId) {
+    try {
+      const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
+      const response = await axios.get(logsUrl, { timeout: 5000 });
+      const logs = response.data;
+
+      // Parse progress from logs
+      if (logs.includes('Starting Docker container')) {
+        statusMessage += '🐳 Docker container started\n';
+      }
+      if (logs.includes('Starting Xvfb')) {
+        statusMessage += '🖥️ Virtual display initialized\n';
+      }
+      if (logs.includes('Running recording script')) {
+        statusMessage += '📝 Recording script running\n';
+      }
+      if (logs.includes('Loading Cesium app')) {
+        statusMessage += '🌍 Cesium app loading\n';
+      }
+      if (logs.includes('Starting route recording')) {
+        statusMessage += '📹 Recording animation...\n';
+      }
+      
+      // Check for recording progress
+      const recordingMatch = logs.match(/Recorded frame (\d+)\/(\d+)/);
+      if (recordingMatch) {
+        const current = parseInt(recordingMatch[1]);
+        const total = parseInt(recordingMatch[2]);
+        const percent = Math.round((current / total) * 100);
+        statusMessage += `📹 **Recording:** ${percent}% (${current}/${total} frames)\n`;
+      }
+      
+      if (logs.includes('Starting video encoding')) {
+        statusMessage += '🎬 Encoding video...\n';
+      }
+      if (logs.includes('Video encoding completed')) {
+        statusMessage += '✅ Encoding complete!\n';
+      }
+
+      // Show last log line for context
+      const logLines = logs.trim().split('\n');
+      const lastLine = logLines[logLines.length - 1];
+      if (lastLine) {
+        statusMessage += `\n📋 **Last update:**\n\`${lastLine.substring(0, 200)}\``;
+      }
+    } catch (error) {
+      // If we can't fetch logs, just show basic status
+      console.error('Error fetching logs for status:', error.message);
+      statusMessage += '⏳ Logs not available yet...';
+    }
+  }
+
+  bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
 });
 
 // Logs command
