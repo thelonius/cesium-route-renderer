@@ -138,7 +138,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   // Log to file so Telegram bot can read it
   const logPath = path.join(outputDir, 'recorder.log');
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] 🐳 Starting Docker container...\n`);
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${animationSpeed}x, Duration: ${expectedDuration.toFixed(1)}s\n`);
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${animationSpeed}x\n`);
 
   // Use spawn instead of exec to stream Docker output in real-time
   const dockerArgs = [

@@ -88,7 +88,7 @@ bot.onText(/\/status/, async (msg) => {
       if (logs.includes('Starting route recording')) {
         statusMessage += '📹 Recording animation...\n';
       }
-      
+
       // Check for recording progress
       const recordingMatch = logs.match(/Recorded frame (\d+)\/(\d+)/);
       if (recordingMatch) {
@@ -97,7 +97,7 @@ bot.onText(/\/status/, async (msg) => {
         const percent = Math.round((current / total) * 100);
         statusMessage += `📹 **Recording:** ${percent}% (${current}/${total} frames)\n`;
       }
-      
+
       if (logs.includes('Starting video encoding')) {
         statusMessage += '🎬 Encoding video...\n';
       }
