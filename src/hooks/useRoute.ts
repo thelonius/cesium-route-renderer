@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import * as Cesium from 'cesium';
 import { TrackPoint } from '../types';
 import { parseGPX, calculateTimestamps } from '../utils/gpxUtils';
+import { parseKML } from '../utils/kmlUtils';
 
 interface UseRouteResult {
   trackPoints: TrackPoint[];
@@ -10,14 +11,14 @@ interface UseRouteResult {
   error: string | null;
 }
 
-export function useRoute(gpxUrl: string | null): UseRouteResult {
+export function useRoute(routeUrl: string | null): UseRouteResult {
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [timeRange, setTimeRange] = useState<{ startTime: Cesium.JulianDate; stopTime: Cesium.JulianDate } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!gpxUrl) {
+    if (!routeUrl) {
       setTrackPoints([]);
       setTimeRange(null);
       setError(null);
@@ -29,16 +30,26 @@ export function useRoute(gpxUrl: string | null): UseRouteResult {
       setError(null);
 
       try {
-        const points = await parseGPX(gpxUrl);
+        // Auto-detect file format from extension
+        const isKML = routeUrl.toLowerCase().endsWith('.kml');
+        const fileType = isKML ? 'KML' : 'GPX';
+        
+        console.log(`Loading ${fileType} file: ${routeUrl}`);
+        
+        // Parse based on file type
+        const points = isKML ? await parseKML(routeUrl) : await parseGPX(routeUrl);
+        
         if (points.length === 0) {
-          throw new Error('No track points found in GPX file');
+          throw new Error(`No track points found in ${fileType} file`);
         }
 
         const { startTime, stopTime, trackPointsWithTime } = calculateTimestamps(points);
         setTrackPoints(trackPointsWithTime);
         setTimeRange({ startTime, stopTime });
+        
+        console.log(`Successfully loaded ${trackPointsWithTime.length} points from ${fileType}`);
       } catch (error) {
-        setError(error instanceof Error ? error.message : 'Failed to load GPX file');
+        setError(error instanceof Error ? error.message : 'Failed to load route file');
         setTrackPoints([]);
         setTimeRange(null);
       } finally {
@@ -47,7 +58,7 @@ export function useRoute(gpxUrl: string | null): UseRouteResult {
     };
 
     loadRoute();
-  }, [gpxUrl]);
+  }, [routeUrl]);
 
   return { trackPoints, timeRange, isLoading, error };
 }

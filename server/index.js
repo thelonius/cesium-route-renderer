@@ -30,10 +30,22 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   // Create output directory
   fs.mkdirSync(outputDir, { recursive: true});
 
-  // Use simple filename based on timestamp
-  const gpxFilename = `${Date.now()}.gpx`;
-  const gpxPath = path.join(outputDir, gpxFilename);
-  fs.copyFileSync(gpxFile.path, gpxPath);
+  // Detect file type and use appropriate extension
+  const originalName = gpxFile.originalname.toLowerCase();
+  const isKML = originalName.endsWith('.kml');
+  const fileExt = isKML ? '.kml' : '.gpx';
+  const fileType = isKML ? 'KML' : 'GPX';
+  
+  console.log(`Processing ${fileType} file: ${originalName}`);
+
+  // Use simple filename based on timestamp with correct extension
+  const routeFilename = `${Date.now()}${fileExt}`;
+  const routePath = path.join(outputDir, routeFilename);
+  fs.copyFileSync(gpxFile.path, routePath);
+  
+  // Keep GPX variables for backwards compatibility with Docker script
+  const gpxFilename = routeFilename;
+  const gpxPath = routePath;
 
   // Get absolute paths
   const absGpxPath = path.resolve(gpxPath);

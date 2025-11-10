@@ -296,11 +296,18 @@ bot.on('document', async (msg) => {
   const doc = msg.document;
   const userLang = msg.from.language_code || 'en';
 
-  // Check if it's a GPX file
-  if (!doc.file_name.toLowerCase().endsWith('.gpx')) {
+  // Check if it's a GPX or KML file
+  const fileName = doc.file_name.toLowerCase();
+  const isGPX = fileName.endsWith('.gpx');
+  const isKML = fileName.endsWith('.kml');
+  
+  if (!isGPX && !isKML) {
     bot.sendMessage(chatId, t(chatId, 'errors.notGpx', {}, userLang));
     return;
   }
+  
+  const fileType = isKML ? 'KML' : 'GPX';
+  console.log(`Processing ${fileType} file: ${fileName}`);
 
   try {
     // Send initial message
@@ -312,18 +319,19 @@ bot.on('document', async (msg) => {
     const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
 
     const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-    const gpxBuffer = Buffer.from(response.data);
+    const fileBuffer = Buffer.from(response.data);
 
-    // Save temporarily
-    const tempPath = path.join(__dirname, 'temp', `${Date.now()}.gpx`);
+    // Save temporarily with correct extension
+    const fileExt = isKML ? '.kml' : '.gpx';
+    const tempPath = path.join(__dirname, 'temp', `${Date.now()}${fileExt}`);
     fs.mkdirSync(path.dirname(tempPath), { recursive: true });
-    fs.writeFileSync(tempPath, gpxBuffer);
+    fs.writeFileSync(tempPath, fileBuffer);
 
-    // Analyze GPX and show analytics
+    // Analyze file and show analytics (GPX only for now, KML analysis not yet implemented)
     await bot.sendMessage(chatId, t(chatId, 'processing.analyzing', {}, userLang));
 
-    const gpxContent = gpxBuffer.toString('utf8');
-    const analysis = analyzeGPX(gpxContent);
+    const fileContent = fileBuffer.toString('utf8');
+    const analysis = isGPX ? analyzeGPX(fileContent) : { success: false, error: 'KML analytics not yet implemented' };
 
     if (analysis.success) {
       // Send analytics to user (with language support)

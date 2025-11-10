@@ -51,18 +51,18 @@ const messages = {
       current: '⏳ Current status: {{status}}\n📊 Output ID: {{outputId}}'
     },
     errors: {
-      notGpx: '❌ Please send a GPX file (.gpx extension)',
+      notGpx: '❌ Please send a GPX or KML file (.gpx or .kml extension)',
       noLogs: '❌ No render to show logs for. Complete a render first!',
       logsFailed: '❌ Failed to fetch logs.',
       logsNotFound: 'Logs not found for this render.',
-      processing: '❌ Error processing your GPX file:\n{{error}}\n\nPlease try again or contact support.',
-      processingLong: '❌ Error processing your GPX file. Details too long to display here — sending as a file.',
-      unknown: '🤔 I can only process GPX files.\n\nPlease send me a GPX file (as document) to create a route video.\nUse /help for more information.'
+      processing: '❌ Error processing your route file:\n{{error}}\n\nPlease try again or contact support.',
+      processingLong: '❌ Error processing your route file. Details too long to display here — sending as a file.',
+      unknown: '🤔 I can only process GPX or KML files.\n\nPlease send me a GPX or KML file (as document) to create a route video.\nUse /help for more information.'
     },
 
     // Processing stages
     processing: {
-      downloading: '📥 Downloading your GPX file...',
+      downloading: '📥 Downloading your route file...',
       analyzing: '🔍 Analyzing route...',
       starting: '🚀 Starting video rendering...\n\n📋 Render ID: `{{outputId}}`\n\n⏱️ This may take several minutes for long routes.\nYou can check logs to monitor progress.',
 
@@ -177,18 +177,18 @@ const messages = {
       current: '⏳ Текущий статус: {{status}}\n📊 ID рендера: {{outputId}}'
     },
     errors: {
-      notGpx: '❌ Пожалуйста, отправьте GPX файл (с расширением .gpx)',
+      notGpx: '❌ Пожалуйста, отправьте GPX или KML файл (с расширением .gpx или .kml)',
       noLogs: '❌ Нет рендера для показа логов. Сначала завершите рендер!',
       logsFailed: '❌ Не удалось получить логи.',
       logsNotFound: 'Логи для этого рендера не найдены.',
-      processing: '❌ Ошибка обработки вашего GPX файла:\n{{error}}\n\nПожалуйста, попробуйте снова или свяжитесь с поддержкой.',
-      processingLong: '❌ Ошибка обработки вашего GPX файла. Детали слишком длинные для отображения — отправляю как файл.',
-      unknown: '🤔 Я могу обрабатывать только GPX файлы.\n\nПожалуйста, отправьте мне GPX файл (как документ) для создания видео маршрута.\nИспользуйте /help для дополнительной информации.'
+      processing: '❌ Ошибка обработки вашего файла маршрута:\n{{error}}\n\nПожалуйста, попробуйте снова или свяжитесь с поддержкой.',
+      processingLong: '❌ Ошибка обработки вашего файла маршрута. Детали слишком длинные для отображения — отправляю как файл.',
+      unknown: '🤔 Я могу обрабатывать только GPX или KML файлы.\n\nПожалуйста, отправьте мне GPX или KML файл (как документ) для создания видео маршрута.\nИспользуйте /help для дополнительной информации.'
     },
 
     // Processing stages
     processing: {
-      downloading: '📥 Загружаю ваш GPX файл...',
+      downloading: '📥 Загружаю ваш файл маршрута...',
       analyzing: '🔍 Анализирую маршрут...',
       starting: '🚀 Запускаю рендеринг видео...\n\n📋 ID рендера: `{{outputId}}`\n\n⏱️ Это может занять несколько минут для длинных маршрутов.\nВы можете проверить логи для отслеживания прогресса.',
 
