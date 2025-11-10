@@ -147,33 +147,16 @@ function analyzeTimestamps(points) {
 }
 
 /**
- * Main analysis function
+ * Analyze route from parsed track points
+ * Works with both GPX and KML formats
  */
-function analyzeGPX(gpxContent) {
-  try {
-    // Extract track points
-    const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"[^>]*>[\s\S]*?<\/trkpt>/g);
-
-    if (!trkptMatches || trkptMatches.length === 0) {
-      return {
-        success: false,
-        error: 'No track points found in GPX file'
-      };
-    }
-
-    const points = trkptMatches.map(match => {
-      const latMatch = match.match(/lat="([^"]+)"/);
-      const lonMatch = match.match(/lon="([^"]+)"/);
-      const eleMatch = match.match(/<ele>([^<]+)<\/ele>/);
-      const timeMatch = match.match(/<time>([^<]+)<\/time>/);
-
-      return {
-        lat: parseFloat(latMatch[1]),
-        lon: parseFloat(lonMatch[1]),
-        ele: eleMatch ? parseFloat(eleMatch[1]) : 0,
-        time: timeMatch ? timeMatch[1] : null
-      };
-    });
+function analyzeTrackPoints(points) {
+  if (!points || points.length === 0) {
+    return {
+      success: false,
+      error: 'No track points provided'
+    };
+  }
 
     // Calculate total distance
     let totalDistance = 0;
@@ -264,11 +247,110 @@ function analyzeGPX(gpxContent) {
       timestamps: timestampAnalysis,
       recommendation: getRecommendation(timestampAnalysis, estimatedDuration)
     };
+}
 
+/**
+ * Main analysis function for GPX files
+ * Parses GPX XML and analyzes the track
+ */
+function analyzeGPX(gpxContent) {
+  try {
+    // Extract track points from GPX XML
+    const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"[^>]*>[\s\S]*?<\/trkpt>/g);
+
+    if (!trkptMatches || trkptMatches.length === 0) {
+      return {
+        success: false,
+        error: 'No track points found in GPX file'
+      };
+    }
+
+    const points = trkptMatches.map(match => {
+      const latMatch = match.match(/lat="([^"]+)"/);
+      const lonMatch = match.match(/lon="([^"]+)"/);
+      const eleMatch = match.match(/<ele>([^<]+)<\/ele>/);
+      const timeMatch = match.match(/<time>([^<]+)<\/time>/);
+
+      return {
+        lat: parseFloat(latMatch[1]),
+        lon: parseFloat(lonMatch[1]),
+        ele: eleMatch ? parseFloat(eleMatch[1]) : 0,
+        time: timeMatch ? timeMatch[1] : null
+      };
+    });
+
+    return analyzeTrackPoints(points);
   } catch (error) {
     return {
       success: false,
-      error: `Failed to analyze GPX: ${error.message}`
+      error: `Failed to parse GPX: ${error.message}`
+    };
+  }
+}
+
+/**
+ * Main analysis function for KML files
+ * Parses KML XML and analyzes the track
+ */
+function analyzeKML(kmlContent) {
+  try {
+    // Try to parse gx:Track format (Google Earth with timestamps)
+    const gxCoordMatches = kmlContent.match(/<gx:coord>([^<]+)<\/gx:coord>/g);
+    const whenMatches = kmlContent.match(/<when>([^<]+)<\/when>/g);
+
+    if (gxCoordMatches && gxCoordMatches.length > 0) {
+      const points = gxCoordMatches.map((coordMatch, index) => {
+        const coordText = coordMatch.replace(/<\/?gx:coord>/g, '').trim();
+        const parts = coordText.split(/\s+/);
+        const whenText = whenMatches && whenMatches[index] 
+          ? whenMatches[index].replace(/<\/?when>/g, '') 
+          : null;
+
+        return {
+          lon: parseFloat(parts[0] || '0'),
+          lat: parseFloat(parts[1] || '0'),
+          ele: parseFloat(parts[2] || '0'),
+          time: whenText
+        };
+      });
+
+      return analyzeTrackPoints(points);
+    }
+
+    // Try to parse standard LineString format (no timestamps)
+    const coordinatesMatch = kmlContent.match(/<coordinates>([\s\S]*?)<\/coordinates>/);
+    if (coordinatesMatch) {
+      const coordText = coordinatesMatch[1].trim();
+      const coordPairs = coordText.split(/\s+/).filter(s => s.length > 0);
+
+      const points = coordPairs.map(pair => {
+        const parts = pair.split(',');
+        return {
+          lon: parseFloat(parts[0]),
+          lat: parseFloat(parts[1]),
+          ele: parseFloat(parts[2] || '0'),
+          time: null
+        };
+      });
+
+      if (points.length === 0) {
+        return {
+          success: false,
+          error: 'No coordinates found in KML file'
+        };
+      }
+
+      return analyzeTrackPoints(points);
+    }
+
+    return {
+      success: false,
+      error: 'No track data found in KML file (no gx:Track or coordinates elements)'
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to parse KML: ${error.message}`
     };
   }
 }
@@ -395,6 +477,8 @@ function formatAnalytics(analysis, lang = 'en') {
 
 module.exports = {
   analyzeGPX,
+  analyzeKML,
+  analyzeTrackPoints,
   formatAnalytics,
   analyzeTimestamps,
   calculateDistance

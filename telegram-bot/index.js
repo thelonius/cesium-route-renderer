@@ -3,7 +3,7 @@ const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
-const { analyzeGPX, formatAnalytics } = require('./gpxAnalyzer');
+const { analyzeGPX, analyzeKML, formatAnalytics } = require('./gpxAnalyzer');
 const { getUserLanguage, setUserLanguage, t, formatMessage } = require('./i18n');
 
 const BOT_TOKEN = '8418496404:AAGLdVNW_Pla_u1bMVfFia-s9klwRsgYZhs';
@@ -300,12 +300,12 @@ bot.on('document', async (msg) => {
   const fileName = doc.file_name.toLowerCase();
   const isGPX = fileName.endsWith('.gpx');
   const isKML = fileName.endsWith('.kml');
-  
+
   if (!isGPX && !isKML) {
     bot.sendMessage(chatId, t(chatId, 'errors.notGpx', {}, userLang));
     return;
   }
-  
+
   const fileType = isKML ? 'KML' : 'GPX';
   console.log(`Processing ${fileType} file: ${fileName}`);
 
@@ -327,11 +327,11 @@ bot.on('document', async (msg) => {
     fs.mkdirSync(path.dirname(tempPath), { recursive: true });
     fs.writeFileSync(tempPath, fileBuffer);
 
-    // Analyze file and show analytics (GPX only for now, KML analysis not yet implemented)
+    // Analyze file and show analytics
     await bot.sendMessage(chatId, t(chatId, 'processing.analyzing', {}, userLang));
 
     const fileContent = fileBuffer.toString('utf8');
-    const analysis = isGPX ? analyzeGPX(fileContent) : { success: false, error: 'KML analytics not yet implemented' };
+    const analysis = isGPX ? analyzeGPX(fileContent) : analyzeKML(fileContent);
 
     if (analysis.success) {
       // Send analytics to user (with language support)
