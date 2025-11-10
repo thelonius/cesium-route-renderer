@@ -155,24 +155,23 @@ async function recordRoute() {
 
   // Wait for animation ready
   console.log('Waiting for animation to be ready (terrain + imagery loading)...');
-  await page.waitForTimeout(8000); // 8 second buffer for initial load
-
-  console.log('Starting FFmpeg screen capture...');
-
-  // Start FFmpeg to capture the browser window
-  // We'll use x11grab to capture from DISPLAY :99
+  
+  // Start FFmpeg BEFORE waiting, so it captures the loading process
   const outputPath = '/output/route-video.mp4';
+  
+  console.log('Starting FFmpeg screen capture...');
   
   const ffmpegArgs = [
     '-f', 'x11grab',
     '-video_size', `${RECORD_WIDTH}x${RECORD_HEIGHT}`,
     '-framerate', String(RECORD_FPS),
-    '-i', ':99+0,0', // DISPLAY :99, offset 0,0
+    '-i', ':99.0', // DISPLAY :99, screen 0 (full screen, not offset)
     '-t', String(RECORD_DURATION), // Duration
     '-c:v', 'libx264',
     '-preset', 'faster',
     '-crf', '23',
     '-pix_fmt', 'yuv420p',
+    '-vf', `crop=${RECORD_WIDTH}:${RECORD_HEIGHT}:0:0`, // Crop to exact size from top-left
     '-y', // Overwrite output
     outputPath
   ];

@@ -4,8 +4,8 @@ set -e
 LOG_FILE="/output/recorder.log"
 
 echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Starting Xvfb with GLX support and optimizations..." | tee -a "$LOG_FILE"
-# Increase color depth to 24-bit and add performance flags
-Xvfb :99 -screen 0 1080x1920x24 -ac +extension GLX +render -noreset -nolisten tcp -dpi 96 &
+# Set Xvfb to match recording resolution: 720x1280
+Xvfb :99 -screen 0 720x1280x24 -ac +extension GLX +render -noreset -nolisten tcp -dpi 96 &
 XVFB_PID=$!
 export DISPLAY=:99
 
