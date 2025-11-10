@@ -93,7 +93,7 @@ async function recordRoute() {
   const server = await startServer();
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: false, // Changed to false - need visible window for X11 capture
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -110,7 +110,8 @@ async function recordRoute() {
       '--js-flags=--max-old-space-size=4096',
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
       '--force-device-scale-factor=1',
-      '--start-maximized'
+      '--start-fullscreen', // Changed from maximized to fullscreen
+      '--kiosk' // Kiosk mode for proper fullscreen
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
