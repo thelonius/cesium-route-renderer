@@ -133,11 +133,16 @@ async function recordRoute() {
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   console.log(`Loading Cesium app: ${appUrl}`);
-  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.goto(appUrl, { waitUntil: 'networkidle2', timeout: 60000 });
 
   // Wait for Cesium to be ready
   console.log('Waiting for animation to be ready...');
   await page.waitForTimeout(8000);
+  
+  // Verify page is responsive
+  console.log('Checking if page is ready for screenshots...');
+  const title = await page.title();
+  console.log(`Page title: ${title}`);
 
   console.log('Starting screenshot capture...');
   const frameInterval = 1000 / RECORD_FPS; // ms between frames
@@ -147,30 +152,42 @@ async function recordRoute() {
   const startTime = Date.now();
 
   while (frameCount < totalFrames) {
-    const targetTime = startTime + (frameCount * frameInterval);
-    const now = Date.now();
-    
-    // Wait if we're ahead of schedule
-    if (now < targetTime) {
-      await new Promise(resolve => setTimeout(resolve, targetTime - now));
-    }
+    try {
+      const targetTime = startTime + (frameCount * frameInterval);
+      const now = Date.now();
+      
+      // Wait if we're ahead of schedule
+      if (now < targetTime) {
+        await new Promise(resolve => setTimeout(resolve, targetTime - now));
+      }
 
-    // Capture screenshot
-    const screenshot = await page.screenshot({ 
-      type: 'jpeg',
-      quality: 85,
-      encoding: 'binary'
-    });
-    
-    // Save frame
-    const framePath = path.join(FRAMES_DIR, `frame-${String(frameCount).padStart(6, '0')}.jpg`);
-    fs.writeFileSync(framePath, screenshot);
-    
-    frameCount++;
-    
-    if (frameCount % 30 === 0) {
-      const progress = ((frameCount / totalFrames) * 100).toFixed(1);
-      console.log(`📹 Captured ${frameCount}/${totalFrames} frames (${progress}%)`);
+      // Capture screenshot with timeout
+      const screenshot = await Promise.race([
+        page.screenshot({ 
+          type: 'jpeg',
+          quality: 85,
+          encoding: 'binary'
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Screenshot timeout')), 5000)
+        )
+      ]);
+      
+      // Save frame
+      const framePath = path.join(FRAMES_DIR, `frame-${String(frameCount).padStart(6, '0')}.jpg`);
+      fs.writeFileSync(framePath, screenshot);
+      
+      frameCount++;
+      
+      if (frameCount === 1 || frameCount % 10 === 0) {
+        const progress = ((frameCount / totalFrames) * 100).toFixed(1);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`📹 Captured ${frameCount}/${totalFrames} frames (${progress}%) - ${elapsed}s elapsed`);
+      }
+    } catch (err) {
+      console.error(`❌ Error capturing frame ${frameCount}:`, err.message);
+      // Try to continue with next frame
+      frameCount++;
     }
   }
 
