@@ -210,11 +210,10 @@ async function recordRoute() {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--enable-webgl',
-      '--use-gl=swiftshader', // Use SwiftShader software GL in containers for stability
-      '--enable-unsafe-swiftshader', // Opt into SwiftShader (lower security; OK for trusted content)
+      '--enable-gpu-rasterization', // Enable GPU acceleration for better performance
+      '--enable-zero-copy', // Reduce memory copies between CPU and GPU
       '--ignore-gpu-blacklist',
-      '--disable-gpu', // Disable GPU to force software rendering
-      '--disable-gpu-vsync', // Disable vsync for unlimited FPS
+      '--disable-gpu-vsync', // Disable vsync for smoother frame pacing
       '--disable-frame-rate-limit', // Remove frame rate limit
       '--disable-background-timer-throttling', // Prevent timer throttling
       '--disable-backgrounding-occluded-windows',
@@ -329,10 +328,13 @@ async function recordRoute() {
       height: RECORD_HEIGHT,
     },
     aspectRatio: '9:16',
-    videoCrf: 28, // Higher CRF = smaller file (18=high quality, 28=medium, 32=lower quality)
+    videoCrf: 23, // Lower CRF = better quality (18=high, 23=good, 28=medium) - improved from 28
     videoCodec: 'libx264',
-    videoPreset: 'medium', // Better compression than ultrafast
+    videoPreset: 'ultrafast', // Changed from 'medium' to 'ultrafast' for real-time encoding performance
     videoBitrate: '2500k', // Reduced from 5000k to keep under 50MB for Telegram
+    autopad: {
+      color: 'black' // Ensure proper padding if aspect ratio doesn't match exactly
+    }
   });
 
   let recordingStarted = false;

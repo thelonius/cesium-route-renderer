@@ -45,7 +45,7 @@ export default function useViewerInit(
     if (isDocker) {
       viewer.scene.requestRenderMode = false;
       viewer.scene.maximumRenderTimeChange = 0;
-      
+
       // Performance optimizations for Docker mode
       viewer.scene.globe.enableLighting = false; // Disable lighting calculations
       viewer.scene.fog.enabled = false; // Disable fog
@@ -54,7 +54,7 @@ export default function useViewerInit(
       viewer.scene.moon.show = false; // Hide moon
       viewer.scene.skyBox.show = false; // Hide skybox
       viewer.scene.backgroundColor = Cesium.Color.BLACK; // Simple black background
-      
+
       // Reduce terrain detail for better performance
       viewer.scene.globe.maximumScreenSpaceError = 8; // Default is 2, higher = less detail, better performance
       viewer.scene.globe.tileCacheSize = 100; // Default is 100, reduce memory usage
@@ -72,7 +72,7 @@ export default function useViewerInit(
           requestVertexNormals: false
         });
         viewer.terrainProvider = terrainProvider;
-        
+
         // Further optimize terrain in Docker mode
         if (isDocker) {
           viewer.scene.globe.preloadAncestors = false; // Don't preload lower-res tiles
