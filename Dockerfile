@@ -27,10 +27,11 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 
 # Install minimal HTTP server and recording dependencies
-RUN npm install --no-save puppeteer@19.0.0 puppeteer-screen-recorder@3.0.6 serve-handler
+RUN npm install --no-save puppeteer@19.0.0 serve-handler
 
-# Copy recording script
+# Copy recording scripts
 COPY docker/record-puppeteer.js ./
+COPY docker/record-ffmpeg.js ./
 COPY docker/run-with-xvfb.sh ./
 RUN chmod +x run-with-xvfb.sh
 
