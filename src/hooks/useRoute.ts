@@ -33,12 +33,12 @@ export function useRoute(routeUrl: string | null): UseRouteResult {
         // Auto-detect file format from extension
         const isKML = routeUrl.toLowerCase().endsWith('.kml');
         const fileType = isKML ? 'KML' : 'GPX';
-        
+
         console.log(`Loading ${fileType} file: ${routeUrl}`);
-        
+
         // Parse based on file type
         const points = isKML ? await parseKML(routeUrl) : await parseGPX(routeUrl);
-        
+
         if (points.length === 0) {
           throw new Error(`No track points found in ${fileType} file`);
         }
@@ -46,7 +46,7 @@ export function useRoute(routeUrl: string | null): UseRouteResult {
         const { startTime, stopTime, trackPointsWithTime } = calculateTimestamps(points);
         setTrackPoints(trackPointsWithTime);
         setTimeRange({ startTime, stopTime });
-        
+
         console.log(`Successfully loaded ${trackPointsWithTime.length} points from ${fileType}`);
       } catch (error) {
         setError(error instanceof Error ? error.message : 'Failed to load route file');

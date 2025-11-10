@@ -78,11 +78,11 @@ export async function parseKML(url: string): Promise<TrackPoint[]> {
 
 function parseGxTrack(gxTrack: Element): TrackPoint[] {
   const trackPoints: TrackPoint[] = [];
-  
+
   // Get timestamps
   const whenElements = gxTrack.getElementsByTagName('when');
   const timestamps = Array.from(whenElements).map(el => el.textContent || '');
-  
+
   // Get coordinates (gx:coord format: lon lat ele)
   const coordElements = gxTrack.getElementsByTagName('gx:coord');
   const coords = Array.from(coordElements).map(el => {
@@ -113,7 +113,7 @@ function parseGxTrack(gxTrack: Element): TrackPoint[] {
 
 function parseLineString(lineString: Element): TrackPoint[] {
   const trackPoints: TrackPoint[] = [];
-  
+
   // Get coordinates element
   const coordsElement = lineString.getElementsByTagName('coordinates')[0];
   if (!coordsElement || !coordsElement.textContent) {
