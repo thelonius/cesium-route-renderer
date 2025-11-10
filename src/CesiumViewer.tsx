@@ -5,6 +5,7 @@ import useViewerInit from './hooks/useViewerInit';
 import { useRoute } from './hooks/useRoute';
 import useCesiumAnimation from './hooks/useCesiumAnimation';
 import useCesiumCamera from './hooks/useCesiumCamera';
+import FpsCounter from './components/FpsCounter';
 
 export default function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -151,6 +152,9 @@ export default function CesiumViewer() {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
+      
+      {/* FPS Counter for debugging */}
+      <FpsCounter viewer={viewerRef.current} />
 
       {/* Welcome Screen - Show only in web mode when no route selected */}
       {!isDockerMode && !routeValidated && (
