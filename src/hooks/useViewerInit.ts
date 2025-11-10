@@ -25,26 +25,34 @@ export default function useViewerInit(
       sceneModePicker: false,
       shouldAnimate: true,
       requestRenderMode: !isDocker,
-      maximumRenderTimeChange: isDocker ? 0 : Infinity
+      maximumRenderTimeChange: isDocker ? 0 : Infinity,
+      scene3DOnly: isDocker  // Disable 2D/Columbus modes in Docker for better performance
     });
 
-    // Disable FXAA for better performance in headless mode
-    if (isDocker && viewer.scene.postProcessStages.fxaa) {
-      viewer.scene.postProcessStages.fxaa.enabled = false;
-    }
-
-    // Hide Cesium credits/attribution in Docker mode
+    // Performance optimizations for Docker mode
     if (isDocker) {
+      // Disable FXAA for better performance
+      if (viewer.scene.postProcessStages.fxaa) {
+        viewer.scene.postProcessStages.fxaa.enabled = false;
+      }
+
+      // Disable visual effects to improve rendering performance
+      viewer.scene.fog.enabled = false;
+      viewer.scene.skyAtmosphere.show = false;
+      viewer.scene.sun.show = false;
+      viewer.scene.moon.show = false;
+      viewer.shadows = false;
+      viewer.terrainShadows = Cesium.ShadowMode.DISABLED;
+
+      // Force continuous rendering
+      viewer.scene.requestRenderMode = false;
+      viewer.scene.maximumRenderTimeChange = 0;
+
+      // Hide Cesium credits/attribution
       const creditContainer = viewer.bottomContainer as HTMLElement;
       if (creditContainer) {
         creditContainer.style.display = 'none';
       }
-    }
-
-    // Force continuous rendering in Docker
-    if (isDocker) {
-      viewer.scene.requestRenderMode = false;
-      viewer.scene.maximumRenderTimeChange = 0;
     }
 
     if (viewerRef) {
