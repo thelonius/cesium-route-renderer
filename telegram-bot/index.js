@@ -377,10 +377,10 @@ bot.on('document', async (msg) => {
 
       // Calculate adaptive animation speed (same logic as server)
       const MAX_VIDEO_MINUTES = 5;
-      let animationSpeed = 100;
+      let animationSpeed = 50; // Reduced from 100x to 50x for better FPS
       const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
 
-      if (requiredSpeed > 100) {
+      if (requiredSpeed > 50) {
         animationSpeed = requiredSpeed;
       }
 

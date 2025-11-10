@@ -61,7 +61,7 @@ export default function CesiumViewer() {
   const animationSpeed = React.useMemo(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const speedParam = urlParams.get('animationSpeed');
-    return speedParam ? parseInt(speedParam, 10) : 100; // Default to 100x if not specified
+    return speedParam ? parseInt(speedParam, 10) : 50; // Default to 50x for better FPS (reduced from 100x)
   }, []);
 
   // Setup animation - called at top level
@@ -152,7 +152,7 @@ export default function CesiumViewer() {
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
-      
+
       {/* FPS Counter for debugging */}
       <FpsCounter viewer={viewerRef.current} />
 

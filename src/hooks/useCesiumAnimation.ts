@@ -7,7 +7,7 @@ interface UseCesiumAnimationProps {
   trackPoints: TrackPoint[];
   startTime: Cesium.JulianDate | undefined;
   stopTime: Cesium.JulianDate | undefined;
-  animationSpeed?: number; // Optional animation speed multiplier (default 100x)
+  animationSpeed?: number; // Optional animation speed multiplier (default 50x)
 }
 
 const CAMERA_BASE_BACK = 6240; // Increased by 2.6x (was 2400)
@@ -21,7 +21,7 @@ export default function useCesiumAnimation({
   trackPoints,
   startTime,
   stopTime,
-  animationSpeed = 100 // Default to 100x if not provided
+  animationSpeed = 50 // Default to 50x for better FPS (reduced from 100x)
 }: UseCesiumAnimationProps) {
 
   const trailPositionsRef = useRef<Cesium.Cartesian3[]>([]);
@@ -97,16 +97,14 @@ export default function useCesiumAnimation({
     // Use original track points without filtering to avoid interpolation issues
     const filteredPoints = trackPoints;
 
-    // Create position property with Lagrange interpolation for smooth curves
+    // Create position property with linear interpolation
     const hikerPositions = new Cesium.SampledPositionProperty();
 
-    // Use Lagrange interpolation for smooth animation between sparse track points
-    // This creates curved paths between waypoints, reducing jerkiness from 6-second gaps
-    // LinearApproximation (degree 1) caused jerky movement with sparse data
-    // Hermite caused crashes when enabled with all track points (Nov 7, 2025)
+    // Use linear interpolation for straight-line movement between track points
+    // Note: Hermite caused crashes when enabled with all track points (Nov 7, 2025)
     hikerPositions.setInterpolationOptions({
-      interpolationDegree: 5, // Higher degree for smoother curves between sparse points
-      interpolationAlgorithm: Cesium.LagrangePolynomialApproximation
+      interpolationDegree: 1,
+      interpolationAlgorithm: Cesium.LinearApproximation
     });
 
     filteredPoints.forEach(point => {
@@ -126,7 +124,7 @@ export default function useCesiumAnimation({
         color: Cesium.Color.RED,
         outlineColor: Cesium.Color.WHITE,
         outlineWidth: 2,
-        heightReference: Cesium.HeightReference.NONE, // Changed from CLAMP_TO_GROUND for better FPS
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       },
       label: {
@@ -143,7 +141,7 @@ export default function useCesiumAnimation({
         outlineWidth: 2,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
         pixelOffset: new Cesium.Cartesian2(0, -20),
-        heightReference: Cesium.HeightReference.NONE // Changed from CLAMP_TO_GROUND for better FPS
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
       }
     });
 
