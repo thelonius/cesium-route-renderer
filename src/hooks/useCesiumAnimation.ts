@@ -13,8 +13,8 @@ interface UseCesiumAnimationProps {
 const CAMERA_BASE_BACK = 6240; // Increased by 2.6x (was 2400)
 const CAMERA_BASE_HEIGHT = 3120; // Increased by 2.6x (was 1200)
 const CAMERA_SMOOTH_ALPHA = 0.15;
-const ADD_INTERVAL_SECONDS = 0.5;
-const MAX_TRAIL_POINTS = 500;
+const ADD_INTERVAL_SECONDS = 1.0; // Increased from 0.5 for better performance
+const MAX_TRAIL_POINTS = 200; // Reduced from 500 for better performance
 
 export default function useCesiumAnimation({
   viewer,
@@ -168,7 +168,7 @@ export default function useCesiumAnimation({
             outlineWidth: 1,
             outlineColor: Cesium.Color.BLUE.withAlpha(0.3)
           }),
-          clampToGround: true
+          clampToGround: false // Changed from true for better performance (uses GPS elevation data)
         }
       });
     }
@@ -180,7 +180,7 @@ export default function useCesiumAnimation({
         width: 5,
         material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
         depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
-        clampToGround: true,
+        clampToGround: false, // Changed from true for better performance (uses GPS elevation data)
         show: true
       }
     });

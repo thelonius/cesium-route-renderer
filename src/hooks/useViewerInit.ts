@@ -45,13 +45,26 @@ export default function useViewerInit(
     if (isDocker) {
       viewer.scene.requestRenderMode = false;
       viewer.scene.maximumRenderTimeChange = 0;
+      
+      // Performance optimizations for Docker mode
+      viewer.scene.globe.enableLighting = false; // Disable lighting calculations
+      viewer.scene.fog.enabled = false; // Disable fog
+      viewer.scene.skyAtmosphere.show = false; // Disable atmosphere rendering
+      viewer.scene.sun.show = false; // Hide sun
+      viewer.scene.moon.show = false; // Hide moon
+      viewer.scene.skyBox.show = false; // Hide skybox
+      viewer.scene.backgroundColor = Cesium.Color.BLACK; // Simple black background
+      
+      // Reduce terrain detail for better performance
+      viewer.scene.globe.maximumScreenSpaceError = 8; // Default is 2, higher = less detail, better performance
+      viewer.scene.globe.tileCacheSize = 100; // Default is 100, reduce memory usage
     }
 
     if (viewerRef) {
       viewerRef.current = viewer;
     }
 
-    // Load terrain
+    // Load terrain with lower detail in Docker mode
     (async () => {
       try {
         const terrainProvider = await Cesium.createWorldTerrainAsync({
@@ -59,6 +72,12 @@ export default function useViewerInit(
           requestVertexNormals: false
         });
         viewer.terrainProvider = terrainProvider;
+        
+        // Further optimize terrain in Docker mode
+        if (isDocker) {
+          viewer.scene.globe.preloadAncestors = false; // Don't preload lower-res tiles
+          viewer.scene.globe.preloadSiblings = false; // Don't preload adjacent tiles
+        }
       } catch (error) {
         console.warn('Could not load terrain:', error);
       }
