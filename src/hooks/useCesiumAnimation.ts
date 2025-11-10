@@ -10,8 +10,8 @@ interface UseCesiumAnimationProps {
   animationSpeed?: number; // Optional animation speed multiplier (default 100x)
 }
 
-const CAMERA_BASE_BACK = 2400;
-const CAMERA_BASE_HEIGHT = 1200;
+const CAMERA_BASE_BACK = 6240; // Increased by 2.6x (was 2400)
+const CAMERA_BASE_HEIGHT = 3120; // Increased by 2.6x (was 1200)
 const CAMERA_SMOOTH_ALPHA = 0.15;
 const ADD_INTERVAL_SECONDS = 0.5;
 const MAX_TRAIL_POINTS = 500;
@@ -261,8 +261,8 @@ export default function useCesiumAnimation({
           // ignore
         }
 
-        const dynamicHeight = Math.max(CAMERA_BASE_HEIGHT, terrainHeight * 0.2 + 800);
-        const dynamicBack = Math.max(1200, Math.min(8000, CAMERA_BASE_BACK + terrainHeight * 0.05));
+        const dynamicHeight = Math.max(CAMERA_BASE_HEIGHT, terrainHeight * 0.2 + 2080); // 2.6x of 800
+        const dynamicBack = Math.max(3120, Math.min(20800, CAMERA_BASE_BACK + terrainHeight * 0.05)); // Min/max scaled by 2.6x
 
         smoothedBackRef.current = smoothedBackRef.current * (1 - CAMERA_SMOOTH_ALPHA) + dynamicBack * CAMERA_SMOOTH_ALPHA;
         smoothedHeightRef.current = smoothedHeightRef.current * (1 - CAMERA_SMOOTH_ALPHA) + dynamicHeight * CAMERA_SMOOTH_ALPHA;
@@ -273,7 +273,7 @@ export default function useCesiumAnimation({
         try {
           viewer.camera.position = cameraPosition;
           if (position) {
-            viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(800, dynamicHeight * 0.5)));
+            viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(2080, dynamicHeight * 0.5))); // 2.6x of 800
           }
         } catch (e) {
           console.warn('Camera update failed:', e);
