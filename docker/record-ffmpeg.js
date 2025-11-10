@@ -67,7 +67,7 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = parseInt(process.env.RECORD_FPS || '15'); // 15 FPS for terrain rendering
+const RECORD_FPS = parseInt(process.env.RECORD_FPS || '10'); // Reduced to 10 FPS for stable capture with terrain
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 
@@ -169,10 +169,11 @@ async function recordRoute() {
     '-i', ':99.0', // DISPLAY :99, screen 0 (full screen, not offset)
     '-t', String(RECORD_DURATION), // Duration
     '-c:v', 'libx264',
-    '-preset', 'faster',
-    '-crf', '23',
+    '-preset', 'ultrafast', // Changed from 'faster' to 'ultrafast' for minimal encoding overhead
+    '-crf', '28', // Increased from 23 to 28 for faster encoding (lower quality but smoother capture)
     '-pix_fmt', 'yuv420p',
     '-vf', `crop=${RECORD_WIDTH}:${RECORD_HEIGHT}:0:0`, // Crop to exact size from top-left
+    '-threads', '4', // Limit threads for encoding
     '-y', // Overwrite output
     outputPath
   ];
