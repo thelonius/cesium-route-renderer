@@ -55,67 +55,84 @@ bot.onText(/\/language/, (msg) => {
 bot.onText(/\/status/, async (msg) => {
   const chatId = msg.chat.id;
   const userLang = msg.from.language_code || 'en';
-  const render = activeRenders.get(chatId);
+  const renders = activeRenders.get(chatId);
 
-  if (!render) {
+  if (!renders || (Array.isArray(renders) ? renders.length === 0 : !renders)) {
     bot.sendMessage(chatId, t(chatId, 'status.noActive', {}, userLang));
     return;
   }
 
-  let statusMessage = `📊 **Output ID:** \`${render.outputId || 'pending'}\`\n`;
-  statusMessage += `⏱️ **Status:** ${render.status}\n\n`;
+  // Handle both old format (single render) and new format (array of renders)
+  const renderList = Array.isArray(renders) ? renders : [renders];
 
-  // Try to fetch actual progress from logs
-  if (render.outputId) {
-    try {
-      const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
-      const response = await axios.get(logsUrl, { timeout: 5000 });
-      const logs = response.data;
-
-      // Parse progress from logs
-      if (logs.includes('Starting Docker container')) {
-        statusMessage += '🐳 Docker container started\n';
-      }
-      if (logs.includes('Starting Xvfb')) {
-        statusMessage += '🖥️ Virtual display initialized\n';
-      }
-      if (logs.includes('Running recording script')) {
-        statusMessage += '📝 Recording script running\n';
-      }
-      if (logs.includes('Loading Cesium app')) {
-        statusMessage += '🌍 Cesium app loading\n';
-      }
-      if (logs.includes('Starting route recording')) {
-        statusMessage += '📹 Recording animation...\n';
-      }
-
-      // Check for recording progress
-      const recordingMatch = logs.match(/Recorded frame (\d+)\/(\d+)/);
-      if (recordingMatch) {
-        const current = parseInt(recordingMatch[1]);
-        const total = parseInt(recordingMatch[2]);
-        const percent = Math.round((current / total) * 100);
-        statusMessage += `📹 **Recording:** ${percent}% (${current}/${total} frames)\n`;
-      }
-
-      if (logs.includes('Starting video encoding')) {
-        statusMessage += '🎬 Encoding video...\n';
-      }
-      if (logs.includes('Video encoding completed')) {
-        statusMessage += '✅ Encoding complete!\n';
-      }
-
-      // Show last log line for context
-      const logLines = logs.trim().split('\n');
-      const lastLine = logLines[logLines.length - 1];
-      if (lastLine) {
-        statusMessage += `\n📋 **Last update:**\n\`${lastLine.substring(0, 200)}\``;
-      }
-    } catch (error) {
-      // If we can't fetch logs, just show basic status
-      console.error('Error fetching logs for status:', error.message);
-      statusMessage += '⏳ Logs not available yet...';
+  // Filter out completed renders older than 1 hour
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  const activeRenderList = renderList.filter(r => {
+    if (r.status === 'completed' && r.completedAt && r.completedAt < oneHourAgo) {
+      return false;
     }
+    return true;
+  });
+
+  if (activeRenderList.length === 0) {
+    bot.sendMessage(chatId, t(chatId, 'status.noActive', {}, userLang));
+    return;
+  }
+
+  // Build status message for all active renders
+  let statusMessage = userLang === 'ru'
+    ? `📊 **Активные рендеры:** ${activeRenderList.length}\n\n`
+    : `📊 **Active renders:** ${activeRenderList.length}\n\n`;
+
+  for (let i = 0; i < activeRenderList.length; i++) {
+    const render = activeRenderList[i];
+    const renderNum = activeRenderList.length > 1 ? `#${i + 1} ` : '';
+
+    statusMessage += `${renderNum}**ID:** \`${render.outputId || 'pending'}\`\n`;
+    statusMessage += `⏱️ **Status:** ${render.status}\n`;
+
+    // Try to fetch actual progress from logs
+    if (render.outputId) {
+      try {
+        const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
+        const response = await axios.get(logsUrl, { timeout: 5000 });
+        const logs = response.data;
+
+        // Parse progress from logs
+        const progress = [];
+        if (logs.includes('Starting Docker container')) progress.push('🐳 Docker');
+        if (logs.includes('Starting Xvfb')) progress.push('🖥️ Xvfb');
+        if (logs.includes('Running recording script')) progress.push('📝 Script');
+        if (logs.includes('Loading Cesium app')) progress.push('🌍 Cesium');
+        if (logs.includes('Starting route recording')) progress.push('📹 Recording');
+        if (logs.includes('Starting video encoding')) progress.push('🎬 Encoding');
+        if (logs.includes('Video encoding completed')) progress.push('✅ Done');
+
+        if (progress.length > 0) {
+          statusMessage += `Progress: ${progress.join(' → ')}\n`;
+        }
+
+        // Check for recording progress
+        const recordingMatch = logs.match(/Recorded frame (\d+)\/(\d+)/);
+        if (recordingMatch) {
+          const current = parseInt(recordingMatch[1]);
+          const total = parseInt(recordingMatch[2]);
+          const percent = Math.round((current / total) * 100);
+          statusMessage += `📹 ${percent}% (${current}/${total} frames)\n`;
+        }
+      } catch (error) {
+        statusMessage += '⏳ Starting...\n';
+      }
+    }
+
+    statusMessage += '\n';
+  }
+
+  // Add hint for multiple renders
+  if (activeRenderList.length > 1) {
+    statusMessage += userLang === 'ru'
+      ? '💡 Используйте /logs для просмотра логов последнего рендера'
+      : '💡 Use /logs to view detailed logs of the latest render';
   }
 
   bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
@@ -125,9 +142,18 @@ bot.onText(/\/status/, async (msg) => {
 bot.onText(/\/logs/, async (msg) => {
   const chatId = msg.chat.id;
   const userLang = msg.from.language_code || 'en';
-  const render = activeRenders.get(chatId);
+  const renders = activeRenders.get(chatId);
 
-  if (!render || !render.outputId) {
+  if (!renders) {
+    bot.sendMessage(chatId, t(chatId, 'errors.noLogs', {}, userLang));
+    return;
+  }
+
+  // Handle both old format (single render) and new format (array of renders)
+  const renderList = Array.isArray(renders) ? renders : [renders];
+  const latestRender = renderList[renderList.length - 1];
+
+  if (!latestRender || !latestRender.outputId) {
     bot.sendMessage(chatId, t(chatId, 'errors.noLogs', {}, userLang));
     return;
   }
@@ -135,7 +161,7 @@ bot.onText(/\/logs/, async (msg) => {
   try {
     await bot.sendMessage(chatId, t(chatId, 'logs.fetching', {}, userLang));
 
-    const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
+    const logsUrl = `${API_SERVER}/logs/${latestRender.outputId}/text`;
     const response = await axios.get(logsUrl);
 
     const logs = response.data;
@@ -145,12 +171,12 @@ bot.onText(/\/logs/, async (msg) => {
       await bot.sendMessage(chatId, `\`\`\`\n${logs}\n\`\`\``, { parse_mode: 'Markdown' });
     } else {
       // Split into chunks or send as file
-      const tempLogFile = path.join(__dirname, 'temp', `logs-${render.outputId}.txt`);
+      const tempLogFile = path.join(__dirname, 'temp', `logs-${latestRender.outputId}.txt`);
       fs.mkdirSync(path.dirname(tempLogFile), { recursive: true });
       fs.writeFileSync(tempLogFile, logs);
 
       await bot.sendDocument(chatId, tempLogFile, {}, {
-        filename: `logs-${render.outputId}.txt`,
+        filename: `logs-${latestRender.outputId}.txt`,
         contentType: 'text/plain'
       });
 
@@ -418,12 +444,16 @@ bot.on('document', async (msg) => {
       }
     );
 
-    // Track this render
-    activeRenders.set(chatId, {
+    // Track this render (add to array to support multiple concurrent renders)
+    const existingRenders = activeRenders.get(chatId) || [];
+    const rendersList = Array.isArray(existingRenders) ? existingRenders : [existingRenders];
+    rendersList.push({
       status: 'rendering',
       outputId: outputId,
-      fileName: doc.file_name
+      fileName: doc.file_name,
+      startedAt: Date.now()
     });
+    activeRenders.set(chatId, rendersList);
 
     // Start progress monitoring (sends updates based on log content)
     let lastLogLength = 0;
@@ -530,13 +560,18 @@ bot.on('document', async (msg) => {
     // Update status with server's outputId if different, or keep our generated one
     const finalOutputId = (result && result.outputId) ? result.outputId : outputId;
 
-    // Store outputId if available (for logs access even on failure)
-    activeRenders.set(chatId, {
-      status: result && result.success ? 'completed' : 'failed',
-      outputId: finalOutputId,
-      fileName: doc.file_name,
-      videoPath: result ? result.videoUrl : null
-    });
+    // Update render status in the array
+    const updatedRenders = activeRenders.get(chatId) || [];
+    const renderIndex = updatedRenders.findIndex(r => r.outputId === finalOutputId);
+    if (renderIndex >= 0) {
+      updatedRenders[renderIndex] = {
+        ...updatedRenders[renderIndex],
+        status: result && result.success ? 'completed' : 'failed',
+        videoPath: result ? result.videoUrl : null,
+        completedAt: Date.now()
+      };
+      activeRenders.set(chatId, updatedRenders);
+    }
 
     // Check for non-2xx status codes
     if (renderResponse.status !== 200 && renderResponse.status !== 201) {

@@ -302,8 +302,8 @@ function analyzeKML(kmlContent) {
       const points = gxCoordMatches.map((coordMatch, index) => {
         const coordText = coordMatch.replace(/<\/?gx:coord>/g, '').trim();
         const parts = coordText.split(/\s+/);
-        const whenText = whenMatches && whenMatches[index] 
-          ? whenMatches[index].replace(/<\/?when>/g, '') 
+        const whenText = whenMatches && whenMatches[index]
+          ? whenMatches[index].replace(/<\/?when>/g, '')
           : null;
 
         return {
