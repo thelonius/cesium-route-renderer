@@ -273,7 +273,15 @@ export default function useCesiumAnimation({
         try {
           viewer.camera.position = cameraPosition;
           if (position) {
-            viewer.camera.lookAt(position, new Cesium.Cartesian3(0, 0, Math.max(2080, dynamicHeight * 0.5))); // 2.6x of 800
+            // Look at a point ahead and below the target for better terrain visibility
+            // Offset (x, y, z) where negative x looks behind the target direction
+            // This creates a tilted view looking forward and down at the terrain
+            const lookAtOffset = new Cesium.Cartesian3(
+              -1500, // Look behind the hiker
+              0,     // No side offset
+              1200   // Look above ground level
+            );
+            viewer.camera.lookAt(position, lookAtOffset);
           }
         } catch (e) {
           console.warn('Camera update failed:', e);
