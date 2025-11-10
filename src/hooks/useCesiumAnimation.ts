@@ -97,14 +97,16 @@ export default function useCesiumAnimation({
     // Use original track points without filtering to avoid interpolation issues
     const filteredPoints = trackPoints;
 
-    // Create position property with linear interpolation (most stable)
+    // Create position property with Lagrange interpolation for smooth curves
     const hikerPositions = new Cesium.SampledPositionProperty();
 
-    // Use linear interpolation for stability
+    // Use Lagrange interpolation for smooth animation between sparse track points
+    // This creates curved paths between waypoints, reducing jerkiness from 6-second gaps
+    // LinearApproximation (degree 1) caused jerky movement with sparse data
     // Hermite caused crashes when enabled with all track points (Nov 7, 2025)
     hikerPositions.setInterpolationOptions({
-      interpolationDegree: 1,
-      interpolationAlgorithm: Cesium.LinearApproximation
+      interpolationDegree: 5, // Higher degree for smoother curves between sparse points
+      interpolationAlgorithm: Cesium.LagrangePolynomialApproximation
     });
 
     filteredPoints.forEach(point => {
