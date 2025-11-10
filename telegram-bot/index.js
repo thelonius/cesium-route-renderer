@@ -586,13 +586,8 @@ bot.on('document', async (msg) => {
       throw new Error('Render failed: ' + details);
     }
 
-    // Update status
-    activeRenders.set(chatId, {
-      status: 'completed',
-      outputId: result.outputId,
-      fileName: doc.file_name,
-      videoPath: result.videoUrl
-    });
+    // Status was already updated above in the array, no need to overwrite here
+    // (Removed the overwrite that was breaking multiple renders support)
 
     await bot.sendMessage(chatId, t(chatId, 'processing.complete', {
       size: (result.fileSize / 1024 / 1024).toFixed(2)
@@ -676,13 +671,15 @@ bot.on('document', async (msg) => {
 
     // Cleanup
     fs.unlinkSync(tempPath);
-    activeRenders.delete(chatId);
+    // Don't delete activeRenders here - let the 1-hour filter in /status handle cleanup
 
   } catch (error) {
     console.error('Error processing GPX:', error);
 
-    // Get the render info if available
-    const render = activeRenders.get(chatId);
+    // Get the render info if available - handle both array and single render
+    const renders = activeRenders.get(chatId);
+    const renderList = Array.isArray(renders) ? renders : (renders ? [renders] : []);
+    const render = renderList[renderList.length - 1]; // Get the latest render
 
     // Prepare a safe short message for Telegram (avoid sending massive error bodies)
     const MAX_TELEGRAM_TEXT = 3500;
@@ -756,7 +753,19 @@ bot.on('document', async (msg) => {
       console.error('Failed to notify user via Telegram:', sendErr);
     }
 
-    activeRenders.delete(chatId);
+    // Mark the failed render in the array instead of deleting all renders
+    if (render && render.outputId) {
+      const updatedRenders = activeRenders.get(chatId) || [];
+      const renderIndex = updatedRenders.findIndex(r => r.outputId === render.outputId);
+      if (renderIndex >= 0) {
+        updatedRenders[renderIndex] = {
+          ...updatedRenders[renderIndex],
+          status: 'failed',
+          completedAt: Date.now()
+        };
+        activeRenders.set(chatId, updatedRenders);
+      }
+    }
   }
 });
 
