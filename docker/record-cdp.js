@@ -135,29 +135,22 @@ async function recordRoute() {
   console.log(`Loading Cesium app: ${appUrl}`);
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-  // Wait for Cesium to initialize
+  // Wait for Cesium to initialize and start animation
   console.log('Waiting for Cesium viewer to initialize...');
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(10000);
   
-  // Wait for animation to start
-  console.log('Waiting for animation to be ready...');
-  await page.evaluate(() => {
-    return new Promise((resolve) => {
-      const checkReady = () => {
-        if (window.viewer && window.viewer.clock) {
-          resolve();
-        } else {
-          setTimeout(checkReady, 100);
-        }
-      };
-      checkReady();
-      // Timeout after 10 seconds
-      setTimeout(resolve, 10000);
-    });
-  });
+  // Check viewer status
+  const viewerStatus = await page.evaluate(() => {
+    return {
+      hasViewer: !!window.viewer,
+      hasClock: !!(window.viewer && window.viewer.clock),
+      clockShouldAnimate: window.viewer?.clock?.shouldAnimate,
+      entities: window.viewer?.entities?.values?.length || 0
+    };
+  }).catch(() => ({ error: 'Could not check viewer status' }));
   
-  console.log('✅ Cesium ready, starting capture in 2 seconds...');
-  await page.waitForTimeout(2000);
+  console.log('Viewer status:', JSON.stringify(viewerStatus));
+  console.log('✅ Starting screenshot capture...');
 
   console.log('Starting screenshot capture...');
   const frameInterval = 1000 / RECORD_FPS; // ms between frames
