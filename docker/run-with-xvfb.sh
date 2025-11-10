@@ -16,8 +16,8 @@ sleep 2
 export LIBGL_ALWAYS_SOFTWARE=0
 export GALLIUM_DRIVER=llvmpipe
 
-echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Running recording script..." | tee -a "$LOG_FILE"
-node record-puppeteer.js
+echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Running FFmpeg-based recording script..." | tee -a "$LOG_FILE"
+node record-ffmpeg.js
 
 # Cleanup
 kill $XVFB_PID 2>/dev/null || true

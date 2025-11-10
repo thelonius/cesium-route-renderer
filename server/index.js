@@ -57,7 +57,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const MAX_FILE_SIZE_MB = 50;
 
   // Parse GPX to estimate route duration
-  let animationSpeed = 50; // Default reduced from 100x to 50x for better FPS (more render time per frame)
+  let animationSpeed = 30; // Reduced from 50x to 30x for better frame capture with CLAMP_TO_GROUND terrain queries
   try {
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
     const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
@@ -75,7 +75,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
 
-        if (requiredSpeed > 50) {
+        if (requiredSpeed > 30) {
           animationSpeed = requiredSpeed;
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
           console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);

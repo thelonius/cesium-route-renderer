@@ -191,8 +191,9 @@ async function recordRoute() {
   const DEFAULT_WIDTH = 1080
   const DEFAULT_HEIGHT = 1920
 
-  // Lower-quality defaults for headless/container runs
-  const HEADLESS_FPS = 30
+  // Lower-quality defaults for headless/container runs with CLAMP_TO_GROUND terrain queries
+  // Reduced from 30 to 15 FPS to give Cesium more time per frame for terrain calculations
+  const HEADLESS_FPS = 15
   const HEADLESS_WIDTH = 720
   const HEADLESS_HEIGHT = 1280
 
@@ -322,7 +323,7 @@ async function recordRoute() {
 
   const recorder = new PuppeteerScreenRecorder(page, {
     followNewTab: false,
-    fps: TARGET_FPS, // configurable target FPS
+    fps: TARGET_FPS, // configurable target FPS (15 in Docker for terrain rendering)
     videoFrame: {
       width: RECORD_WIDTH,
       height: RECORD_HEIGHT,
@@ -330,7 +331,7 @@ async function recordRoute() {
     aspectRatio: '9:16',
     videoCrf: 23, // Lower CRF = better quality (18=high, 23=good, 28=medium)
     videoCodec: 'libx264',
-    videoPreset: 'veryfast', // Balance between speed and compression (faster than 'medium', better quality than 'ultrafast')
+    videoPreset: 'faster', // Faster preset for lower CPU load during capture (faster than 'veryfast')
     videoBitrate: '2500k', // Reduced from 5000k to keep under 50MB for Telegram
     autopad: {
       color: 'black' // Ensure proper padding if aspect ratio doesn't match exactly
