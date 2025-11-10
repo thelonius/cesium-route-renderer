@@ -133,16 +133,31 @@ async function recordRoute() {
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   console.log(`Loading Cesium app: ${appUrl}`);
-  await page.goto(appUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-  // Wait for Cesium to be ready
-  console.log('Waiting for animation to be ready...');
-  await page.waitForTimeout(8000);
+  // Wait for Cesium to initialize
+  console.log('Waiting for Cesium viewer to initialize...');
+  await page.waitForTimeout(3000);
   
-  // Verify page is responsive
-  console.log('Checking if page is ready for screenshots...');
-  const title = await page.title();
-  console.log(`Page title: ${title}`);
+  // Wait for animation to start
+  console.log('Waiting for animation to be ready...');
+  await page.evaluate(() => {
+    return new Promise((resolve) => {
+      const checkReady = () => {
+        if (window.viewer && window.viewer.clock) {
+          resolve();
+        } else {
+          setTimeout(checkReady, 100);
+        }
+      };
+      checkReady();
+      // Timeout after 10 seconds
+      setTimeout(resolve, 10000);
+    });
+  });
+  
+  console.log('✅ Cesium ready, starting capture in 2 seconds...');
+  await page.waitForTimeout(2000);
 
   console.log('Starting screenshot capture...');
   const frameInterval = 1000 / RECORD_FPS; // ms between frames
