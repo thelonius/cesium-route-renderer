@@ -65,10 +65,10 @@ bot.onText(/\/status/, async (msg) => {
   // Handle both old format (single render) and new format (array of renders)
   const renderList = Array.isArray(renders) ? renders : [renders];
 
-  // Filter out completed renders older than 1 hour
+  // Filter out completed/failed renders older than 1 hour
   const oneHourAgo = Date.now() - (60 * 60 * 1000);
   const activeRenderList = renderList.filter(r => {
-    if (r.status === 'completed' && r.completedAt && r.completedAt < oneHourAgo) {
+    if ((r.status === 'completed' || r.status === 'failed') && r.completedAt && r.completedAt < oneHourAgo) {
       return false;
     }
     return true;
@@ -88,8 +88,30 @@ bot.onText(/\/status/, async (msg) => {
     const render = activeRenderList[i];
     const renderNum = activeRenderList.length > 1 ? `#${i + 1} ` : '';
 
-    statusMessage += `${renderNum}**ID:** \`${render.outputId || 'pending'}\`\n`;
-    statusMessage += `⏱️ **Status:** ${render.status}\n`;
+    statusMessage += `${renderNum}**${render.fileName || 'Route'}**\n`;
+    statusMessage += `📋 ID: \`${render.outputId || 'pending'}\`\n`;
+
+    // Show elapsed time and estimated completion
+    if (render.startedAt) {
+      const elapsed = Math.floor((Date.now() - render.startedAt) / 1000);
+      const minutes = Math.floor(elapsed / 60);
+      const seconds = elapsed % 60;
+      statusMessage += `⏱️ Elapsed: ${minutes}m ${seconds}s`;
+
+      // Show estimated time remaining if we have it
+      if (render.estimatedMinutes) {
+        const remaining = Math.max(0, render.estimatedMinutes - (elapsed / 60));
+        if (remaining > 0) {
+          statusMessage += ` / ~${Math.ceil(remaining)}m remaining`;
+        }
+      }
+      statusMessage += '\n';
+    }
+
+    // Show estimated file size if available
+    if (render.estimatedSizeMB && render.status !== 'completed') {
+      statusMessage += `💾 Est. size: ~${render.estimatedSizeMB}MB\n`;
+    }
 
     // Try to fetch actual progress from logs
     if (render.outputId) {
@@ -98,31 +120,64 @@ bot.onText(/\/status/, async (msg) => {
         const response = await axios.get(logsUrl, { timeout: 5000 });
         const logs = response.data;
 
-        // Parse progress from logs
-        const progress = [];
-        if (logs.includes('Starting Docker container')) progress.push('🐳 Docker');
-        if (logs.includes('Starting Xvfb')) progress.push('🖥️ Xvfb');
-        if (logs.includes('Running recording script')) progress.push('📝 Script');
-        if (logs.includes('Loading Cesium app')) progress.push('🌍 Cesium');
-        if (logs.includes('Starting route recording')) progress.push('📹 Recording');
-        if (logs.includes('Starting video encoding')) progress.push('🎬 Encoding');
-        if (logs.includes('Video encoding completed')) progress.push('✅ Done');
+        // Parse detailed progress from logs
+        const stages = [];
+        let currentStage = '';
 
-        if (progress.length > 0) {
-          statusMessage += `Progress: ${progress.join(' → ')}\n`;
+        if (logs.includes('Video encoding completed')) {
+          currentStage = '✅ Complete';
+        } else if (logs.includes('Starting video encoding')) {
+          currentStage = '🎬 Encoding video';
+          // Try to get encoding progress
+          const encodingMatch = logs.match(/frame=\s*(\d+)\s+fps=\s*([\d.]+)/);
+          if (encodingMatch) {
+            const frame = encodingMatch[1];
+            const fps = encodingMatch[2];
+            currentStage += ` (frame ${frame}, ${fps} fps)`;
+          }
+        } else if (logs.includes('Recording completed')) {
+          currentStage = '📦 Finalizing recording';
+        } else if (logs.includes('Starting route recording')) {
+          currentStage = '📹 Recording';
+          // Check for recording progress
+          const recordingMatch = logs.match(/Recorded frame (\d+)\/(\d+)/);
+          if (recordingMatch) {
+            const current = parseInt(recordingMatch[1]);
+            const total = parseInt(recordingMatch[2]);
+            const percent = Math.round((current / total) * 100);
+            currentStage += ` ${percent}% (${current}/${total})`;
+          }
+        } else if (logs.includes('Loading Cesium app')) {
+          currentStage = '🌍 Loading Cesium';
+        } else if (logs.includes('Running recording script')) {
+          currentStage = '📝 Starting script';
+        } else if (logs.includes('Starting Xvfb')) {
+          currentStage = '🖥️ Starting display';
+        } else if (logs.includes('Starting Docker container')) {
+          currentStage = '🐳 Starting container';
+        } else {
+          currentStage = '⏳ Initializing';
         }
 
-        // Check for recording progress
-        const recordingMatch = logs.match(/Recorded frame (\d+)\/(\d+)/);
-        if (recordingMatch) {
-          const current = parseInt(recordingMatch[1]);
-          const total = parseInt(recordingMatch[2]);
-          const percent = Math.round((current / total) * 100);
-          statusMessage += `📹 ${percent}% (${current}/${total} frames)\n`;
+        statusMessage += `${currentStage}\n`;
+
+        // Show animation speed if available
+        const speedMatch = logs.match(/Animation speed: (\d+)x/);
+        if (speedMatch) {
+          statusMessage += `⚡ Speed: ${speedMatch[1]}x\n`;
         }
+
+        // Show video length estimate if available
+        const durationMatch = logs.match(/Expected video length: ~([\d.]+) minutes/);
+        if (durationMatch) {
+          statusMessage += `📹 Est. video: ${durationMatch[1]} min\n`;
+        }
+
       } catch (error) {
-        statusMessage += '⏳ Starting...\n';
+        statusMessage += `${render.status === 'completed' ? '✅' : render.status === 'failed' ? '❌' : '⏳'} ${render.status}\n`;
       }
+    } else {
+      statusMessage += `⏳ ${render.status || 'pending'}\n`;
     }
 
     statusMessage += '\n';
@@ -372,12 +427,15 @@ bot.on('document', async (msg) => {
     }
 
     // Calculate render time estimation based on analysis
+    let estimatedRenderMinutes = null;
+    let estimatedSizeMB = null;
+    let animationSpeed = 50;
+
     if (analysis.success && analysis.statistics.duration) {
       const routeDurationMinutes = analysis.statistics.duration.minutes;
 
       // Calculate adaptive animation speed (same logic as server)
       const MAX_VIDEO_MINUTES = 5;
-      let animationSpeed = 50; // Reduced from 100x to 50x for better FPS
       const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
 
       if (requiredSpeed > 50) {
@@ -395,11 +453,11 @@ bot.on('document', async (msg) => {
 
       // Total with overhead
       const overheadMinutes = 1.5; // ~90 seconds
-      const estimatedRenderMinutes = Math.ceil(recordingMinutes + encodingMinutes + overheadMinutes);
+      estimatedRenderMinutes = Math.ceil(recordingMinutes + encodingMinutes + overheadMinutes);
 
       // Estimate file size
       const bitrateKbps = 2500;
-      const estimatedSizeMB = Math.ceil((recordingSeconds * bitrateKbps) / 8 / 1024);
+      estimatedSizeMB = Math.ceil((recordingSeconds * bitrateKbps) / 8 / 1024);
 
       const lang = getUserLanguage(chatId, userLang);
       let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
@@ -451,7 +509,9 @@ bot.on('document', async (msg) => {
       status: 'rendering',
       outputId: outputId,
       fileName: doc.file_name,
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      estimatedMinutes: estimatedRenderMinutes,
+      estimatedSizeMB: estimatedSizeMB
     });
     activeRenders.set(chatId, rendersList);
 
