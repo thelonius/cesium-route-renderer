@@ -210,11 +210,11 @@ async function recordRoute() {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--enable-webgl',
-      '--enable-gpu-rasterization', // Enable GPU acceleration for better performance
-      '--enable-zero-copy', // Reduce memory copies between CPU and GPU
+      '--use-gl=angle', // Use ANGLE for WebGL in headless mode (better than swiftshader)
+      '--use-angle=swiftshader', // SwiftShader backend for ANGLE (software but optimized)
       '--ignore-gpu-blacklist',
-      '--disable-gpu-vsync', // Disable vsync for smoother frame pacing
-      '--disable-frame-rate-limit', // Remove frame rate limit
+      '--disable-gpu-vsync',
+      '--disable-frame-rate-limit',
       '--disable-background-timer-throttling', // Prevent timer throttling
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
@@ -328,9 +328,9 @@ async function recordRoute() {
       height: RECORD_HEIGHT,
     },
     aspectRatio: '9:16',
-    videoCrf: 23, // Lower CRF = better quality (18=high, 23=good, 28=medium) - improved from 28
+    videoCrf: 23, // Lower CRF = better quality (18=high, 23=good, 28=medium)
     videoCodec: 'libx264',
-    videoPreset: 'ultrafast', // Changed from 'medium' to 'ultrafast' for real-time encoding performance
+    videoPreset: 'veryfast', // Balance between speed and compression (faster than 'medium', better quality than 'ultrafast')
     videoBitrate: '2500k', // Reduced from 5000k to keep under 50MB for Telegram
     autopad: {
       color: 'black' // Ensure proper padding if aspect ratio doesn't match exactly

@@ -124,7 +124,7 @@ export default function useCesiumAnimation({
         color: Cesium.Color.RED,
         outlineColor: Cesium.Color.WHITE,
         outlineWidth: 2,
-        heightReference: Cesium.HeightReference.NONE,
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
         disableDepthTestDistance: Number.POSITIVE_INFINITY
       },
       label: {
@@ -141,7 +141,7 @@ export default function useCesiumAnimation({
         outlineWidth: 2,
         verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
         pixelOffset: new Cesium.Cartesian2(0, -20),
-        heightReference: Cesium.HeightReference.NONE
+        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
       }
     });
 
@@ -168,7 +168,7 @@ export default function useCesiumAnimation({
             outlineWidth: 1,
             outlineColor: Cesium.Color.BLUE.withAlpha(0.3)
           }),
-          clampToGround: false // Changed from true for better performance (uses GPS elevation data)
+          clampToGround: true
         }
       });
     }
@@ -180,7 +180,7 @@ export default function useCesiumAnimation({
         width: 5,
         material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
         depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
-        clampToGround: false, // Changed from true for better performance (uses GPS elevation data)
+        clampToGround: true,
         show: true
       }
     });

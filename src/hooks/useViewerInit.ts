@@ -49,15 +49,17 @@ export default function useViewerInit(
       // Performance optimizations for Docker mode
       viewer.scene.globe.enableLighting = false; // Disable lighting calculations
       viewer.scene.fog.enabled = false; // Disable fog
-      viewer.scene.skyAtmosphere.show = false; // Disable atmosphere rendering
       viewer.scene.sun.show = false; // Hide sun
       viewer.scene.moon.show = false; // Hide moon
-      viewer.scene.skyBox.show = false; // Hide skybox
-      viewer.scene.backgroundColor = Cesium.Color.BLACK; // Simple black background
+
+      // Keep skybox and atmosphere for better visuals (they're relatively cheap)
+      // viewer.scene.skyAtmosphere.show = false;
+      // viewer.scene.skyBox.show = false;
+      // viewer.scene.backgroundColor = Cesium.Color.BLACK;
 
       // Reduce terrain detail for better performance
-      viewer.scene.globe.maximumScreenSpaceError = 8; // Default is 2, higher = less detail, better performance
-      viewer.scene.globe.tileCacheSize = 100; // Default is 100, reduce memory usage
+      viewer.scene.globe.maximumScreenSpaceError = 4; // Reduced from 8 (better quality, still faster than default 2)
+      viewer.scene.globe.tileCacheSize = 100;
     }
 
     if (viewerRef) {
