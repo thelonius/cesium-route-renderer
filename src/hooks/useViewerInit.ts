@@ -62,9 +62,9 @@ export default function useViewerInit(
       // viewer.scene.skyBox.show = false;
       // viewer.scene.backgroundColor = Cesium.Color.BLACK;
 
-      // Reduce terrain detail for better performance
-      viewer.scene.globe.maximumScreenSpaceError = 4; // Reduced from 8 (better quality, still faster than default 2)
-      viewer.scene.globe.tileCacheSize = 100;
+      // Reduce terrain detail significantly for faster rendering
+      viewer.scene.globe.maximumScreenSpaceError = 16; // Higher = lower quality = faster (default 2, was 4, now 16 for 4x speed)
+      viewer.scene.globe.tileCacheSize = 50; // Smaller cache = less memory, faster
     }
 
     if (viewerRef) {

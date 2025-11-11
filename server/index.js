@@ -154,9 +154,8 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   // Use spawn instead of exec to stream Docker output in real-time
   const dockerArgs = [
-    'run', '--rm',
-    '--cpus=4',
-    '--memory=4g',
+    'run',
+    '--rm',
     '--shm-size=2g',
     '-v', `${absGpxPath}:/app/dist/${gpxFilename}:ro`,
     '-v', `${absOutputDir}:/output`,
@@ -166,11 +165,16 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     '-e', `HEADLESS=${dockerHeadless}`,
     '-e', `RECORD_FPS=${dockerRecordFps}`,
     '-e', `RECORD_WIDTH=${dockerRecordWidth}`,
-    '-e', `RECORD_HEIGHT=${dockerRecordHeight}`,
-    'cesium-route-recorder'
+    '-e', `RECORD_HEIGHT=${dockerRecordHeight}`
   ];
 
-  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
+  // Try to enable GPU acceleration if available
+  if (fs.existsSync('/dev/dri/card0')) {
+    dockerArgs.push('--device=/dev/dri/card0');
+    console.log('GPU device found, enabling hardware acceleration');
+  }
+
+  dockerArgs.push('cesium-route-recorder');  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
 
   const dockerProcess = spawn('docker', dockerArgs, {
     timeout: 3600000 // 60 minutes
