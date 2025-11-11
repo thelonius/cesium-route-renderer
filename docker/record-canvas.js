@@ -134,12 +134,11 @@ async function recordRoute() {
   // Wait for Cesium to initialize
   console.log('Waiting for Cesium viewer to initialize...');
 
-  // Forward browser console to Node console
+  // Forward ALL browser console to Node console for debugging
   page.on('console', msg => {
+    const type = msg.type();
     const text = msg.text();
-    if (text.includes('Canvas') || text.includes('WebGL') || text.includes('Blob') || text.includes('toBlob')) {
-      console.log('[Browser]', text);
-    }
+    console.log(`[Browser ${type}]`, text);
   });
 
   // Wait for animation to be ready (signal from useCesiumAnimation.ts)
@@ -181,11 +180,19 @@ async function recordRoute() {
 
         console.log('Canvas found:', canvas.width, 'x', canvas.height);
 
+        // Check if canvas has WebGL context
+        const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
+        if (gl) {
+          const attrs = gl.getContextAttributes();
+          console.log('WebGL context attributes:', JSON.stringify(attrs));
+        }
+
         // Use toDataURL instead of toBlob - it's synchronous and works better with WebGL
         try {
           const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
           if (!dataUrl || dataUrl === 'data:,') {
             console.error('toDataURL returned empty string');
+            console.error('This means canvas has not been drawn to yet');
             return null;
           }
           
@@ -194,15 +201,38 @@ async function recordRoute() {
           console.log('Captured frame, size:', base64.length, 'bytes');
           return base64;
         } catch (e) {
-          console.error('toDataURL exception:', e.message);
+          console.error('toDataURL exception:', e.message, e.stack);
           return null;
         }
       } catch (e) {
-        console.error('captureFrame exception:', e.message);
+        console.error('captureFrame exception:', e.message, e.stack);
         return null;
       }
     };
   });
+
+  // Debug: Check DOM state before testing capture
+  const domInfo = await page.evaluate(() => {
+    const canvas = document.querySelector('canvas.cesium-canvas');
+    const allCanvases = document.querySelectorAll('canvas');
+    return {
+      cesiumCanvas: canvas ? {
+        width: canvas.width,
+        height: canvas.height,
+        className: canvas.className,
+        style: canvas.style.cssText
+      } : null,
+      allCanvasCount: allCanvases.length,
+      allCanvasInfo: Array.from(allCanvases).map(c => ({
+        width: c.width,
+        height: c.height,
+        className: c.className
+      })),
+      animationReady: window.CESIUM_ANIMATION_READY,
+      hasViewer: !!window.Cesium?.Viewer
+    };
+  });
+  console.log('DOM State:', JSON.stringify(domInfo, null, 2));
 
   // Test capture to verify setup
   console.log('Testing canvas capture...');
@@ -211,9 +241,20 @@ async function recordRoute() {
     console.error('❌ Test capture failed! Canvas may not be ready.');
     console.log('Waiting additional 3 seconds and retrying...');
     await page.waitForTimeout(3000);
+    
+    // Check DOM again after wait
+    const domInfo2 = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas.cesium-canvas');
+      return {
+        canvas: canvas ? { width: canvas.width, height: canvas.height } : null,
+        animationReady: window.CESIUM_ANIMATION_READY
+      };
+    });
+    console.log('DOM State after wait:', JSON.stringify(domInfo2, null, 2));
+    
     const retryFrame = await page.evaluate(() => window.captureFrame());
     if (!retryFrame) {
-      throw new Error('Canvas capture not working - check preserveDrawingBuffer and canvas rendering');
+      throw new Error('Canvas capture not working - canvas toDataURL returns null even though canvas exists');
     }
   }
   console.log('✅ Test capture successful!');
