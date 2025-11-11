@@ -117,7 +117,7 @@ bot.onText(/\/status/, async (msg) => {
     if (render.outputId) {
       try {
         const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
-        const response = await axios.get(logsUrl, { 
+        const response = await axios.get(logsUrl, {
           timeout: 5000,
           validateStatus: (status) => status === 200 // Only accept 200, throw on anything else
         });
