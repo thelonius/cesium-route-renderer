@@ -1,6 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { execSync } from 'child_process'
+
+// Get git commit hash for version tracking
+const getGitHash = () => {
+  try {
+    return execSync('git rev-parse --short HEAD').toString().trim();
+  } catch {
+    return 'dev';
+  }
+};
 
 // Vite config tuned for Cesium static assets and relative asset handling
 export default defineConfig({
@@ -15,7 +25,9 @@ export default defineConfig({
   },
   define: {
     // Make Cesium use the public/cesium base URL at runtime
-    'CESIUM_BASE_URL': JSON.stringify('/cesium/')
+    'CESIUM_BASE_URL': JSON.stringify('/cesium/'),
+    // Add version info
+    '__APP_VERSION__': JSON.stringify(getGitHash())
   },
   optimizeDeps: {
     // Do not attempt to pre-bundle Cesium (workers/WASM cause MIME/type issues)

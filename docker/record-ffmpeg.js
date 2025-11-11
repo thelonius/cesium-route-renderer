@@ -156,12 +156,12 @@ async function recordRoute() {
 
   // Wait for animation ready
   console.log('Waiting for animation to be ready (terrain + imagery loading)...');
-  
+
   // Start FFmpeg BEFORE waiting, so it captures the loading process
   const outputPath = '/output/route-video.mp4';
-  
+
   console.log('Starting FFmpeg screen capture...');
-  
+
   const ffmpegArgs = [
     '-f', 'x11grab',
     '-video_size', `${RECORD_WIDTH}x${RECORD_HEIGHT}`,

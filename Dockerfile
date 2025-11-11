@@ -33,6 +33,7 @@ RUN npm install --no-save puppeteer@19.0.0 serve-handler
 COPY docker/record-puppeteer.js ./
 COPY docker/record-ffmpeg.js ./
 COPY docker/record-cdp.js ./
+COPY docker/record-canvas.js ./
 COPY docker/run-with-xvfb.sh ./
 RUN chmod +x run-with-xvfb.sh
 

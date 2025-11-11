@@ -1,5 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 
+// Type declaration for version injected at build time
+declare const __APP_VERSION__: string;
+
 interface FpsCounterProps {
   viewer: Cesium.Viewer | null;
 }
@@ -61,6 +64,9 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
     }}>
       <div>FPS: {fps}</div>
       <div style={{ fontSize: '11px', color: '#88ff88' }}>Avg: {avgFps}</div>
+      <div style={{ fontSize: '10px', color: '#666666', marginTop: '4px' }}>
+        v{__APP_VERSION__}
+      </div>
     </div>
   );
 }
