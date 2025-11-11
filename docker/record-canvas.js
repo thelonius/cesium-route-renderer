@@ -166,56 +166,41 @@ async function recordRoute() {
   
   console.log('Starting capture...');
 
-  // Inject canvas extraction function with better debugging
+  // Inject canvas extraction function using toDataURL instead of toBlob
+  // toDataURL works better with WebGL canvases even without preserveDrawingBuffer
   await page.evaluate(() => {
     window.captureFrame = async function() {
-      return new Promise((resolve) => {
+      try {
         // Find Cesium canvas directly
         const canvas = document.querySelector('canvas.cesium-canvas');
         if (!canvas) {
           console.error('Cesium canvas not found');
           console.error('Available canvases:', document.querySelectorAll('canvas').length);
-          resolve(null);
-          return;
+          return null;
         }
 
         console.log('Canvas found:', canvas.width, 'x', canvas.height);
 
-        // Try to capture - toBlob should work with preserveDrawingBuffer
+        // Use toDataURL instead of toBlob - it's synchronous and works better with WebGL
         try {
-          canvas.toBlob((blob) => {
-            if (!blob) {
-              console.error('toBlob returned null - preserveDrawingBuffer may not be working');
-              console.error('Canvas dimensions:', canvas.width, 'x', canvas.height);
-              
-              // Check if canvas has been drawn to
-              try {
-                const tempCtx = canvas.getContext('2d', { willReadFrequently: true });
-                if (tempCtx) {
-                  const imageData = tempCtx.getImageData(0, 0, 1, 1);
-                  console.error('Canvas 2D context accessible, pixel data:', imageData.data);
-                }
-              } catch (e) {
-                console.error('Cannot read canvas as 2D (expected for WebGL):', e.message);
-              }
-              
-              resolve(null);
-              return;
-            }
-            console.log('Blob created, size:', blob.size);
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result.split(',')[1]); // Base64
-            reader.onerror = () => {
-              console.error('FileReader error');
-              resolve(null);
-            };
-            reader.readAsDataURL(blob);
-          }, 'image/jpeg', 0.85);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          if (!dataUrl || dataUrl === 'data:,') {
+            console.error('toDataURL returned empty string');
+            return null;
+          }
+          
+          // Remove the data URL prefix to get just the base64
+          const base64 = dataUrl.split(',')[1];
+          console.log('Captured frame, size:', base64.length, 'bytes');
+          return base64;
         } catch (e) {
-          console.error('toBlob exception:', e.message);
-          resolve(null);
+          console.error('toDataURL exception:', e.message);
+          return null;
         }
-      });
+      } catch (e) {
+        console.error('captureFrame exception:', e.message);
+        return null;
+      }
     };
   });
 
