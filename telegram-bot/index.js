@@ -137,16 +137,18 @@ bot.onText(/\/status/, async (msg) => {
           }
         } else if (logs.includes('Recording completed')) {
           currentStage = '📦 Finalizing recording';
+        } else if (logs.includes('📹 Frame')) {
+          currentStage = '📹 Recording';
+          // Check for recording progress - new format: "📹 Frame 90/900 (10.0%)"
+          const frameMatch = logs.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)/);
+          if (frameMatch) {
+            const current = parseInt(frameMatch[1]);
+            const total = parseInt(frameMatch[2]);
+            const percent = parseFloat(frameMatch[3]);
+            currentStage += ` ${percent.toFixed(0)}% (${current}/${total})`;
+          }
         } else if (logs.includes('Starting route recording')) {
           currentStage = '📹 Recording';
-          // Check for recording progress
-          const recordingMatch = logs.match(/Recorded frame (\d+)\/(\d+)/);
-          if (recordingMatch) {
-            const current = parseInt(recordingMatch[1]);
-            const total = parseInt(recordingMatch[2]);
-            const percent = Math.round((current / total) * 100);
-            currentStage += ` ${percent}% (${current}/${total})`;
-          }
         } else if (logs.includes('Starting canvas frame capture')) {
           currentStage = '🎬 Starting capture';
         } else if (logs.includes('Waiting for Cesium viewer')) {
@@ -551,8 +553,18 @@ bot.on('document', async (msg) => {
             } else if (logs.includes('Starting video encoding')) {
               newStage = 'encoding';
               statusMessage = t(chatId, 'processing.encoding', {}, userLang);
+            } else if (logs.includes('📹 Frame')) {
+              // Extract recording progress - new format: "📹 Frame 90/900 (10.0%)"
+              const frameMatch = logs.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)/);
+              if (frameMatch) {
+                const current = frameMatch[1];
+                const total = frameMatch[2];
+                const percent = parseFloat(frameMatch[3]).toFixed(0);
+                newStage = 'recording';
+                statusMessage = t(chatId, 'processing.recording', { percent, current, total }, userLang);
+              }
             } else if (logs.includes('Recording progress:')) {
-              // Extract recording progress
+              // Old format fallback
               const progressMatch = logs.match(/Recording progress: (\d+)\/(\d+)s \((\d+)%\)/);
               if (progressMatch) {
                 const [, current, total, percent] = progressMatch;

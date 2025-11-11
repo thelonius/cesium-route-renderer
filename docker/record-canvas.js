@@ -133,21 +133,36 @@ async function recordRoute() {
 
   // Wait for Cesium to initialize
   console.log('Waiting for Cesium viewer to initialize...');
-  await page.waitForTimeout(10000);
+
+  // Wait for animation to be ready (signal from useCesiumAnimation.ts)
+  console.log('Waiting for CESIUM_ANIMATION_READY signal...');
+  await page.waitForFunction(() => window.CESIUM_ANIMATION_READY === true, { timeout: 60000 });
+  console.log('✅ Animation ready!');
 
   // Inject canvas extraction function
   await page.evaluate(() => {
     window.captureFrame = async function() {
       return new Promise((resolve) => {
-        if (!window.viewer || !window.viewer.scene) {
+        // Find Cesium canvas directly
+        const canvas = document.querySelector('canvas.cesium-canvas');
+        if (!canvas) {
+          console.error('Cesium canvas not found');
           resolve(null);
           return;
         }
 
-        const canvas = window.viewer.scene.canvas;
         canvas.toBlob((blob) => {
+          if (!blob) {
+            console.error('toBlob returned null');
+            resolve(null);
+            return;
+          }
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result.split(',')[1]); // Base64
+          reader.onerror = () => {
+            console.error('FileReader error');
+            resolve(null);
+          };
           reader.readAsDataURL(blob);
         }, 'image/jpeg', 0.85);
       });
