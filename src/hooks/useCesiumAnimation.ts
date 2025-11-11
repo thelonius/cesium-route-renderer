@@ -298,7 +298,10 @@ export default function useCesiumAnimation({
     viewer.scene.screenSpaceCameraController.inertiaSpin = 0.9;
     viewer.scene.screenSpaceCameraController.inertiaZoom = 0.8;
 
-    // Position camera at starting position with appropriate zoom based on route extent
+    // Pause clock initially - will start after opening animation
+    viewer.clock.shouldAnimate = false;
+
+    // Position camera at starting position with opening animation
     const startingPosition = hikerEntity.position?.getValue(startTime);
     if (startingPosition && fullRoutePositions.length > 1) {
       // Calculate bounding sphere of the route
@@ -306,12 +309,12 @@ export default function useCesiumAnimation({
       const radius = boundingSphere.radius;
 
       // Set initial altitude based on route size
-      // For small routes (< 1km radius), use closer view
-      // For larger routes, scale appropriately
       const baseAltitude = Math.max(radius * 2.5, 2000); // Minimum 2km altitude
       const cappedAltitude = Math.min(baseAltitude, 15000); // Maximum 15km altitude
 
       const startingCartographic = Cesium.Cartographic.fromCartesian(startingPosition);
+      
+      // Set overview position immediately (no animation)
       viewer.camera.setView({
         destination: Cesium.Cartesian3.fromRadians(
           startingCartographic.longitude,
@@ -324,11 +327,44 @@ export default function useCesiumAnimation({
           roll: 0
         }
       });
+
+      // Wait for terrain to settle before starting opening animation
+      console.log('Waiting for terrain to settle...');
+      setTimeout(() => {
+        console.log('Terrain settled, starting opening animation...');
+        
+        // Calculate follow-cam position
+        const transform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition);
+        const cameraOffsetLocal = new Cesium.Cartesian3(-CAMERA_BASE_BACK, 0, CAMERA_BASE_HEIGHT);
+        const followPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
+        
+        // Fly from overview to follow position
+        viewer.camera.flyTo({
+          destination: followPosition,
+          orientation: {
+            direction: Cesium.Cartesian3.subtract(startingPosition, followPosition, new Cesium.Cartesian3()),
+            up: Cesium.Cartesian3.normalize(
+              Cesium.Matrix4.multiplyByPointAsVector(transform, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3()),
+              new Cesium.Cartesian3()
+            )
+          },
+          duration: 3.0, // 3 second opening animation
+          complete: () => {
+            console.log('Opening animation complete, starting route animation');
+            viewer.clock.shouldAnimate = true;
+            (window as any).CESIUM_ANIMATION_READY = true;
+          }
+        });
+      }, 2000); // Wait 2 seconds for terrain tiles to load
+    } else {
+      // Fallback if no valid position
+      setTimeout(() => {
+        viewer.clock.shouldAnimate = true;
+        (window as any).CESIUM_ANIMATION_READY = true;
+      }, 2000);
     }
 
-    // Signal that animation is ready for recording
-    (window as any).CESIUM_ANIMATION_READY = true;
-    console.log('Animation setup complete, ready for recording');
+    console.log('Animation setup complete, waiting for terrain and opening animation...');
 
     return () => {
       viewer.scene.preRender.removeEventListener(preRenderListener);
