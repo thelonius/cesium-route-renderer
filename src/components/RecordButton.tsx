@@ -35,7 +35,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
     try {
       setIsPreparing(true);
       const canvas = viewer.scene.canvas;
-      
+
       // Get canvas stream at 60 FPS for smoother video
       const stream = canvas.captureStream(60);
 
@@ -92,7 +92,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
       // Check if animation has completed
       if (stopTime) {
         animationCheckIntervalRef.current = window.setInterval(() => {
-          if (!viewer.clock.shouldAnimate || 
+          if (!viewer.clock.shouldAnimate ||
               Cesium.JulianDate.compare(viewer.clock.currentTime, stopTime) >= 0) {
             console.log('Animation completed, stopping recording automatically');
             stopRecording();

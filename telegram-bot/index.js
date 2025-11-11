@@ -147,6 +147,10 @@ bot.onText(/\/status/, async (msg) => {
             const percent = Math.round((current / total) * 100);
             currentStage += ` ${percent}% (${current}/${total})`;
           }
+        } else if (logs.includes('Starting canvas frame capture')) {
+          currentStage = '🎬 Starting capture';
+        } else if (logs.includes('Waiting for Cesium viewer')) {
+          currentStage = '🌍 Loading globe';
         } else if (logs.includes('Loading Cesium app')) {
           currentStage = '🌍 Loading Cesium';
         } else if (logs.includes('Running recording script')) {
@@ -555,12 +559,15 @@ bot.on('document', async (msg) => {
                 newStage = 'recording';
                 statusMessage = t(chatId, 'processing.recording', { percent, current, total }, userLang);
               }
-            } else if (logs.includes('Waiting for map tiles to fully load')) {
+            } else if (logs.includes('Waiting for Cesium viewer to initialize')) {
               newStage = 'loading';
               statusMessage = t(chatId, 'processing.loading', {}, userLang);
-            } else if (logs.includes('Cesium app loaded')) {
+            } else if (logs.includes('Loading Cesium app:') || logs.includes('Cesium app loaded')) {
               newStage = 'initializing';
               statusMessage = t(chatId, 'processing.initializing', {}, userLang);
+            } else if (logs.includes('Starting canvas frame capture')) {
+              newStage = 'ready';
+              statusMessage = '🎬 Animation ready, starting capture...';
             } else if (logs.includes('Starting Docker container')) {
               newStage = 'docker';
               statusMessage = t(chatId, 'processing.docker', {}, userLang);

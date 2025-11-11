@@ -41,8 +41,13 @@ export async function parseGPX(url: string): Promise<TrackPoint[]> {
 
   console.log('Root element:', gpxDoc.documentElement.nodeName); // Should be 'gpx'
 
-  // Verify it's actually a GPX file
-  if (gpxDoc.documentElement.nodeName.toLowerCase() !== 'gpx') {
+  // Verify it's actually a GPX file (not KML or other format)
+  const rootElement = gpxDoc.documentElement.nodeName.toLowerCase();
+  if (rootElement !== 'gpx') {
+    // If it's a KML file, suggest using parseKML instead
+    if (rootElement === 'kml') {
+      throw new Error(`This is a KML file, not GPX. Use parseKML() or ensure the URL ends with '.kml' for auto-detection.`);
+    }
     throw new Error(`Invalid GPX file: root element is '${gpxDoc.documentElement.nodeName}', expected 'gpx'`);
   }
 

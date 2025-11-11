@@ -131,12 +131,16 @@ export default function CesiumViewer() {
         const content = e.target?.result;
         if (typeof content !== 'string') return;
 
-        if (!content.includes('<?xml') || !content.includes('<gpx')) {
-          alert('Invalid GPX file format');
+        const isGPX = content.includes('<?xml') && content.includes('<gpx');
+        const isKML = content.includes('<?xml') && content.includes('<kml');
+
+        if (!isGPX && !isKML) {
+          alert('Invalid file format. Please upload a GPX or KML file.');
           return;
         }
 
-        const blob = new Blob([content], { type: 'application/gpx+xml' });
+        const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
+        const blob = new Blob([content], { type: mimeType });
         const blobUrl = URL.createObjectURL(blob);
         setAvailableRoutes(prev => [...prev, file.name]);
         setCurrentRoute(blobUrl);
@@ -274,12 +278,12 @@ export default function CesiumViewer() {
                   e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.3)';
                 }}
               >
-                📁 Upload Your Own GPX File
+                📁 Upload GPX or KML File
               </label>
               <input
                 id="gpx-upload-welcome"
                 type="file"
-                accept=".gpx"
+                accept=".gpx,.kml"
                 onChange={handleFileUpload}
                 style={{ display: 'none' }}
               />
@@ -450,12 +454,12 @@ export default function CesiumViewer() {
                   e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.3)';
                 }}
               >
-                📁 Upload GPX
+                📁 Upload GPX/KML
               </label>
               <input
                 id="gpx-upload"
                 type="file"
-                accept=".gpx"
+                accept=".gpx,.kml"
                 onChange={handleFileUpload}
                 style={{ display: 'none' }}
               />

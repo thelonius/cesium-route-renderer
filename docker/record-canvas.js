@@ -183,7 +183,9 @@ async function recordRoute() {
         if (frameCount === 1 || frameCount % 30 === 0) {
           const progress = ((frameCount / totalFrames) * 100).toFixed(1);
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          console.log(`📹 Captured ${frameCount}/${totalFrames} frames (${progress}%) - ${elapsed}s elapsed`);
+          const animationTime = (frameCount / RECORD_FPS).toFixed(1);
+          const eta = (((totalFrames - frameCount) / frameCount) * (Date.now() - startTime) / 1000).toFixed(0);
+          console.log(`📹 Frame ${frameCount}/${totalFrames} (${progress}%) | Animation: ${animationTime}s | Elapsed: ${elapsed}s | ETA: ${eta}s`);
         }
       } else {
         console.warn(`⚠️ Frame ${frameCount} returned null, retrying...`);
