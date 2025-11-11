@@ -145,11 +145,11 @@ async function recordRoute() {
   console.log('Waiting for CESIUM_ANIMATION_READY signal...');
   await page.waitForFunction(() => window.CESIUM_ANIMATION_READY === true, { timeout: 60000 });
   console.log('✅ Animation ready!');
-  
+
   // Wait an additional 2 seconds for the first frame to render
   console.log('Waiting for first frame to render...');
   await page.waitForTimeout(2000);
-  
+
   // Force a render cycle before capturing
   console.log('Forcing render cycle...');
   await page.evaluate(() => {
@@ -162,7 +162,7 @@ async function recordRoute() {
       });
     });
   });
-  
+
   console.log('Starting capture...');
 
   // Inject canvas extraction function using toDataURL instead of toBlob
@@ -199,7 +199,7 @@ async function recordRoute() {
             console.error('This means canvas has not been drawn to yet');
             return null;
           }
-          
+
           // Remove the data URL prefix to get just the base64
           const base64 = dataUrl.split(',')[1];
           console.log('Captured frame, size:', base64.length, 'bytes');
@@ -246,7 +246,7 @@ async function recordRoute() {
     console.error('❌ Test capture failed! Canvas may not be ready.');
     console.log('Waiting additional 3 seconds and retrying...');
     await page.waitForTimeout(3000);
-    
+
     // Check DOM again after wait
     const domInfo2 = await page.evaluate(() => {
       const canvas = document.querySelector('canvas.cesium-canvas');
@@ -256,7 +256,7 @@ async function recordRoute() {
       };
     });
     console.log('DOM State after wait:', JSON.stringify(domInfo2, null, 2));
-    
+
     const retryFrame = await page.evaluate(() => window.captureFrame());
     if (!retryFrame) {
       throw new Error('Canvas capture not working - canvas toDataURL returns null even though canvas exists');

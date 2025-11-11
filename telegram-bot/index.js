@@ -208,7 +208,9 @@ bot.onText(/\/status/, async (msg) => {
     console.error('Failed to send status message:', error.message);
     // Try sending without markdown if markdown parsing failed
     try {
-      await bot.sendMessage(chatId, statusMessage.replace(/[*_`\[\]()]/g, ''));
+      // Remove all markdown formatting characters
+      const plainMessage = statusMessage.replace(/[*_`\[\]()~]/g, '').replace(/\\./g, '');
+      await bot.sendMessage(chatId, plainMessage);
     } catch (fallbackError) {
       console.error('Failed to send status message even without markdown:', fallbackError.message);
       await bot.sendMessage(chatId, t(chatId, 'errors.unknown', {}, userLang));
