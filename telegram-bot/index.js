@@ -17,6 +17,64 @@ console.log('🤖 Telegram bot started!');
 // Store active renders
 const activeRenders = new Map();
 
+// Store route history (file-based persistence)
+const HISTORY_FILE = path.join(__dirname, 'route-history.json');
+const routeHistory = new Map();
+
+// Load route history from file
+function loadRouteHistory() {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      const data = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+      Object.entries(data).forEach(([chatId, routes]) => {
+        routeHistory.set(parseInt(chatId), routes);
+      });
+      console.log('📜 Loaded route history for', routeHistory.size, 'users');
+    }
+  } catch (error) {
+    console.error('Error loading route history:', error);
+  }
+}
+
+// Save route history to file
+function saveRouteHistory() {
+  try {
+    const data = {};
+    routeHistory.forEach((routes, chatId) => {
+      data[chatId] = routes;
+    });
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('Error saving route history:', error);
+  }
+}
+
+// Add route to user's history
+function addRouteToHistory(chatId, fileName, filePath, videoUrl, fileSize) {
+  const history = routeHistory.get(chatId) || [];
+  
+  // Add new route at the beginning
+  history.unshift({
+    fileName,
+    filePath,
+    videoUrl,
+    fileSize,
+    timestamp: Date.now(),
+    date: new Date().toISOString()
+  });
+  
+  // Keep only last 10 routes
+  if (history.length > 10) {
+    history.splice(10);
+  }
+  
+  routeHistory.set(chatId, history);
+  saveRouteHistory();
+}
+
+// Load history on startup
+loadRouteHistory();
+
 // Welcome message
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
@@ -47,6 +105,48 @@ bot.onText(/\/language/, (msg) => {
         { text: '🇺🇸 English', callback_data: 'lang_en' },
         { text: '🇷🇺 Русский', callback_data: 'lang_ru' }
       ]]
+    }
+  });
+});
+
+// History command
+bot.onText(/\/history/, async (msg) => {
+  const chatId = msg.chat.id;
+  const userLang = msg.from.language_code || 'en';
+  const history = routeHistory.get(chatId) || [];
+
+  if (history.length === 0) {
+    const message = userLang === 'ru' 
+      ? '📁 У вас пока нет сохраненных маршрутов.\n\nОтправьте GPX или KML файл для создания видео.'
+      : '📁 You have no saved routes yet.\n\nSend a GPX or KML file to create a video.';
+    bot.sendMessage(chatId, message);
+    return;
+  }
+
+  const message = userLang === 'ru'
+    ? `📁 *Ваши последние маршруты:*\n\n`
+    : `📁 *Your recent routes:*\n\n`;
+
+  const buttons = history.slice(0, 5).map((route, index) => {
+    const date = new Date(route.timestamp);
+    const dateStr = date.toLocaleDateString(userLang === 'ru' ? 'ru-RU' : 'en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    const sizeMB = (route.fileSize / 1024 / 1024).toFixed(1);
+    
+    return [{
+      text: `${index + 1}. ${route.fileName} (${sizeMB}MB) - ${dateStr}`,
+      callback_data: `rerender_${index}`
+    }];
+  });
+
+  bot.sendMessage(chatId, message, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: buttons
     }
   });
 });
@@ -287,6 +387,53 @@ bot.on('callback_query', async (query) => {
         show_alert: false
       });
       await bot.sendMessage(chatId, t(chatId, 'language.changed', {}, newLang));
+    }
+    return;
+  }
+
+  // Handle re-render from history
+  if (data.startsWith('rerender_')) {
+    const index = parseInt(data.substring(9));
+    const history = routeHistory.get(chatId) || [];
+    const route = history[index];
+
+    if (!route) {
+      await bot.answerCallbackQuery(query.id, {
+        text: userLang === 'ru' ? '❌ Маршрут не найден' : '❌ Route not found',
+        show_alert: true
+      });
+      return;
+    }
+
+    await bot.answerCallbackQuery(query.id, {
+      text: userLang === 'ru' ? '🔄 Начинаю повторный рендер...' : '🔄 Starting re-render...',
+      show_alert: false
+    });
+
+    // Check if original file still exists
+    if (!fs.existsSync(route.filePath)) {
+      await bot.sendMessage(chatId, userLang === 'ru'
+        ? `❌ Файл "${route.fileName}" больше недоступен. Пожалуйста, отправьте его снова.`
+        : `❌ File "${route.fileName}" is no longer available. Please send it again.`
+      );
+      return;
+    }
+
+    // Send the stored file back for re-processing
+    await bot.sendMessage(chatId, userLang === 'ru'
+      ? `🔄 Повторный рендер: ${route.fileName}`
+      : `🔄 Re-rendering: ${route.fileName}`
+    );
+
+    // Trigger file processing by sending as document
+    try {
+      await bot.sendDocument(chatId, route.filePath);
+    } catch (error) {
+      console.error('Error re-sending file:', error);
+      await bot.sendMessage(chatId, userLang === 'ru'
+        ? `❌ Не удалось загрузить файл. Пожалуйста, отправьте "${route.fileName}" снова.`
+        : `❌ Failed to load file. Please send "${route.fileName}" again.`
+      );
     }
     return;
   }
@@ -741,6 +888,9 @@ bot.on('document', async (msg) => {
               ]]
             }
           });
+
+          // Add to route history after successful video send
+          addRouteToHistory(chatId, doc.file_name, tempPath, result.videoUrl, result.fileSize);
         } catch (telegramError) {
           // Handle Telegram API errors (e.g., file still too large)
           console.error('Error sending video to Telegram:', telegramError.message);
@@ -774,10 +924,10 @@ bot.on('document', async (msg) => {
 
     // Cleanup temp file
     fs.unlinkSync(tempPath);
-    
+
     // Remove completed render from activeRenders after successful completion
     const completedRenders = activeRenders.get(chatId) || [];
-    const updatedCompletedRenders = Array.isArray(completedRenders) 
+    const updatedCompletedRenders = Array.isArray(completedRenders)
       ? completedRenders.filter(r => r.outputId !== finalOutputId)
       : [];
     if (updatedCompletedRenders.length > 0) {
@@ -793,7 +943,7 @@ bot.on('document', async (msg) => {
     const renders = activeRenders.get(chatId);
     const renderList = Array.isArray(renders) ? renders : (renders ? [renders] : []);
     const render = renderList[renderList.length - 1]; // Get the latest render
-    
+
     // Mark failed render and clean up from activeRenders
     if (render && render.outputId) {
       const updatedFailedRenders = renderList.filter(r => r.outputId !== render.outputId);
