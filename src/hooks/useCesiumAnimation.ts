@@ -331,14 +331,32 @@ export default function useCesiumAnimation({
       // Wait for terrain to settle before starting opening animation
       console.log('Waiting for terrain to settle...');
       setTimeout(() => {
-        console.log('Terrain settled, starting opening animation...');
+        console.log('Terrain settled, starting subtle opening animation...');
         
         // Calculate follow-cam position
         const transform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition);
         const cameraOffsetLocal = new Cesium.Cartesian3(-CAMERA_BASE_BACK, 0, CAMERA_BASE_HEIGHT);
         const followPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
         
-        // Fly from overview to follow position
+        // Start from slightly higher and closer for subtle motion
+        const startingAltitude = cappedAltitude * 0.7; // 70% of overview altitude
+        const startPosition = Cesium.Cartesian3.fromRadians(
+          startingCartographic.longitude,
+          startingCartographic.latitude,
+          startingAltitude
+        );
+        
+        // Set the subtle starting position
+        viewer.camera.setView({
+          destination: startPosition,
+          orientation: {
+            heading: Cesium.Math.toRadians(0),
+            pitch: Cesium.Math.toRadians(-40),
+            roll: 0
+          }
+        });
+        
+        // Gentle fly-in with easing
         viewer.camera.flyTo({
           destination: followPosition,
           orientation: {
@@ -348,7 +366,8 @@ export default function useCesiumAnimation({
               new Cesium.Cartesian3()
             )
           },
-          duration: 3.0, // 3 second opening animation
+          duration: 4.0, // Slower, gentler 4 second animation
+          easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT, // Smooth easing
           complete: () => {
             console.log('Opening animation complete, starting route animation');
             viewer.clock.shouldAnimate = true;
