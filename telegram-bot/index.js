@@ -772,9 +772,19 @@ bot.on('document', async (msg) => {
       throw new Error(`Video file not found at: ${videoPath}`);
     }
 
-    // Cleanup
+    // Cleanup temp file
     fs.unlinkSync(tempPath);
-    // Don't delete activeRenders here - let the 1-hour filter in /status handle cleanup
+    
+    // Remove completed render from activeRenders after successful completion
+    const completedRenders = activeRenders.get(chatId) || [];
+    const updatedCompletedRenders = Array.isArray(completedRenders) 
+      ? completedRenders.filter(r => r.outputId !== finalOutputId)
+      : [];
+    if (updatedCompletedRenders.length > 0) {
+      activeRenders.set(chatId, updatedCompletedRenders);
+    } else {
+      activeRenders.delete(chatId);
+    }
 
   } catch (error) {
     console.error('Error processing GPX:', error);
@@ -783,6 +793,16 @@ bot.on('document', async (msg) => {
     const renders = activeRenders.get(chatId);
     const renderList = Array.isArray(renders) ? renders : (renders ? [renders] : []);
     const render = renderList[renderList.length - 1]; // Get the latest render
+    
+    // Mark failed render and clean up from activeRenders
+    if (render && render.outputId) {
+      const updatedFailedRenders = renderList.filter(r => r.outputId !== render.outputId);
+      if (updatedFailedRenders.length > 0) {
+        activeRenders.set(chatId, updatedFailedRenders);
+      } else {
+        activeRenders.delete(chatId);
+      }
+    }
 
     // Prepare a safe short message for Telegram (avoid sending massive error bodies)
     const MAX_TELEGRAM_TEXT = 3500;
