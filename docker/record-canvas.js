@@ -139,7 +139,7 @@ async function recordRoute() {
     const type = msg.type();
     const text = msg.text();
     // Only log errors, warnings, or important info (not canvas/webgl spam)
-    if (type === 'error' || type === 'warning' || 
+    if (type === 'error' || type === 'warning' ||
         (type === 'log' && !text.includes('Canvas found') && !text.includes('WebGL context') && !text.includes('Captured frame'))) {
       console.log(`[Browser ${type}]`, text);
     }
