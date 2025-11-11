@@ -134,6 +134,14 @@ async function recordRoute() {
   // Wait for Cesium to initialize
   console.log('Waiting for Cesium viewer to initialize...');
 
+  // Forward browser console to Node console
+  page.on('console', msg => {
+    const text = msg.text();
+    if (text.includes('Canvas') || text.includes('WebGL') || text.includes('Blob') || text.includes('toBlob')) {
+      console.log('[Browser]', text);
+    }
+  });
+
   // Wait for animation to be ready (signal from useCesiumAnimation.ts)
   console.log('Waiting for CESIUM_ANIMATION_READY signal...');
   await page.waitForFunction(() => window.CESIUM_ANIMATION_READY === true, { timeout: 60000 });
@@ -142,6 +150,20 @@ async function recordRoute() {
   // Wait an additional 2 seconds for the first frame to render
   console.log('Waiting for first frame to render...');
   await page.waitForTimeout(2000);
+  
+  // Force a render cycle before capturing
+  console.log('Forcing render cycle...');
+  await page.evaluate(() => {
+    // Request animation frame to ensure rendering
+    return new Promise(resolve => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          resolve();
+        });
+      });
+    });
+  });
+  
   console.log('Starting capture...');
 
   // Inject canvas extraction function with better debugging
@@ -158,37 +180,41 @@ async function recordRoute() {
         }
 
         console.log('Canvas found:', canvas.width, 'x', canvas.height);
-        
-        // Check if canvas context is available
-        try {
-          const ctx = canvas.getContext('webgl') || canvas.getContext('webgl2');
-          if (!ctx) {
-            console.error('WebGL context not available');
-            resolve(null);
-            return;
-          }
-          console.log('WebGL context available');
-        } catch (e) {
-          console.error('Error checking WebGL context:', e.message);
-        }
 
-        // Try to capture
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            console.error('toBlob returned null - canvas may not be rendered yet');
-            console.error('Canvas dimensions:', canvas.width, 'x', canvas.height);
-            resolve(null);
-            return;
-          }
-          console.log('Blob created, size:', blob.size);
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result.split(',')[1]); // Base64
-          reader.onerror = () => {
-            console.error('FileReader error');
-            resolve(null);
-          };
-          reader.readAsDataURL(blob);
-        }, 'image/jpeg', 0.85);
+        // Try to capture - toBlob should work with preserveDrawingBuffer
+        try {
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              console.error('toBlob returned null - preserveDrawingBuffer may not be working');
+              console.error('Canvas dimensions:', canvas.width, 'x', canvas.height);
+              
+              // Check if canvas has been drawn to
+              try {
+                const tempCtx = canvas.getContext('2d', { willReadFrequently: true });
+                if (tempCtx) {
+                  const imageData = tempCtx.getImageData(0, 0, 1, 1);
+                  console.error('Canvas 2D context accessible, pixel data:', imageData.data);
+                }
+              } catch (e) {
+                console.error('Cannot read canvas as 2D (expected for WebGL):', e.message);
+              }
+              
+              resolve(null);
+              return;
+            }
+            console.log('Blob created, size:', blob.size);
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]); // Base64
+            reader.onerror = () => {
+              console.error('FileReader error');
+              resolve(null);
+            };
+            reader.readAsDataURL(blob);
+          }, 'image/jpeg', 0.85);
+        } catch (e) {
+          console.error('toBlob exception:', e.message);
+          resolve(null);
+        }
       });
     };
   });

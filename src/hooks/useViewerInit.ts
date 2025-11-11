@@ -71,6 +71,20 @@ export default function useViewerInit(
       viewerRef.current = viewer;
     }
 
+    // Verify preserveDrawingBuffer is set correctly (especially important for Docker)
+    if (isDocker) {
+      const canvas = viewer.scene.canvas;
+      const gl = canvas.getContext('webgl') as WebGLRenderingContext | null;
+      if (gl && 'getContextAttributes' in gl) {
+        const attrs = gl.getContextAttributes();
+        const preserveDrawingBuffer = attrs?.preserveDrawingBuffer;
+        console.log('🎨 Canvas preserveDrawingBuffer:', preserveDrawingBuffer);
+        if (!preserveDrawingBuffer) {
+          console.warn('⚠️ preserveDrawingBuffer is NOT enabled! Canvas capture will fail.');
+        }
+      }
+    }
+
     // Load terrain with lower detail in Docker mode
     (async () => {
       try {
