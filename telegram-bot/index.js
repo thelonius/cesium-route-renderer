@@ -117,7 +117,10 @@ bot.onText(/\/status/, async (msg) => {
     if (render.outputId) {
       try {
         const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
-        const response = await axios.get(logsUrl, { timeout: 5000 });
+        const response = await axios.get(logsUrl, { 
+          timeout: 5000,
+          validateStatus: (status) => status === 200 // Only accept 200, throw on anything else
+        });
         const logs = response.data;
 
         // Parse detailed progress from logs
@@ -180,6 +183,7 @@ bot.onText(/\/status/, async (msg) => {
         }
 
       } catch (error) {
+        console.log(`Could not fetch logs for ${render.outputId}:`, error.message);
         statusMessage += `${render.status === 'completed' ? '✅' : render.status === 'failed' ? '❌' : '⏳'} ${render.status}\n`;
       }
     } else {
@@ -196,7 +200,18 @@ bot.onText(/\/status/, async (msg) => {
       : '💡 Use /logs to view detailed logs of the latest render';
   }
 
-  bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
+  try {
+    await bot.sendMessage(chatId, statusMessage, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('Failed to send status message:', error.message);
+    // Try sending without markdown if markdown parsing failed
+    try {
+      await bot.sendMessage(chatId, statusMessage.replace(/[*_`\[\]()]/g, ''));
+    } catch (fallbackError) {
+      console.error('Failed to send status message even without markdown:', fallbackError.message);
+      await bot.sendMessage(chatId, t(chatId, 'errors.unknown', {}, userLang));
+    }
+  }
 });
 
 // Logs command
