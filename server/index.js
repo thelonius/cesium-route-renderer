@@ -11,6 +11,9 @@ const upload = multer({ dest: 'uploads/' });
 app.use(cors());
 app.use(express.json());
 
+// Start cleanup script
+require('./cleanup-old-renders');
+
 // Serve output files
 app.use('/output', express.static(path.join(__dirname, '../output')));
 
