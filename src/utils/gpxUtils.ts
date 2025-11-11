@@ -104,7 +104,7 @@ export async function parseGPX(url: string): Promise<TrackPoint[]> {
   return trackPoints;
 }
 
-export function calculateTimestamps(trackPoints: TrackPoint[]): {
+export function calculateTimestamps(trackPoints: TrackPoint[], normalizeSpeed: boolean = true): {
   startTime: Cesium.JulianDate;
   stopTime: Cesium.JulianDate;
   trackPointsWithTime: TrackPoint[];
@@ -113,12 +113,16 @@ export function calculateTimestamps(trackPoints: TrackPoint[]): {
   let stopTime: Cesium.JulianDate;
   const hasTimestamps = trackPoints[0]?.time && trackPoints[0].time !== '';
 
-  if (hasTimestamps) {
+  // Always normalize speed for smoother animation by default (normalizeSpeed=true)
+  // This prevents jerky movement from speed variations during actual recording
+  // (e.g., running downhill fast, walking uphill slow, stopping for breaks)
+  if (hasTimestamps && !normalizeSpeed) {
     startTime = Cesium.JulianDate.fromIso8601(trackPoints[0].time);
     stopTime = Cesium.JulianDate.fromIso8601(trackPoints[trackPoints.length - 1].time);
     return { startTime, stopTime, trackPointsWithTime: trackPoints };
   }
 
+  // Recalculate timestamps with constant speed for smooth, consistent animation
   const WALKING_SPEED_KMH = 5;
   const WALKING_SPEED_MS = (WALKING_SPEED_KMH * 1000) / 3600;
   startTime = Cesium.JulianDate.now();

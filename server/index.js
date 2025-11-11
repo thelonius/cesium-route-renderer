@@ -55,12 +55,12 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const absOutputDir = path.resolve(outputDir);
 
   // Calculate adaptive animation speed based on route length
-  // Goal: Keep video under 5 minutes and file size under 50MB
-  const MAX_VIDEO_MINUTES = 5;
+  // Goal: Keep video reasonable length and file size under 50MB
+  const MAX_VIDEO_MINUTES = 10; // Increased from 5 to 10 for slower, more viewable animation
   const MAX_FILE_SIZE_MB = 50;
 
   // Parse GPX to estimate route duration
-  let animationSpeed = 30; // Reduced from 50x to 30x for better frame capture with CLAMP_TO_GROUND terrain queries
+  let animationSpeed = 10; // Reduced from 30x to 10x for slower, more natural-looking animation
   try {
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
     const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
@@ -78,7 +78,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
 
-        if (requiredSpeed > 30) {
+        if (requiredSpeed > 10) {
           animationSpeed = requiredSpeed;
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
           console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
@@ -179,9 +179,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   dockerArgs.push('cesium-route-recorder');  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
 
-  const dockerProcess = spawn('docker', dockerArgs, {
-    timeout: 3600000 // 60 minutes
-  });
+  const dockerProcess = spawn('docker', dockerArgs);
 
   let stdoutBuffer = '';
   let stderrBuffer = '';

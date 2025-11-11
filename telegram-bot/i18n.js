@@ -86,9 +86,9 @@ const messages = {
       speed: '⚡ Animation speed: {{speed}}x',
       videoLength: '📹 Video length: ~{{length}} minutes',
       size: '📦 Estimated size: ~{{size}} MB',
-      time: '⏱️ Estimated render time: ~{{time}} minutes',
+      time: '⏱️ Initial estimate: ~{{time}} minutes',
       tooLarge: '⚠️ File will exceed 50MB Telegram limit\n📥 Download link will be provided',
-      starting: 'Starting render...',
+      starting: 'Starting render...\n💡 Time estimate will update based on actual performance',
       default: '🎬 Starting render with default settings...'
     },
 
@@ -212,9 +212,9 @@ const messages = {
       speed: '⚡ Скорость анимации: {{speed}}x',
       videoLength: '📹 Длина видео: ~{{length}} минут',
       size: '📦 Ожидаемый размер: ~{{size}} МБ',
-      time: '⏱️ Ожидаемое время рендера: ~{{time}} минут',
+      time: '⏱️ Начальная оценка: ~{{time}} минут',
       tooLarge: '⚠️ Файл превысит лимит Telegram в 50МБ\n📥 Будет предоставлена ссылка для загрузки',
-      starting: 'Запускаю рендер...',
+      starting: 'Запускаю рендер...\n💡 Оценка времени обновится на основе реальной производительности',
       default: '🎬 Запускаю рендер с настройками по умолчанию...'
     },
 

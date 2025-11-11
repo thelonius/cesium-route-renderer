@@ -52,7 +52,7 @@ function saveRouteHistory() {
 // Add route to user's history
 function addRouteToHistory(chatId, fileName, filePath, videoUrl, fileSize) {
   const history = routeHistory.get(chatId) || [];
-  
+
   // Add new route at the beginning
   history.unshift({
     fileName,
@@ -62,12 +62,12 @@ function addRouteToHistory(chatId, fileName, filePath, videoUrl, fileSize) {
     timestamp: Date.now(),
     date: new Date().toISOString()
   });
-  
+
   // Keep only last 10 routes
   if (history.length > 10) {
     history.splice(10);
   }
-  
+
   routeHistory.set(chatId, history);
   saveRouteHistory();
 }
@@ -116,7 +116,7 @@ bot.onText(/\/history/, async (msg) => {
   const history = routeHistory.get(chatId) || [];
 
   if (history.length === 0) {
-    const message = userLang === 'ru' 
+    const message = userLang === 'ru'
       ? '📁 У вас пока нет сохраненных маршрутов.\n\nОтправьте GPX или KML файл для создания видео.'
       : '📁 You have no saved routes yet.\n\nSend a GPX or KML file to create a video.';
     bot.sendMessage(chatId, message);
@@ -129,14 +129,14 @@ bot.onText(/\/history/, async (msg) => {
 
   const buttons = history.slice(0, 5).map((route, index) => {
     const date = new Date(route.timestamp);
-    const dateStr = date.toLocaleDateString(userLang === 'ru' ? 'ru-RU' : 'en-US', { 
-      month: 'short', 
+    const dateStr = date.toLocaleDateString(userLang === 'ru' ? 'ru-RU' : 'en-US', {
+      month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
     });
     const sizeMB = (route.fileSize / 1024 / 1024).toFixed(1);
-    
+
     return [{
       text: `${index + 1}. ${route.fileName} (${sizeMB}MB) - ${dateStr}`,
       callback_data: `rerender_${index}`
@@ -242,13 +242,30 @@ bot.onText(/\/status/, async (msg) => {
           currentStage = '📦 Finalizing recording';
         } else if (logs.includes('📹 Frame')) {
           currentStage = '📹 Recording';
-          // Check for recording progress - new format: "📹 Frame 90/900 (10.0%)"
-          const frameMatch = logs.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)/);
+          // Check for recording progress - new format: "📹 Frame 90/900 (10.0%) | Animation: 3.0s | Elapsed: 180s | ETA: 1620s"
+          const frameMatch = logs.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)[^|]*\| ETA: (\d+)s/);
           if (frameMatch) {
             const current = parseInt(frameMatch[1]);
             const total = parseInt(frameMatch[2]);
             const percent = parseFloat(frameMatch[3]);
+            const etaSeconds = parseInt(frameMatch[4]);
+            const etaMinutes = Math.ceil(etaSeconds / 60);
             currentStage += ` ${percent.toFixed(0)}% (${current}/${total})`;
+
+            // Add ETA if it's reasonable (more than 1 minute, less than 10 hours)
+            if (etaMinutes > 1 && etaMinutes < 600) {
+              statusMessage += `${currentStage}\n⏱️ Est. remaining: ~${etaMinutes} min\n`;
+              currentStage = ''; // Already added to message
+            }
+          } else {
+            // Fallback to old format without ETA
+            const oldFrameMatch = logs.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)/);
+            if (oldFrameMatch) {
+              const current = parseInt(oldFrameMatch[1]);
+              const total = parseInt(oldFrameMatch[2]);
+              const percent = parseFloat(oldFrameMatch[3]);
+              currentStage += ` ${percent.toFixed(0)}% (${current}/${total})`;
+            }
           }
         } else if (logs.includes('✅ Test capture successful')) {
           currentStage = '📹 Recording frames';
@@ -601,35 +618,40 @@ bot.on('document', async (msg) => {
     // Calculate render time estimation based on analysis
     let estimatedRenderMinutes = null;
     let estimatedSizeMB = null;
-    let animationSpeed = 50;
+    let animationSpeed = 10;
 
     if (analysis.success && analysis.statistics.duration) {
       const routeDurationMinutes = analysis.statistics.duration.minutes;
 
       // Calculate adaptive animation speed (same logic as server)
-      const MAX_VIDEO_MINUTES = 5;
+      const MAX_VIDEO_MINUTES = 10; // Increased for slower animation
       const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
 
-      if (requiredSpeed > 50) {
+      if (requiredSpeed > 10) {
         animationSpeed = requiredSpeed;
       }
 
-      // Estimate render time
+      // Estimate render time (conservative estimate for software rendering)
       // Recording duration in seconds
       const recordingSeconds = (routeDurationMinutes * 60 / animationSpeed) + 19;
       const recordingMinutes = recordingSeconds / 60;
+      const totalFrames = Math.ceil(recordingSeconds * 30); // 30 FPS
 
-      // Encoding is ~7x slower than real-time for current settings
-      const ENCODING_RATIO = 7;
-      const encodingMinutes = recordingMinutes * ENCODING_RATIO;
+      // Software rendering is VERY slow - approximately 0.4-0.5 fps
+      // This means each frame takes ~2-2.5 seconds to capture
+      const FRAMES_PER_SECOND = 0.45; // Conservative estimate
+      const captureMinutes = totalFrames / FRAMES_PER_SECOND / 60;
+
+      // Encoding is relatively fast - about 2-3x real-time
+      const encodingMinutes = recordingMinutes * 2.5;
 
       // Total with overhead
-      const overheadMinutes = 1.5; // ~90 seconds
-      estimatedRenderMinutes = Math.ceil(recordingMinutes + encodingMinutes + overheadMinutes);
+      const overheadMinutes = 2; // Startup time
+      estimatedRenderMinutes = Math.ceil(captureMinutes + encodingMinutes + overheadMinutes);
 
-      // Estimate file size
-      const bitrateKbps = 2500;
-      estimatedSizeMB = Math.ceil((recordingSeconds * bitrateKbps) / 8 / 1024);
+      // Estimate file size based on actual CRF 20 encoding
+      // CRF 20 at 1280x720 typically produces ~1-1.5 MB/minute for aerial footage
+      estimatedSizeMB = Math.ceil(recordingMinutes * 1.3);
 
       const lang = getUserLanguage(chatId, userLang);
       let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
