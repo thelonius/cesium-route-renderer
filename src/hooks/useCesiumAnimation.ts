@@ -313,7 +313,7 @@ export default function useCesiumAnimation({
       const cappedAltitude = Math.min(baseAltitude, 15000); // Maximum 15km altitude
 
       const startingCartographic = Cesium.Cartographic.fromCartesian(startingPosition);
-      
+
       // Set overview position immediately (no animation)
       viewer.camera.setView({
         destination: Cesium.Cartesian3.fromRadians(
@@ -328,52 +328,31 @@ export default function useCesiumAnimation({
         }
       });
 
-      // Wait for terrain to settle before starting opening animation
+      // Wait for terrain to settle, then just ease into the animation
       console.log('Waiting for terrain to settle...');
+
+      // Calculate final follow-cam position
+      const transform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition);
+      const cameraOffsetLocal = new Cesium.Cartesian3(-CAMERA_BASE_BACK, 0, CAMERA_BASE_HEIGHT);
+      const followPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
+
+      // Set camera to follow position immediately (no animation)
+      viewer.camera.setView({
+        destination: followPosition,
+        orientation: {
+          direction: Cesium.Cartesian3.subtract(startingPosition, followPosition, new Cesium.Cartesian3()),
+          up: Cesium.Cartesian3.normalize(
+            Cesium.Matrix4.multiplyByPointAsVector(transform, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3()),
+            new Cesium.Cartesian3()
+          )
+        }
+      });
+
+      // Wait for terrain, then just ease into the animation
       setTimeout(() => {
-        console.log('Terrain settled, starting subtle opening animation...');
-        
-        // Calculate follow-cam position
-        const transform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition);
-        const cameraOffsetLocal = new Cesium.Cartesian3(-CAMERA_BASE_BACK, 0, CAMERA_BASE_HEIGHT);
-        const followPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
-        
-        // Start from slightly higher and closer for subtle motion
-        const startingAltitude = cappedAltitude * 0.7; // 70% of overview altitude
-        const startPosition = Cesium.Cartesian3.fromRadians(
-          startingCartographic.longitude,
-          startingCartographic.latitude,
-          startingAltitude
-        );
-        
-        // Set the subtle starting position
-        viewer.camera.setView({
-          destination: startPosition,
-          orientation: {
-            heading: Cesium.Math.toRadians(0),
-            pitch: Cesium.Math.toRadians(-40),
-            roll: 0
-          }
-        });
-        
-        // Gentle fly-in with easing
-        viewer.camera.flyTo({
-          destination: followPosition,
-          orientation: {
-            direction: Cesium.Cartesian3.subtract(startingPosition, followPosition, new Cesium.Cartesian3()),
-            up: Cesium.Cartesian3.normalize(
-              Cesium.Matrix4.multiplyByPointAsVector(transform, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3()),
-              new Cesium.Cartesian3()
-            )
-          },
-          duration: 4.0, // Slower, gentler 4 second animation
-          easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT, // Smooth easing
-          complete: () => {
-            console.log('Opening animation complete, starting route animation');
-            viewer.clock.shouldAnimate = true;
-            (window as any).CESIUM_ANIMATION_READY = true;
-          }
-        });
+        console.log('Terrain settled, easing into route animation...');
+        viewer.clock.shouldAnimate = true;
+        (window as any).CESIUM_ANIMATION_READY = true;
       }, 2000); // Wait 2 seconds for terrain tiles to load
     } else {
       // Fallback if no valid position

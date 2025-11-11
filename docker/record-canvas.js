@@ -69,7 +69,7 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = 10; // Target 10 FPS
+const RECORD_FPS = 30; // 30 FPS for smoother video (was 10)
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 
@@ -208,8 +208,8 @@ async function recordRoute() {
     '-framerate', String(RECORD_FPS),
     '-i', path.join(FRAMES_DIR, 'frame-%06d.jpg'),
     '-c:v', 'libx264',
-    '-preset', 'faster',
-    '-crf', '23',
+    '-preset', 'medium', // Better quality than 'faster'
+    '-crf', '20', // Higher quality (lower = better, was 23)
     '-pix_fmt', 'yuv420p',
     '-y',
     outputPath

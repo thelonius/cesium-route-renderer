@@ -25,7 +25,12 @@ export default function useViewerInit(
       sceneModePicker: false,
       shouldAnimate: true,
       requestRenderMode: !isDocker,
-      maximumRenderTimeChange: isDocker ? 0 : Infinity
+      maximumRenderTimeChange: isDocker ? 0 : Infinity,
+      contextOptions: {
+        webgl: {
+          preserveDrawingBuffer: true // Required for canvas frame capture
+        }
+      }
     });
 
     // Disable FXAA for better performance in headless mode

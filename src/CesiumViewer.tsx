@@ -6,6 +6,7 @@ import { useRoute } from './hooks/useRoute';
 import useCesiumAnimation from './hooks/useCesiumAnimation';
 import useCesiumCamera from './hooks/useCesiumCamera';
 import FpsCounter from './components/FpsCounter';
+import RecordButton from './components/RecordButton';
 
 export default function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -155,6 +156,14 @@ export default function CesiumViewer() {
 
       {/* FPS Counter for debugging */}
       <FpsCounter viewer={viewerRef.current} />
+
+      {/* Record Button for web mode */}
+      <RecordButton
+        viewer={viewerRef.current}
+        startTime={timeRange?.startTime}
+        stopTime={timeRange?.stopTime}
+        animationSpeed={animationSpeed}
+      />
 
       {/* Welcome Screen - Show only in web mode when no route selected */}
       {!isDockerMode && !routeValidated && (
