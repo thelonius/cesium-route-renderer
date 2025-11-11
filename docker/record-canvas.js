@@ -134,11 +134,15 @@ async function recordRoute() {
   // Wait for Cesium to initialize
   console.log('Waiting for Cesium viewer to initialize...');
 
-  // Forward ALL browser console to Node console for debugging
+  // Forward important browser console messages only
   page.on('console', msg => {
     const type = msg.type();
     const text = msg.text();
-    console.log(`[Browser ${type}]`, text);
+    // Only log errors, warnings, or important info (not canvas/webgl spam)
+    if (type === 'error' || type === 'warning' || 
+        (type === 'log' && !text.includes('Canvas found') && !text.includes('WebGL context') && !text.includes('Captured frame'))) {
+      console.log(`[Browser ${type}]`, text);
+    }
   });
 
   // Wait for animation to be ready (signal from useCesiumAnimation.ts)
@@ -182,16 +186,7 @@ async function recordRoute() {
           return null;
         }
 
-        console.log('Canvas found:', canvas.width, 'x', canvas.height);
-
-        // Check if canvas has WebGL context
-        const gl = canvas.getContext('webgl') || canvas.getContext('webgl2');
-        if (gl) {
-          const attrs = gl.getContextAttributes();
-          console.log('WebGL context attributes:', JSON.stringify(attrs));
-        }
-
-        // Use toDataURL instead of toBlob - it's synchronous and works better with WebGL
+        // Use toDataURL - it's synchronous and works better with WebGL
         try {
           const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
           if (!dataUrl || dataUrl === 'data:,') {
@@ -202,7 +197,6 @@ async function recordRoute() {
 
           // Remove the data URL prefix to get just the base64
           const base64 = dataUrl.split(',')[1];
-          console.log('Captured frame, size:', base64.length, 'bytes');
           return base64;
         } catch (e) {
           console.error('toDataURL exception:', e.message, e.stack);
