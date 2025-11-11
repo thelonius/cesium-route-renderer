@@ -170,10 +170,14 @@ async function recordRoute() {
   await page.evaluate(() => {
     window.captureFrame = async function() {
       try {
-        // Find Cesium canvas directly
-        const canvas = document.querySelector('canvas.cesium-canvas');
+        // Find Cesium canvas - try specific class first, fall back to first canvas
+        let canvas = document.querySelector('canvas.cesium-canvas');
         if (!canvas) {
-          console.error('Cesium canvas not found');
+          // Fallback: get the first canvas element (Cesium's viewer canvas)
+          canvas = document.querySelector('canvas');
+        }
+        if (!canvas) {
+          console.error('No canvas element found at all');
           console.error('Available canvases:', document.querySelectorAll('canvas').length);
           return null;
         }
@@ -213,21 +217,22 @@ async function recordRoute() {
 
   // Debug: Check DOM state before testing capture
   const domInfo = await page.evaluate(() => {
-    const canvas = document.querySelector('canvas.cesium-canvas');
+    const cesiumCanvas = document.querySelector('canvas.cesium-canvas');
+    const firstCanvas = document.querySelector('canvas');
     const allCanvases = document.querySelectorAll('canvas');
     return {
-      cesiumCanvas: canvas ? {
-        width: canvas.width,
-        height: canvas.height,
-        className: canvas.className,
-        style: canvas.style.cssText
+      cesiumCanvas: cesiumCanvas ? {
+        width: cesiumCanvas.width,
+        height: cesiumCanvas.height,
+        className: cesiumCanvas.className
+      } : null,
+      firstCanvas: firstCanvas ? {
+        width: firstCanvas.width,
+        height: firstCanvas.height,
+        className: firstCanvas.className,
+        id: firstCanvas.id
       } : null,
       allCanvasCount: allCanvases.length,
-      allCanvasInfo: Array.from(allCanvases).map(c => ({
-        width: c.width,
-        height: c.height,
-        className: c.className
-      })),
       animationReady: window.CESIUM_ANIMATION_READY,
       hasViewer: !!window.Cesium?.Viewer
     };
