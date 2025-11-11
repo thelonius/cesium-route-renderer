@@ -69,7 +69,7 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = 10; // Target 10 FPS
+const RECORD_FPS = 5; // Target 5 FPS (reduced from 10 to prevent timeouts)
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 
@@ -109,9 +109,10 @@ async function recordRoute() {
       '--disable-background-timer-throttling',
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
-      '--js-flags=--max-old-space-size=4096',
+      '--js-flags=--max-old-space-size=4096 --expose-gc',
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
-      '--force-device-scale-factor=1'
+      '--force-device-scale-factor=1',
+      '--single-process'
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
@@ -156,6 +157,7 @@ async function recordRoute() {
   const frameInterval = 1000 / RECORD_FPS; // ms between frames
   const totalFrames = Math.ceil(RECORD_DURATION * RECORD_FPS);
   let frameCount = 0;
+  let consecutiveErrors = 0;
 
   const startTime = Date.now();
 
@@ -173,11 +175,11 @@ async function recordRoute() {
       const screenshot = await Promise.race([
         page.screenshot({ 
           type: 'jpeg',
-          quality: 85,
+          quality: 80,
           encoding: 'binary'
         }),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Screenshot timeout')), 5000)
+          setTimeout(() => reject(new Error('Screenshot timeout')), 10000)
         )
       ]);
       
@@ -185,6 +187,7 @@ async function recordRoute() {
       const framePath = path.join(FRAMES_DIR, `frame-${String(frameCount).padStart(6, '0')}.jpg`);
       fs.writeFileSync(framePath, screenshot);
       
+      consecutiveErrors = 0; // Reset error counter on success
       frameCount++;
       
       if (frameCount === 1 || frameCount % 10 === 0) {
@@ -192,8 +195,20 @@ async function recordRoute() {
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`📹 Captured ${frameCount}/${totalFrames} frames (${progress}%) - ${elapsed}s elapsed`);
       }
+      
+      // Force garbage collection every 50 frames
+      if (frameCount % 50 === 0 && global.gc) {
+        global.gc();
+      }
     } catch (err) {
       console.error(`❌ Error capturing frame ${frameCount}:`, err.message);
+      consecutiveErrors++;
+      
+      // If too many consecutive errors, abort
+      if (consecutiveErrors > 10) {
+        throw new Error('Too many consecutive screenshot failures - aborting');
+      }
+      
       // Try to continue with next frame
       frameCount++;
     }
