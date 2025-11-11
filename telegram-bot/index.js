@@ -150,11 +150,13 @@ bot.onText(/\/status/, async (msg) => {
             const percent = parseFloat(frameMatch[3]);
             currentStage += ` ${percent.toFixed(0)}% (${current}/${total})`;
           }
+        } else if (logs.includes('✅ Test capture successful')) {
+          currentStage = '📹 Recording frames';
         } else if (logs.includes('Starting route recording')) {
           currentStage = '📹 Recording';
-        } else if (logs.includes('Starting canvas frame capture')) {
+        } else if (logs.includes('Starting canvas frame capture') || logs.includes('✅ Starting canvas frame capture')) {
           currentStage = '🎬 Starting capture';
-        } else if (logs.includes('Waiting for Cesium viewer')) {
+        } else if (logs.includes('Waiting for Cesium viewer') || logs.includes('Waiting for CESIUM_ANIMATION_READY')) {
           currentStage = '🌍 Loading globe';
         } else if (logs.includes('Loading Cesium app')) {
           currentStage = '🌍 Loading Cesium';
@@ -570,7 +572,9 @@ bot.on('document', async (msg) => {
               statusMessage = t(chatId, 'processing.encoding', {}, userLang);
             } else if (logs.includes('📹 Frame')) {
               // Extract recording progress - new format: "📹 Frame 90/900 (10.0%)"
-              const frameMatch = logs.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)/);
+              // Use lastIndexOf to get the most recent frame update
+              const lastFrameLog = logs.substring(logs.lastIndexOf('📹 Frame'));
+              const frameMatch = lastFrameLog.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)/);
               if (frameMatch) {
                 const current = frameMatch[1];
                 const total = frameMatch[2];
@@ -578,6 +582,9 @@ bot.on('document', async (msg) => {
                 newStage = 'recording';
                 statusMessage = t(chatId, 'processing.recording', { percent, current, total }, userLang);
               }
+            } else if (logs.includes('✅ Test capture successful') || logs.includes('✅ Starting canvas frame capture')) {
+              newStage = 'recording';
+              statusMessage = userLang === 'ru' ? '📹 Начинаю запись кадров...' : '📹 Starting frame recording...';
             } else if (logs.includes('Recording progress:')) {
               // Old format fallback
               const progressMatch = logs.match(/Recording progress: (\d+)\/(\d+)s \((\d+)%\)/);
