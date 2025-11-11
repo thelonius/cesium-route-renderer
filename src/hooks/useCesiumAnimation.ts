@@ -215,11 +215,15 @@ export default function useCesiumAnimation({
           const TIME_JUMP_THRESHOLD = 5; // 5 seconds
 
           if (distance > GAP_THRESHOLD || timeJump > TIME_JUMP_THRESHOLD) {
-            if (distance > GAP_THRESHOLD) {
-              console.log(`Large gap detected (${(distance/1000).toFixed(1)}km), resetting trail`);
-            }
-            if (timeJump > TIME_JUMP_THRESHOLD) {
-              console.log(`Time jump detected (${timeJump.toFixed(1)}s), resetting trail`);
+            // Only log in non-Docker mode to avoid log spam during recording
+            const isDocker = new URLSearchParams(window.location.search).get('docker') === 'true';
+            if (!isDocker) {
+              if (distance > GAP_THRESHOLD) {
+                console.log(`Large gap detected (${(distance/1000).toFixed(1)}km), resetting trail`);
+              }
+              if (timeJump > TIME_JUMP_THRESHOLD) {
+                console.log(`Time jump detected (${timeJump.toFixed(1)}s), resetting trail`);
+              }
             }
             trailPositionsRef.current = [];
           }
