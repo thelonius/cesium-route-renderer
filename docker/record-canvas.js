@@ -138,8 +138,13 @@ async function recordRoute() {
   console.log('Waiting for CESIUM_ANIMATION_READY signal...');
   await page.waitForFunction(() => window.CESIUM_ANIMATION_READY === true, { timeout: 60000 });
   console.log('✅ Animation ready!');
+  
+  // Wait an additional 2 seconds for the first frame to render
+  console.log('Waiting for first frame to render...');
+  await page.waitForTimeout(2000);
+  console.log('Starting capture...');
 
-  // Inject canvas extraction function
+  // Inject canvas extraction function with better debugging
   await page.evaluate(() => {
     window.captureFrame = async function() {
       return new Promise((resolve) => {
@@ -147,16 +152,35 @@ async function recordRoute() {
         const canvas = document.querySelector('canvas.cesium-canvas');
         if (!canvas) {
           console.error('Cesium canvas not found');
+          console.error('Available canvases:', document.querySelectorAll('canvas').length);
           resolve(null);
           return;
         }
 
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            console.error('toBlob returned null');
+        console.log('Canvas found:', canvas.width, 'x', canvas.height);
+        
+        // Check if canvas context is available
+        try {
+          const ctx = canvas.getContext('webgl') || canvas.getContext('webgl2');
+          if (!ctx) {
+            console.error('WebGL context not available');
             resolve(null);
             return;
           }
+          console.log('WebGL context available');
+        } catch (e) {
+          console.error('Error checking WebGL context:', e.message);
+        }
+
+        // Try to capture
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            console.error('toBlob returned null - canvas may not be rendered yet');
+            console.error('Canvas dimensions:', canvas.width, 'x', canvas.height);
+            resolve(null);
+            return;
+          }
+          console.log('Blob created, size:', blob.size);
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result.split(',')[1]); // Base64
           reader.onerror = () => {
@@ -168,6 +192,20 @@ async function recordRoute() {
       });
     };
   });
+
+  // Test capture to verify setup
+  console.log('Testing canvas capture...');
+  const testFrame = await page.evaluate(() => window.captureFrame());
+  if (!testFrame) {
+    console.error('❌ Test capture failed! Canvas may not be ready.');
+    console.log('Waiting additional 3 seconds and retrying...');
+    await page.waitForTimeout(3000);
+    const retryFrame = await page.evaluate(() => window.captureFrame());
+    if (!retryFrame) {
+      throw new Error('Canvas capture not working - check preserveDrawingBuffer and canvas rendering');
+    }
+  }
+  console.log('✅ Test capture successful!');
 
   console.log('✅ Starting canvas frame capture...');
   const frameInterval = 1000 / RECORD_FPS;
