@@ -69,7 +69,7 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = 30; // 30 FPS for smoother video (was 10)
+const RECORD_FPS = 90; // 90 FPS for ultra-smooth video with GPU
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 

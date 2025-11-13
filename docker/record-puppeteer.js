@@ -187,15 +187,15 @@ async function recordRoute() {
   const isHeadlessEnv = (process.env.HEADLESS === 'true' || process.env.HEADLESS === '1')
 
   // Default high-quality values
-  const DEFAULT_FPS = 60
+  const DEFAULT_FPS = 90
   const DEFAULT_WIDTH = 1080
   const DEFAULT_HEIGHT = 1920
 
-  // Lower-quality defaults for headless/container runs with CLAMP_TO_GROUND terrain queries
-  // Reduced from 30 to 15 FPS to give Cesium more time per frame for terrain calculations
-  const HEADLESS_FPS = 15
-  const HEADLESS_WIDTH = 720
-  const HEADLESS_HEIGHT = 1280
+  // High-quality defaults for GPU server with hardware acceleration
+  // Increased from 15 to 90 FPS for ultra-smooth video with GPU
+  const HEADLESS_FPS = 90
+  const HEADLESS_WIDTH = 1080
+  const HEADLESS_HEIGHT = 1920
 
   const TARGET_FPS = parseInt(process.env.RECORD_FPS || (isHeadlessEnv ? String(HEADLESS_FPS) : String(DEFAULT_FPS)), 10)
   const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || (isHeadlessEnv ? String(HEADLESS_WIDTH) : String(DEFAULT_WIDTH)), 10)
@@ -311,7 +311,7 @@ async function recordRoute() {
 
   // Calculate expected file size based on duration and bitrate
   const recordDurationMinutes = RECORD_DURATION / 1000 / 60;
-  const bitrateKbps = 2500; // Must match videoBitrate below
+  const bitrateKbps = 8000; // Increased for 90 FPS high quality (was 2500k)
   const estimatedSizeMB = (recordDurationMinutes * bitrateKbps * 60) / 8 / 1024;
   console.log(`Expected video duration: ${recordDurationMinutes.toFixed(2)} minutes`);
   console.log(`Estimated file size: ${estimatedSizeMB.toFixed(2)} MB (at ${bitrateKbps}k bitrate)`);
@@ -323,16 +323,16 @@ async function recordRoute() {
 
   const recorder = new PuppeteerScreenRecorder(page, {
     followNewTab: false,
-    fps: TARGET_FPS, // configurable target FPS (15 in Docker for terrain rendering)
+    fps: TARGET_FPS, // 90 FPS for ultra-smooth video with GPU
     videoFrame: {
       width: RECORD_WIDTH,
       height: RECORD_HEIGHT,
     },
     aspectRatio: '9:16',
-    videoCrf: 23, // Lower CRF = better quality (18=high, 23=good, 28=medium)
+    videoCrf: 18, // High quality CRF (18=high, 23=good, 28=medium)
     videoCodec: 'libx264',
-    videoPreset: 'faster', // Faster preset for lower CPU load during capture (faster than 'veryfast')
-    videoBitrate: '2500k', // Reduced from 5000k to keep under 50MB for Telegram
+    videoPreset: 'slow', // Slower preset for better compression at high bitrate
+    videoBitrate: '8000k', // Increased from 2500k for 90 FPS high quality
     autopad: {
       color: 'black' // Ensure proper padding if aspect ratio doesn't match exactly
     }

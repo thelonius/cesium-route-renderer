@@ -67,7 +67,7 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = parseInt(process.env.RECORD_FPS || '10'); // Reduced to 10 FPS for stable capture with terrain
+const RECORD_FPS = parseInt(process.env.RECORD_FPS || '90'); // 90 FPS for ultra-smooth video with GPU
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 

@@ -69,7 +69,7 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = 5; // Target 5 FPS (reduced from 10 to prevent timeouts)
+const RECORD_FPS = 90; // Target 90 FPS for ultra-smooth video with GPU
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 
