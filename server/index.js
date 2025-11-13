@@ -62,7 +62,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   // Parse GPX to estimate route duration
   let animationSpeed = 50; // Default 50x for reasonable video length (5hr route = ~6min video)
   let hasValidDuration = false;
-  
+
   try {
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
     const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
@@ -77,7 +77,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
       // If duration is invalid (< 1 minute or negative), fall back to distance calculation
       if (routeDurationMinutes >= 1) {
         hasValidDuration = true;
-        
+
         // Calculate required speed to keep video under MAX_VIDEO_MINUTES
         // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
