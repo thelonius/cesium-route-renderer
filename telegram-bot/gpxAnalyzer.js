@@ -41,7 +41,7 @@ function analyzeTimestamps(points) {
       status: 'absent',
       quality: 'none',
       hasTimestamps: false,
-      reason: 'No timestamps in GPX file'
+      reason: 'No timestamps in track file'
     };
   }
 
