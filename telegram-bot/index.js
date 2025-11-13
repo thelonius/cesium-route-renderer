@@ -642,9 +642,9 @@ bot.on('document', async (msg) => {
       // Add 20% buffer for terrain loading and high-quality graphics
       const captureMinutes = recordingMinutes * 1.2;
 
-      // Encoding is slower with high quality settings (CRF 18, preset slow)
-      // Typically ~7x slower than real-time
-      const encodingMinutes = recordingMinutes * 7;
+      // Encoding happens in parallel and is hardware accelerated
+      // With GPU encoding, it's roughly 1:1 with recording time
+      const encodingMinutes = recordingMinutes * 1.0;
 
       // Total with overhead
       const overheadMinutes = 1; // Startup time (faster with GPU)
