@@ -350,22 +350,42 @@ async function recordRoute() {
     console.log('Starting animation playback...');
 
     const recordingSeconds = RECORD_DURATION / 1000;
-    console.log(`Recording animation for ${recordingSeconds} seconds...`);
+    console.log(`Recording animation for up to ${recordingSeconds} seconds (or until outro completes)...`);
 
-    // Log progress every 30 seconds during recording
-    const progressInterval = 30000; // 30 seconds
-    const totalIntervals = Math.ceil(RECORD_DURATION / progressInterval);
-
-    for (let i = 0; i < totalIntervals; i++) {
-      const waitTime = Math.min(progressInterval, RECORD_DURATION - (i * progressInterval));
-      await page.waitForTimeout(waitTime);
-
-      const elapsedSeconds = Math.min((i + 1) * (progressInterval / 1000), recordingSeconds);
-      const percentComplete = Math.round((elapsedSeconds / recordingSeconds) * 100);
-
-      if (elapsedSeconds < recordingSeconds) {
+    // Wait for animation to complete (with outro) or timeout after RECORD_DURATION
+    const checkInterval = 2000; // Check every 2 seconds
+    const maxChecks = Math.ceil(RECORD_DURATION / checkInterval);
+    let animationComplete = false;
+    
+    console.log('⏳ Waiting for animation outro to complete...');
+    
+    for (let i = 0; i < maxChecks; i++) {
+      await page.waitForTimeout(checkInterval);
+      
+      // Check if animation is complete
+      try {
+        animationComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
+        if (animationComplete) {
+          const elapsedSeconds = (i + 1) * (checkInterval / 1000);
+          console.log(`✅ Animation outro complete after ${elapsedSeconds.toFixed(1)}s`);
+          // Wait an extra 2 seconds to ensure final frames are captured
+          await page.waitForTimeout(2000);
+          break;
+        }
+      } catch (e) {
+        // Flag not set yet, continue waiting
+      }
+      
+      // Log progress every 30 seconds
+      if ((i + 1) % 15 === 0) { // 15 checks * 2s = 30s
+        const elapsedSeconds = (i + 1) * (checkInterval / 1000);
+        const percentComplete = Math.round((elapsedSeconds / recordingSeconds) * 100);
         console.log(`📹 Recording progress: ${elapsedSeconds.toFixed(0)}/${recordingSeconds.toFixed(0)}s (${percentComplete}%)`);
       }
+    }
+
+    if (!animationComplete) {
+      console.log('⏰ Recording timeout reached (outro may not have completed)');
     }
 
     console.log('📹 Recording frames complete! Stopping recorder...');

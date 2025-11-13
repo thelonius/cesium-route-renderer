@@ -297,7 +297,12 @@ export default function useCesiumAnimation({
               const outroInterval = setInterval(() => {
                 if (!viewer || viewer.isDestroyed() || outroProgress >= 1) {
                   clearInterval(outroInterval);
-                  if (outroProgress >= 1) console.log('🎬 Outro complete');
+                  if (outroProgress >= 1) {
+                    console.log('🎬 Outro complete');
+                    // Signal that animation is fully complete (for recording scripts)
+                    (window as any).CESIUM_ANIMATION_COMPLETE = true;
+                    console.log('✅ CESIUM_ANIMATION_COMPLETE flag set');
+                  }
                   return;
                 }
 
