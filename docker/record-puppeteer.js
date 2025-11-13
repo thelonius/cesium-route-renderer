@@ -356,12 +356,12 @@ async function recordRoute() {
     const checkInterval = 2000; // Check every 2 seconds
     const maxChecks = Math.ceil(RECORD_DURATION / checkInterval);
     let animationComplete = false;
-    
+
     console.log('⏳ Waiting for animation outro to complete...');
-    
+
     for (let i = 0; i < maxChecks; i++) {
       await page.waitForTimeout(checkInterval);
-      
+
       // Check if animation is complete
       try {
         animationComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
@@ -375,7 +375,7 @@ async function recordRoute() {
       } catch (e) {
         // Flag not set yet, continue waiting
       }
-      
+
       // Log progress every 30 seconds
       if ((i + 1) % 15 === 0) { // 15 checks * 2s = 30s
         const elapsedSeconds = (i + 1) * (checkInterval / 1000);

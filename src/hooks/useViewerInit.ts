@@ -115,12 +115,12 @@ export default function useViewerInit(
         // Use Sentinel-2 satellite imagery (Asset ID 3954) for highest quality
         const ionImagery = await Cesium.IonImageryProvider.fromAssetId(3954, {});
         const imageryLayer = viewer.imageryLayers.addImageryProvider(ionImagery);
-        
+
         // Increase texture quality
         imageryLayer.brightness = 1.0;
         imageryLayer.contrast = 1.1; // Slightly enhanced contrast
         imageryLayer.saturation = 1.1; // Slightly enhanced saturation
-        
+
         console.log('✅ Loaded high-resolution Sentinel-2 imagery');
       } catch (error) {
         console.warn('Could not load Sentinel-2 imagery, trying Bing Maps:', error);
@@ -143,7 +143,7 @@ export default function useViewerInit(
         }
       }
     })();
-    
+
     // Additional quality settings for GPU server
     if (isDocker) {
       // High quality rendering settings
@@ -151,10 +151,10 @@ export default function useViewerInit(
       viewer.scene.logarithmicDepthBuffer = true; // Better depth precision
       viewer.scene.globe.depthTestAgainstTerrain = true; // Proper depth testing
       viewer.scene.globe.showGroundAtmosphere = true; // Show atmospheric scattering
-      
+
       // Increase sample rate for better antialiasing
       viewer.resolutionScale = 1.0; // Use native resolution (1.0 = 100%)
-      
+
       console.log('✅ High-quality graphics settings enabled for GPU rendering');
     }
 
