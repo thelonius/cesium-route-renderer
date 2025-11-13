@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# Git-based deployment script
+# Git-based deployment script with GPU support
 # This assumes you've committed your changes to git
 
 set -e
 
-SERVER="theo@195.133.27.96"
+SERVER="theo@195.209.214.96"
 DEPLOY_DIR="cesium-route-renderer"
 BRANCH="${1:-main}"
 
-echo "🚀 Deploying branch: $BRANCH"
+echo "🚀 Deploying branch: $BRANCH to GPU server"
 
 # Step 1: Ensure local changes are committed
 if [[ -n $(git status -s) ]]; then
@@ -55,17 +55,17 @@ cd server && npm install && cd ..
 echo "📦 Installing telegram bot dependencies..."
 cd telegram-bot && npm install && cd ..
 
-# Rebuild Docker image
-echo "🐳 Rebuilding Docker image..."
+# Rebuild Docker image with GPU support
+echo "🐳 Rebuilding Docker image with GPU support..."
 docker build -t cesium-route-recorder .
 
 # Restart services
 echo "♻️  Restarting services..."
 pm2 restart cesium-api || pm2 start server/index.js --name cesium-api
-pm2 restart telegram-bot || pm2 start telegram-bot/index.js --name telegram-bot --env PUBLIC_URL="http://195.133.27.96:3000"
+pm2 restart telegram-bot || pm2 start telegram-bot/index.js --name telegram-bot --env PUBLIC_URL="http://195.209.214.96:3000"
 pm2 save
 
-echo "✅ Deployment complete!"
+echo "✅ Deployment complete on GPU server!"
 ENDSSH
 
 echo ""

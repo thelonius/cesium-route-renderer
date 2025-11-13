@@ -8,7 +8,7 @@ const { getUserLanguage, setUserLanguage, t, formatMessage } = require('./i18n')
 
 const BOT_TOKEN = '8418496404:AAGLdVNW_Pla_u1bMVfFia-s9klwRsgYZhs';
 const API_SERVER = process.env.API_SERVER || 'http://localhost:3000';
-const PUBLIC_URL = process.env.PUBLIC_URL || 'http://195.133.27.96:3000'; // Public URL for downloads
+const PUBLIC_URL = process.env.PUBLIC_URL || 'http://195.209.214.96:3000'; // Public URL for downloads
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 
