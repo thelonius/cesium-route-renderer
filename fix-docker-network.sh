@@ -2,7 +2,7 @@
 
 # Script to fix Docker networking issues on the remote server
 
-SERVER="theo@195.209.214.96"
+SERVER="ubuntu@195.209.214.96"
 
 echo "🔧 Attempting to fix Docker networking on remote server..."
 

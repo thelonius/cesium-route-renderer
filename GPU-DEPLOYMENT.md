@@ -2,8 +2,8 @@
 
 ## New GPU Server Details
 - **Server IP**: 195.209.214.96
-- **User**: theo
-- **SSH Key**: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCz+GO6t+UagbnZ0LK00D8Uxt4dvkoBTZauwpZOR7OPPrrJMRViHwcDL57eakwZp3DY8RRnsaXik5l7lCKADDWBZRjUVoIbqlwDUxqHuthAOiuIGGdMYcw/jzgOsIGC3te8CknUAfZi//zXdFaQzfV26+Pr/lf8Amfe4YVuTAgkLUHPyJVbbeX0FotHbOtIecb1qwSHUoJ+LFT8i44StHCS83gv9RQDyfZzinse9GVVGll6ZTfQcld0tUnuvqptV2gkKedb9H2DZ4V3GUBLnR1c5WSuMTC+Ht0iAxnEdFaaDlOpm0/IvitLChtWGwA3j7OgfVfY1vjIu5KV3U9DcrN/
+- **User**: ubuntu
+- **SSH Host Keys**: ED25519, ECDSA, RSA available
 
 ## Prerequisites on GPU Server
 
@@ -82,8 +82,8 @@ git --version
 # Add to ~/.ssh/config
 Host gpu-server
     HostName 195.209.214.96
-    User theo
-    IdentityFile ~/.ssh/id_rsa
+    User ubuntu
+    IdentityFile ~/.ssh/id_ed25519
 ```
 
 ### 2. Deploy Application
@@ -103,7 +103,7 @@ This will:
 ### 3. Verify GPU Access
 ```bash
 # SSH to server
-ssh theo@195.209.214.96
+ssh ubuntu@195.209.214.96
 
 # Check if Docker can access GPU
 docker run --rm --gpus all cesium-route-recorder nvidia-smi

@@ -287,12 +287,12 @@ export default function useCesiumAnimation({
             viewer.clock.shouldAnimate = false;
             viewer.clock.multiplier = 0;
             console.log('✅ Route ended - starting outro');
-            
+
             // Get final position and start vertical outro
             const finalPosition = hikerEntity.position!.getValue(stopTime);
             if (finalPosition && !isEndingAnimationRef.current) {
               isEndingAnimationRef.current = true;
-              
+
               let outroProgress = 0;
               const outroInterval = setInterval(() => {
                 if (!viewer || viewer.isDestroyed() || outroProgress >= 1) {
@@ -300,14 +300,14 @@ export default function useCesiumAnimation({
                   if (outroProgress >= 1) console.log('🎬 Outro complete');
                   return;
                 }
-                
+
                 outroProgress += 0.02; // 5 seconds
                 const eased = 1 - Math.pow(1 - outroProgress, 3); // Cubic ease-out
-                
+
                 // Go from -45° to -89° (vertical)
                 const tilt = -45 + (-44 * eased);
                 const distance = 1500 * (1 + eased);
-                
+
                 const lookAtZ = distance * Math.sin(Cesium.Math.toRadians(Math.abs(tilt)));
                 viewer.camera.lookAt(finalPosition, new Cesium.Cartesian3(0, 0, lookAtZ));
               }, 100);

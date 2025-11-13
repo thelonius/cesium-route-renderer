@@ -5,7 +5,8 @@
 
 set -e
 
-SERVER="theo@195.209.214.96"
+SERVER="ubuntu@195.209.214.96"
+SSH_KEY="$HOME/.ssh/gpu-server.pem"
 DEPLOY_DIR="cesium-route-renderer"
 BRANCH="${1:-main}"
 
@@ -25,7 +26,7 @@ git push origin $BRANCH
 
 # Step 3: Deploy on server
 echo "🔧 Deploying on server..."
-ssh $SERVER << ENDSSH
+ssh -i $SSH_KEY $SERVER << ENDSSH
 set -e
 
 # Create directory if doesn't exist
@@ -70,5 +71,5 @@ ENDSSH
 
 echo ""
 echo "✅ Deployed successfully!"
-echo "📊 Check status: ssh $SERVER 'pm2 list'"
-echo "📝 View logs: ssh $SERVER 'pm2 logs'"
+echo "📊 Check status: ssh -i $SSH_KEY $SERVER 'pm2 list'"
+echo "📝 View logs: ssh -i $SSH_KEY $SERVER 'pm2 logs'"
