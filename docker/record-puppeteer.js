@@ -376,8 +376,8 @@ async function recordRoute() {
         // Flag not set yet, continue waiting
       }
 
-      // Log progress every 30 seconds
-      if ((i + 1) % 15 === 0) { // 15 checks * 2s = 30s
+      // Log progress more frequently - every 10 seconds instead of 30
+      if ((i + 1) % 5 === 0) { // 5 checks * 2s = 10s
         const elapsedSeconds = (i + 1) * (checkInterval / 1000);
         const percentComplete = Math.round((elapsedSeconds / recordingSeconds) * 100);
         console.log(`📹 Recording progress: ${elapsedSeconds.toFixed(0)}/${recordingSeconds.toFixed(0)}s (${percentComplete}%)`);

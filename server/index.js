@@ -60,7 +60,9 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const MAX_FILE_SIZE_MB = 50;
 
   // Parse GPX to estimate route duration
-  let animationSpeed = 10; // Reduced from 30x to 10x for slower, more natural-looking animation
+  let animationSpeed = 50; // Default 50x for reasonable video length (5hr route = ~6min video)
+  let hasValidDuration = false;
+  
   try {
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
     const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
@@ -74,13 +76,18 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
       // If duration is invalid (< 1 minute or negative), fall back to distance calculation
       if (routeDurationMinutes >= 1) {
+        hasValidDuration = true;
+        
         // Calculate required speed to keep video under MAX_VIDEO_MINUTES
         // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
 
-        if (requiredSpeed > 10) {
+        if (requiredSpeed > 50) {
           animationSpeed = requiredSpeed;
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
+          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+        } else {
+          console.log(`✓ Using default ${animationSpeed}x speed (route: ${routeDurationMinutes.toFixed(1)}m)`);
           console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
         }
       } else {
@@ -89,7 +96,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     }
 
     // No timestamps or invalid duration - estimate from distance
-    if (animationSpeed === 100) {
+    if (!hasValidDuration) {
       console.log('Estimating from route distance...');
       const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
 
@@ -128,7 +135,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
         console.log(`Calculated required speed: ${requiredSpeed}x for ${MAX_VIDEO_MINUTES} min video`);
 
-        if (requiredSpeed > 100) {
+        if (requiredSpeed > 50) {
           animationSpeed = requiredSpeed;
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
         } else {
