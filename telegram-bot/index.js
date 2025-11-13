@@ -631,27 +631,28 @@ bot.on('document', async (msg) => {
         animationSpeed = requiredSpeed;
       }
 
-      // Estimate render time (conservative estimate for software rendering)
+      // Estimate render time (GPU-accelerated rendering with 90 FPS)
       // Recording duration in seconds
       const recordingSeconds = (routeDurationMinutes * 60 / animationSpeed) + 19;
       const recordingMinutes = recordingSeconds / 60;
-      const totalFrames = Math.ceil(recordingSeconds * 30); // 30 FPS
+      const totalFrames = Math.ceil(recordingSeconds * 90); // 90 FPS
 
-      // Software rendering is VERY slow - approximately 0.4-0.5 fps
-      // This means each frame takes ~2-2.5 seconds to capture
-      const FRAMES_PER_SECOND = 0.45; // Conservative estimate
-      const captureMinutes = totalFrames / FRAMES_PER_SECOND / 60;
+      // GPU rendering is very fast - real-time or better
+      // Recording happens at actual playback speed (1x) or slightly slower
+      // Add 20% buffer for terrain loading and high-quality graphics
+      const captureMinutes = recordingMinutes * 1.2;
 
-      // Encoding is relatively fast - about 2-3x real-time
-      const encodingMinutes = recordingMinutes * 2.5;
+      // Encoding is slower with high quality settings (CRF 18, preset slow)
+      // Typically ~7x slower than real-time
+      const encodingMinutes = recordingMinutes * 7;
 
       // Total with overhead
-      const overheadMinutes = 2; // Startup time
+      const overheadMinutes = 1; // Startup time (faster with GPU)
       estimatedRenderMinutes = Math.ceil(captureMinutes + encodingMinutes + overheadMinutes);
 
-      // Estimate file size based on actual CRF 20 encoding
-      // CRF 20 at 1280x720 typically produces ~1-1.5 MB/minute for aerial footage
-      estimatedSizeMB = Math.ceil(recordingMinutes * 1.3);
+      // Estimate file size based on CRF 18, 8000k bitrate, 90 FPS
+      // High quality 1920x1080 at 90 FPS produces ~2-2.5 MB/minute
+      estimatedSizeMB = Math.ceil(recordingMinutes * 2.3);
 
       const lang = getUserLanguage(chatId, userLang);
       let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
