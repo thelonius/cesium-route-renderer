@@ -4,12 +4,18 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
+const { getQueue } = require('./gpu-queue');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
 app.use(cors());
 app.use(express.json());
+
+// Initialize GPU queue (1 concurrent job for single GPU)
+// Can be increased to 2-3 for multi-GPU systems
+const MAX_CONCURRENT_RENDERS = process.env.MAX_CONCURRENT_RENDERS || 1;
+const gpuQueue = getQueue({ maxConcurrent: parseInt(MAX_CONCURRENT_RENDERS) });
 
 // Start cleanup script
 require('./cleanup-old-renders');
@@ -184,97 +190,79 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     console.log('GPU device found, enabling hardware acceleration');
   }
 
-  dockerArgs.push('cesium-route-recorder');  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
+  dockerArgs.push('cesium-route-recorder');
 
-  const dockerProcess = spawn('docker', dockerArgs);
+  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
 
-  let stdoutBuffer = '';
-  let stderrBuffer = '';
+  // Add job to GPU queue instead of running directly
+  const queueStatus = gpuQueue.addJob({
+    id: outputId,
+    docker: {
+      args: dockerArgs
+    },
+    outputDir: absOutputDir,
+    logPath: logPath,
+    priority: 0, // Can be adjusted based on user tier, file size, etc.
+    onComplete: (error, result) => {
+      // Clean up uploaded file
+      fs.unlinkSync(gpxFile.path);
 
-  // Stream stdout to log file in real-time
-  dockerProcess.stdout.on('data', (data) => {
-    const text = data.toString();
-    stdoutBuffer += text;
-    fs.appendFileSync(logPath, text);
-    console.log('Docker stdout:', text.trim());
-  });
+      if (error) {
+        console.error(`Job ${outputId} failed:`, error);
+        
+        // Helper to trim logs to a sensible size for API responses
+        const trim = (s, n = 8000) => {
+          if (!s) return '';
+          return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
+        };
 
-  // Stream stderr to log file in real-time
-  dockerProcess.stderr.on('data', (data) => {
-    const text = data.toString();
-    stderrBuffer += text;
-    fs.appendFileSync(logPath, text);
-    console.error('Docker stderr:', text.trim());
-  });
+        return res.status(500).json({
+          error: error.error || 'Failed to render video',
+          details: error.details || 'Unknown error',
+          outputId,
+          stdout: trim(error.stdout || ''),
+          stderr: trim(error.stderr || ''),
+          logsUrl: `/logs/${outputId}`,
+          logsTextUrl: `/logs/${outputId}/text`
+        });
+      }
 
-  dockerProcess.on('error', (error) => {
-    console.error('Docker spawn error:', error);
-    // Clean up uploaded file
-    fs.unlinkSync(gpxFile.path);
+      // Check if video file was created
+      const videoPath = path.join(outputDir, 'route-video.mp4');
+      if (fs.existsSync(videoPath)) {
+        const stats = fs.statSync(videoPath);
+        res.json({
+          success: true,
+          videoUrl: `/output/${outputId}/route-video.mp4`,
+          outputId,
+          fileSize: stats.size,
+          duration: result.duration,
+          logsUrl: `/logs/${outputId}`,
+          logsTextUrl: `/logs/${outputId}/text`
+        });
+      } else {
+        // If no video was created, include trimmed logs for debugging
+        const trim = (s, n = 8000) => {
+          if (!s) return '';
+          return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
+        };
 
-    return res.status(500).json({
-      error: 'Failed to start Docker container',
-      details: error.message,
-      outputId,
-      logsUrl: `/logs/${outputId}`,
-      logsTextUrl: `/logs/${outputId}/text`
-    });
-  });
-
-  dockerProcess.on('close', (code) => {
-    // Clean up uploaded file
-    fs.unlinkSync(gpxFile.path);
-
-    if (code !== 0) {
-      console.error(`Docker process exited with code ${code}`);
-
-      // Helper to trim logs to a sensible size for API responses
-      const trim = (s, n = 8000) => {
-        if (!s) return '';
-        return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
-      };
-
-      return res.status(500).json({
-        error: 'Failed to render video',
-        details: `Docker exited with code ${code}`,
-        outputId,
-        stdout: trim(stdoutBuffer),
-        stderr: trim(stderrBuffer),
-        logsUrl: `/logs/${outputId}`,
-        logsTextUrl: `/logs/${outputId}/text`
-      });
-    }
-
-    // Check if video file was created
-    const videoPath = path.join(outputDir, 'route-video.mp4');
-    if (fs.existsSync(videoPath)) {
-      const stats = fs.statSync(videoPath);
-      res.json({
-        success: true,
-        videoUrl: `/output/${outputId}/route-video.mp4`,
-        outputId,
-        fileSize: stats.size,
-        logsUrl: `/logs/${outputId}`,
-        logsTextUrl: `/logs/${outputId}/text`
-      });
-    } else {
-      // If no video was created, include trimmed logs for debugging
-      const trim = (s, n = 8000) => {
-        if (!s) return '';
-        return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
-      };
-
-      console.error('Video file not created. Docker stdout/stderr included in response.');
-      res.status(500).json({
-        error: 'Video file not created',
-        outputId, // Include outputId so logs can be accessed
-        stdout: trim(stdout),
-        stderr: trim(stderr),
-        logsUrl: `/logs/${outputId}`,
-        logsTextUrl: `/logs/${outputId}/text`
-      });
+        console.error('Video file not created. Docker stdout/stderr included in response.');
+        res.status(500).json({
+          error: 'Video file not created',
+          outputId,
+          stdout: trim(result.stdout || ''),
+          stderr: trim(result.stderr || ''),
+          logsUrl: `/logs/${outputId}`,
+          logsTextUrl: `/logs/${outputId}/text`
+        });
+      }
     }
   });
+
+  // Return immediately with queue status
+  // The actual response will be sent when the job completes via onComplete callback
+  console.log(`Job ${outputId} queued:`, queueStatus);
 });
 
 // Get status of a render job
@@ -283,6 +271,29 @@ app.get('/status/:outputId', (req, res) => {
   const outputDir = path.join(__dirname, '../output', outputId);
   const videoPath = path.join(outputDir, 'route-video.mp4');
 
+  // Check queue status first
+  const queueStatus = gpuQueue.getJobStatus(outputId);
+  
+  if (queueStatus.status === 'queued') {
+    return res.json({
+      status: 'queued',
+      position: queueStatus.position,
+      queueLength: queueStatus.queueLength,
+      estimatedWaitTime: queueStatus.estimatedWaitTime,
+      logsUrl: `/logs/${outputId}`
+    });
+  }
+
+  if (queueStatus.status === 'running') {
+    return res.json({
+      status: 'processing',
+      startedAt: queueStatus.startedAt,
+      runningTime: queueStatus.runningTime,
+      logsUrl: `/logs/${outputId}`
+    });
+  }
+
+  // Check filesystem for completed/failed jobs
   if (fs.existsSync(videoPath)) {
     const stats = fs.statSync(videoPath);
     res.json({
@@ -301,6 +312,19 @@ app.get('/status/:outputId', (req, res) => {
       status: 'not_found'
     });
   }
+});
+
+// Get overall queue statistics
+app.get('/queue/stats', (req, res) => {
+  const stats = gpuQueue.getStats();
+  res.json(stats);
+});
+
+// Cancel a queued or running job
+app.post('/cancel/:outputId', (req, res) => {
+  const outputId = req.params.outputId;
+  const result = gpuQueue.cancelJob(outputId);
+  res.json(result);
 });
 
 // Get logs for a render job

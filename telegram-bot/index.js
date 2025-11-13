@@ -560,6 +560,62 @@ bot.onText(/\/cleanup/, async (msg) => {
   }
 });
 
+// /queue - Show current queue status
+bot.onText(/\/queue/, async (msg) => {
+  const chatId = msg.chat.id;
+  const userLang = msg.from.language_code || 'en';
+
+  try {
+    const queueResponse = await axios.get(`${API_SERVER}/queue/stats`, {
+      timeout: 5000
+    });
+
+    const stats = queueResponse.data;
+    
+    let message = userLang === 'ru' ? '📊 Состояние очереди GPU\n\n' : '📊 GPU Queue Status\n\n';
+    message += userLang === 'ru' 
+      ? `🎬 Активно: ${stats.running}/${stats.maxConcurrent}\n`
+      : `🎬 Running: ${stats.running}/${stats.maxConcurrent}\n`;
+    message += userLang === 'ru' 
+      ? `⏳ В очереди: ${stats.queued}\n`
+      : `⏳ Queued: ${stats.queued}\n`;
+    message += userLang === 'ru' 
+      ? `✅ Завершено: ${stats.completed}\n`
+      : `✅ Completed: ${stats.completed}\n`;
+    message += userLang === 'ru' 
+      ? `❌ Ошибок: ${stats.failed}\n`
+      : `❌ Failed: ${stats.failed}\n`;
+
+    if (stats.runningJobs && stats.runningJobs.length > 0) {
+      message += userLang === 'ru' ? '\n🎬 Текущие рендеры:\n' : '\n🎬 Current renders:\n';
+      stats.runningJobs.forEach((jobId, i) => {
+        message += `${i + 1}. ${jobId}\n`;
+      });
+    }
+
+    if (stats.queuedJobs && stats.queuedJobs.length > 0) {
+      message += userLang === 'ru' ? '\n⏳ Очередь:\n' : '\n⏳ Queue:\n';
+      stats.queuedJobs.slice(0, 5).forEach((job, i) => {
+        const waitMinutes = Math.ceil((Date.now() - job.addedAt) / 60000);
+        message += `${i + 1}. ${job.id} (${waitMinutes}m)\n`;
+      });
+      if (stats.queuedJobs.length > 5) {
+        message += userLang === 'ru' 
+          ? `... и ещё ${stats.queuedJobs.length - 5}\n`
+          : `... and ${stats.queuedJobs.length - 5} more\n`;
+      }
+    }
+
+    await bot.sendMessage(chatId, message);
+  } catch (error) {
+    console.error('Error fetching queue stats:', error);
+    const errorMsg = userLang === 'ru' 
+      ? '❌ Ошибка при получении статуса очереди'
+      : '❌ Error fetching queue status';
+    await bot.sendMessage(chatId, errorMsg);
+  }
+});
+
 // Handle document (GPX file)
 bot.on('document', async (msg) => {
   const chatId = msg.chat.id;
@@ -709,6 +765,43 @@ bot.on('document', async (msg) => {
       estimatedSizeMB: estimatedSizeMB
     });
     activeRenders.set(chatId, rendersList);
+
+    // Check queue status and inform user
+    let queueCheckAttempts = 0;
+    const queueCheckInterval = setInterval(async () => {
+      try {
+        queueCheckAttempts++;
+        const statusResponse = await axios.get(`${API_SERVER}/status/${outputId}`, {
+          timeout: 5000,
+          validateStatus: () => true
+        });
+
+        if (statusResponse.status === 200 && statusResponse.data.status === 'queued') {
+          const { position, queueLength, estimatedWaitTime } = statusResponse.data;
+          const waitMinutes = Math.ceil(estimatedWaitTime / 60);
+          
+          const queueMsg = userLang === 'ru' 
+            ? `⏳ Ваш рендер в очереди\n📍 Позиция: ${position} из ${queueLength}\n⏱ Ожидание: ~${waitMinutes} мин`
+            : `⏳ Your render is queued\n📍 Position: ${position} of ${queueLength}\n⏱ Estimated wait: ~${waitMinutes} min`;
+          
+          await bot.sendMessage(chatId, queueMsg);
+          clearInterval(queueCheckInterval);
+        } else if (statusResponse.status === 200 && statusResponse.data.status === 'processing') {
+          const startMsg = userLang === 'ru' 
+            ? `🚀 Рендеринг начался!`
+            : `🚀 Rendering started!`;
+          await bot.sendMessage(chatId, startMsg);
+          clearInterval(queueCheckInterval);
+        }
+
+        // Stop checking after 30 seconds
+        if (queueCheckAttempts > 30) {
+          clearInterval(queueCheckInterval);
+        }
+      } catch (err) {
+        console.log('Queue check error:', err.message);
+      }
+    }, 1000); // Check every second for first 30 seconds
 
     // Start progress monitoring (sends updates based on log content)
     let lastLogLength = 0;

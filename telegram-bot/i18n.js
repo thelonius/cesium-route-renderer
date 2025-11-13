@@ -32,6 +32,7 @@ const messages = {
         '/start - Start the bot',
         '/help - Show this help',
         '/status - Check current render status',
+        '/queue - View GPU queue status',
         '/logs - View detailed logs for your last render',
         '/language - Change language (English/Русский)',
         '/cleanup - Delete renders older than 7 days (admin)'
@@ -158,6 +159,7 @@ const messages = {
         '/start - Запустить бота',
         '/help - Показать эту справку',
         '/status - Проверить статус текущего рендера',
+        '/queue - Посмотреть состояние очереди GPU',
         '/logs - Просмотреть подробные логи последнего рендера',
         '/language - Сменить язык (English/Русский)',
         '/cleanup - Удалить рендеры старше 7 дней (админ)'
