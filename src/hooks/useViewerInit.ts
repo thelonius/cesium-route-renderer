@@ -26,16 +26,23 @@ export default function useViewerInit(
       shouldAnimate: true,
       requestRenderMode: !isDocker,
       maximumRenderTimeChange: isDocker ? 0 : Infinity,
+      shadows: true, // Enable shadows for realistic lighting
+      terrainShadows: Cesium.ShadowMode.ENABLED, // Enable terrain shadows
       contextOptions: {
         webgl: {
-          preserveDrawingBuffer: true // Required for canvas frame capture
+          preserveDrawingBuffer: true, // Required for canvas frame capture
+          alpha: false, // Better performance
+          depth: true,
+          stencil: false,
+          antialias: true, // Enable antialiasing
+          powerPreference: 'high-performance' // Request high-performance GPU
         }
       }
     });
 
-    // Disable FXAA for better performance in headless mode
+    // Enable FXAA anti-aliasing for better quality
     if (isDocker && viewer.scene.postProcessStages.fxaa) {
-      viewer.scene.postProcessStages.fxaa.enabled = false;
+      viewer.scene.postProcessStages.fxaa.enabled = true;
     }
 
     // Hide Cesium credits/attribution in Docker mode
@@ -51,20 +58,17 @@ export default function useViewerInit(
       viewer.scene.requestRenderMode = false;
       viewer.scene.maximumRenderTimeChange = 0;
 
-      // Performance optimizations for Docker mode
-      viewer.scene.globe.enableLighting = false; // Disable lighting calculations
-      viewer.scene.fog.enabled = false; // Disable fog
-      viewer.scene.sun.show = false; // Hide sun
-      viewer.scene.moon.show = false; // Hide moon
+      // Enable high-quality graphics for GPU server
+      viewer.scene.globe.enableLighting = true; // Enable realistic lighting
+      viewer.scene.fog.enabled = true; // Enable atmospheric fog
+      viewer.scene.sun.show = true; // Show sun
+      viewer.scene.moon.show = true; // Show moon
+      viewer.scene.skyAtmosphere.show = true; // Show atmosphere
+      viewer.scene.skyBox.show = true; // Show skybox
 
-      // Keep skybox and atmosphere for better visuals (they're relatively cheap)
-      // viewer.scene.skyAtmosphere.show = false;
-      // viewer.scene.skyBox.show = false;
-      // viewer.scene.backgroundColor = Cesium.Color.BLACK;
-
-      // Reduce terrain detail significantly for faster rendering
-      viewer.scene.globe.maximumScreenSpaceError = 16; // Higher = lower quality = faster (default 2, was 4, now 16 for 4x speed)
-      viewer.scene.globe.tileCacheSize = 50; // Smaller cache = less memory, faster
+      // Maximum terrain detail for GPU rendering
+      viewer.scene.globe.maximumScreenSpaceError = 1.5; // Lower = higher quality (default 2, 1.5 for better detail)
+      viewer.scene.globe.tileCacheSize = 500; // Large cache for better performance with high detail
     }
 
     if (viewerRef) {
@@ -85,43 +89,74 @@ export default function useViewerInit(
       }
     }
 
-    // Load terrain with lower detail in Docker mode
+    // Load high-quality terrain
     (async () => {
       try {
         const terrainProvider = await Cesium.createWorldTerrainAsync({
-          requestWaterMask: false,
-          requestVertexNormals: false
+          requestWaterMask: true, // Enable water effects
+          requestVertexNormals: true // Enable realistic lighting on terrain
         });
         viewer.terrainProvider = terrainProvider;
 
-        // Further optimize terrain in Docker mode
+        // Optimize terrain loading for GPU server
         if (isDocker) {
-          viewer.scene.globe.preloadAncestors = false; // Don't preload lower-res tiles
-          viewer.scene.globe.preloadSiblings = false; // Don't preload adjacent tiles
+          viewer.scene.globe.preloadAncestors = true; // Preload lower-res tiles for smoother transitions
+          viewer.scene.globe.preloadSiblings = true; // Preload adjacent tiles
         }
       } catch (error) {
         console.warn('Could not load terrain:', error);
       }
     })();
 
-    // Load imagery
+    // Load high-resolution imagery
     (async () => {
       try {
         viewer.imageryLayers.removeAll();
-        const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {});
-        viewer.imageryLayers.addImageryProvider(ionImagery);
+        // Use Sentinel-2 satellite imagery (Asset ID 3954) for highest quality
+        const ionImagery = await Cesium.IonImageryProvider.fromAssetId(3954, {});
+        const imageryLayer = viewer.imageryLayers.addImageryProvider(ionImagery);
+        
+        // Increase texture quality
+        imageryLayer.brightness = 1.0;
+        imageryLayer.contrast = 1.1; // Slightly enhanced contrast
+        imageryLayer.saturation = 1.1; // Slightly enhanced saturation
+        
+        console.log('✅ Loaded high-resolution Sentinel-2 imagery');
       } catch (error) {
-        console.warn('Could not load Cesium imagery, falling back to OpenStreetMap:', error);
+        console.warn('Could not load Sentinel-2 imagery, trying Bing Maps:', error);
         try {
-          const osm = new Cesium.OpenStreetMapImageryProvider({
-            url: 'https://a.tile.openstreetmap.org/'
-          });
-          viewer.imageryLayers.addImageryProvider(osm);
-        } catch (osmError) {
-          console.error('Could not load any imagery provider:', osmError);
+          // Fallback to Bing Maps aerial with labels
+          const bingImagery = await Cesium.IonImageryProvider.fromAssetId(2, {});
+          viewer.imageryLayers.addImageryProvider(bingImagery);
+          console.log('✅ Loaded Bing Maps imagery');
+        } catch (bingError) {
+          console.warn('Could not load Bing Maps, falling back to OpenStreetMap:', bingError);
+          try {
+            const osm = new Cesium.OpenStreetMapImageryProvider({
+              url: 'https://a.tile.openstreetmap.org/'
+            });
+            viewer.imageryLayers.addImageryProvider(osm);
+            console.log('✅ Loaded OpenStreetMap imagery');
+          } catch (osmError) {
+            console.error('Could not load any imagery provider:', osmError);
+          }
         }
       }
     })();
+    
+    // Additional quality settings for GPU server
+    if (isDocker) {
+      // High quality rendering settings
+      viewer.scene.highDynamicRange = true; // Enable HDR rendering
+      viewer.scene.logarithmicDepthBuffer = true; // Better depth precision
+      viewer.scene.globe.depthTestAgainstTerrain = true; // Proper depth testing
+      viewer.scene.globe.showGroundAtmosphere = true; // Show atmospheric scattering
+      
+      // Increase sample rate for better antialiasing
+      viewer.resolutionScale = 1.0; // Use native resolution (1.0 = 100%)
+      
+      console.log('✅ High-quality graphics settings enabled for GPU rendering');
+    }
 
     return () => {
       if (viewer) {
