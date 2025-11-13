@@ -185,6 +185,9 @@ function analyzeTrackPoints(points) {
       maxEle = Math.max(maxEle, points[i].ele);
     }
 
+    // Check if elevation data is actually present (not all zeros)
+    const hasElevationData = points.some(p => p.ele !== 0) || maxEle !== minEle;
+
     // Analyze timestamps
     const timestampAnalysis = analyzeTimestamps(points);
 
@@ -231,11 +234,12 @@ function analyzeTrackPoints(points) {
           km: (totalDistance / 1000).toFixed(2)
         },
         elevation: {
-          gain: Math.round(elevationGain),
-          loss: Math.round(elevationLoss),
-          min: Math.round(minEle),
-          max: Math.round(maxEle),
-          range: Math.round(maxEle - minEle)
+          gain: hasElevationData ? Math.round(elevationGain) : null,
+          loss: hasElevationData ? Math.round(elevationLoss) : null,
+          min: hasElevationData ? Math.round(minEle) : null,
+          max: hasElevationData ? Math.round(maxEle) : null,
+          range: hasElevationData ? Math.round(maxEle - minEle) : null,
+          available: hasElevationData
         },
         duration: {
           minutes: Math.round(estimatedDuration),
@@ -442,9 +446,14 @@ function formatAnalytics(analysis, lang = 'en') {
 
   // Elevation
   message += `${l.elevation}\n`;
-  message += `${l.gain}: +${stats.elevation.gain}м\n`;
-  message += `${l.loss}: -${stats.elevation.loss}м\n`;
-  message += `${l.range}: ${stats.elevation.min}м - ${stats.elevation.max}м\n\n`;
+  if (stats.elevation.available) {
+    message += `${l.gain}: +${stats.elevation.gain}м\n`;
+    message += `${l.loss}: -${stats.elevation.loss}м\n`;
+    message += `${l.range}: ${stats.elevation.min}м - ${stats.elevation.max}м\n\n`;
+  } else {
+    const noData = lang === 'ru' ? '• Данные о высоте отсутствуют в файле' : '• No elevation data in file';
+    message += `${noData}\n\n`;
+  }
 
   // Timestamp quality
   message += `${l.timestamps}\n`;
