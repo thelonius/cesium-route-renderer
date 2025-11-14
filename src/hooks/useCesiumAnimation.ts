@@ -66,6 +66,8 @@ export default function useCesiumAnimation({
   const isEndingAnimationRef = useRef(false); // Track if we're in ending animation
   const continuousAzimuthRef = useRef(0); // Continuous slow rotation during main route
   const cameraPanOffsetRef = useRef(0); // Side-to-side panning offset
+  const azimuthRotationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const checkCompletionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [entity, setEntity] = useState<Cesium.Entity | null>(null);
   const listenersRef = useRef<{ pre: any; post: any } | null>(null);
   const entitiesRef = useRef<{ hiker: Cesium.Entity | null; trail: Cesium.Entity | null }>({ hiker: null, trail: null });
@@ -560,23 +562,28 @@ export default function useCesiumAnimation({
                       console.log(`Route animation at full speed: ${animationSpeed}x`);
 
                       // Start continuous slow azimuth rotation during main route
-                      const azimuthRotationInterval = setInterval(() => {
-                        if (!isEndingAnimationRef.current && viewer.clock.shouldAnimate) {
+                      azimuthRotationIntervalRef.current = setInterval(() => {
+                        if (!viewer || viewer.isDestroyed() || !isEndingAnimationRef.current && viewer.clock && viewer.clock.shouldAnimate) {
                           // Rotate slowly: 360° over ~2 minutes = 0.05°/frame at 10fps
                           continuousAzimuthRef.current += 0.05;
                           if (continuousAzimuthRef.current >= 360) {
                             continuousAzimuthRef.current = 0;
                           }
                         } else {
-                          clearInterval(azimuthRotationInterval);
+                          if (azimuthRotationIntervalRef.current) {
+                            clearInterval(azimuthRotationIntervalRef.current);
+                            azimuthRotationIntervalRef.current = null;
+                          }
                         }
                       }, 100);
 
                       // Monitor for route completion
-                      const checkCompletion = setInterval(() => {
-                        // Stop checking if animation is already stopped
-                        if (!viewer.clock.shouldAnimate) {
-                          clearInterval(checkCompletion);
+                      checkCompletionIntervalRef.current = setInterval(() => {
+                        if (!viewer || viewer.isDestroyed() || !viewer.clock || !viewer.clock.shouldAnimate) {
+                          if (checkCompletionIntervalRef.current) {
+                            clearInterval(checkCompletionIntervalRef.current);
+                            checkCompletionIntervalRef.current = null;
+                          }
                           return;
                         }
 
@@ -635,6 +642,14 @@ export default function useCesiumAnimation({
     // Clear status interval on cleanup
     const cleanup = () => {
       clearInterval(statusInterval);
+      if (azimuthRotationIntervalRef.current) {
+        clearInterval(azimuthRotationIntervalRef.current);
+        azimuthRotationIntervalRef.current = null;
+      }
+      if (checkCompletionIntervalRef.current) {
+        clearInterval(checkCompletionIntervalRef.current);
+        checkCompletionIntervalRef.current = null;
+      }
     };
 
     // Store cleanup function
@@ -656,6 +671,16 @@ export default function useCesiumAnimation({
       }
       if (entitiesRef.current.trail) {
         viewer.entities.remove(entitiesRef.current.trail);
+      }
+
+      // Clear intervals
+      if (azimuthRotationIntervalRef.current) {
+        clearInterval(azimuthRotationIntervalRef.current);
+        azimuthRotationIntervalRef.current = null;
+      }
+      if (checkCompletionIntervalRef.current) {
+        clearInterval(checkCompletionIntervalRef.current);
+        checkCompletionIntervalRef.current = null;
       }
 
       // Call animation cleanup if it exists
