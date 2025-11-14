@@ -227,6 +227,9 @@ function analyzeTrackPoints(points) {
       west: Math.min(...lons)
     };
 
+    // Check if elevation data exists (not all zeros)
+    const hasElevationData = !(minEle === 0 && maxEle === 0);
+
     return {
       success: true,
       statistics: {
@@ -235,13 +238,13 @@ function analyzeTrackPoints(points) {
           total: totalDistance,
           km: (totalDistance / 1000).toFixed(2)
         },
-        elevation: {
+        elevation: hasElevationData ? {
           gain: Math.round(elevationGain),
           loss: Math.round(elevationLoss),
           min: Math.round(minEle),
           max: Math.round(maxEle),
           range: Math.round(maxEle - minEle)
-        },
+        } : null,
         duration: {
           minutes: Math.round(estimatedDuration),
           hours: (estimatedDuration / 60).toFixed(1),
@@ -445,11 +448,13 @@ function formatAnalytics(analysis, lang = 'en') {
   message += `${l.points}: ${stats.points}\n`;
   message += `${l.duration}: ~${stats.duration.hours}ч (${stats.duration.source === 'timestamps' ? l.fromTimestamps : l.estimated})\n\n`;
 
-  // Elevation
-  message += `${l.elevation}\n`;
-  message += `${l.gain}: +${stats.elevation.gain}м\n`;
-  message += `${l.loss}: -${stats.elevation.loss}м\n`;
-  message += `${l.range}: ${stats.elevation.min}м - ${stats.elevation.max}м\n\n`;
+  // Elevation (only if data exists)
+  if (stats.elevation) {
+    message += `${l.elevation}\n`;
+    message += `${l.gain}: +${stats.elevation.gain}м\n`;
+    message += `${l.loss}: -${stats.elevation.loss}м\n`;
+    message += `${l.range}: ${stats.elevation.min}м - ${stats.elevation.max}м\n\n`;
+  }
 
   // Timestamp quality
   message += `${l.timestamps}\n`;
