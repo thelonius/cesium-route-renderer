@@ -534,6 +534,11 @@ export default function useCesiumAnimation({
           // Phase 1: Simultaneous azimuth, tilt, and panning with route speed increase (5 seconds)
           let cameraProgress = 0;
           const cameraInterval = setInterval(() => {
+            if (!viewer || viewer.isDestroyed() || !viewer.clock) {
+              clearInterval(cameraInterval);
+              return;
+            }
+
             cameraProgress += 0.02; // 50 steps at 100ms = 5 seconds
 
             // Add subtle side-to-side panning during opening (sine wave: -200 to +200)
@@ -554,6 +559,11 @@ export default function useCesiumAnimation({
                   // Phase 2: Continue route speed increase to full speed (2 seconds)
                   let speedProgress = 0;
                   const speedInterval = setInterval(() => {
+                    if (!viewer || viewer.isDestroyed() || !viewer.clock) {
+                      clearInterval(speedInterval);
+                      return;
+                    }
+
                     speedProgress += 0.05; // 20 steps at 100ms = 2 seconds
                     if (speedProgress >= 1) {
                       viewer.clock.multiplier = animationSpeed;
@@ -563,17 +573,18 @@ export default function useCesiumAnimation({
 
                       // Start continuous slow azimuth rotation during main route
                       azimuthRotationIntervalRef.current = setInterval(() => {
-                        if (!viewer || viewer.isDestroyed() || !isEndingAnimationRef.current && viewer.clock && viewer.clock.shouldAnimate) {
-                          // Rotate slowly: 360° over ~2 minutes = 0.05°/frame at 10fps
-                          continuousAzimuthRef.current += 0.05;
-                          if (continuousAzimuthRef.current >= 360) {
-                            continuousAzimuthRef.current = 0;
-                          }
-                        } else {
+                        if (!viewer || viewer.isDestroyed() || isEndingAnimationRef.current || !viewer.clock || !viewer.clock.shouldAnimate) {
                           if (azimuthRotationIntervalRef.current) {
                             clearInterval(azimuthRotationIntervalRef.current);
                             azimuthRotationIntervalRef.current = null;
                           }
+                          return;
+                        }
+
+                        // Rotate slowly: 360° over ~2 minutes = 0.05°/frame at 10fps
+                        continuousAzimuthRef.current += 0.05;
+                        if (continuousAzimuthRef.current >= 360) {
+                          continuousAzimuthRef.current = 0;
                         }
                       }, 100);
 
@@ -624,9 +635,11 @@ export default function useCesiumAnimation({
     } else {
       // Fallback
       setTimeout(() => {
-        viewer.clock.shouldAnimate = true;
-        viewer.clock.multiplier = animationSpeed;
-        (window as any).CESIUM_ANIMATION_READY = true;
+        if (viewer && !viewer.isDestroyed() && viewer.clock) {
+          viewer.clock.shouldAnimate = true;
+          viewer.clock.multiplier = animationSpeed;
+          (window as any).CESIUM_ANIMATION_READY = true;
+        }
       }, 4000);
     }
 
