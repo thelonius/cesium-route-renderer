@@ -62,9 +62,9 @@ export default function useViewerInit(
       // viewer.scene.skyBox.show = false;
       // viewer.scene.backgroundColor = Cesium.Color.BLACK;
 
-      // Reduce terrain detail significantly for faster rendering
-      viewer.scene.globe.maximumScreenSpaceError = 16; // Higher = lower quality = faster (default 2, was 4, now 16 for 4x speed)
-      viewer.scene.globe.tileCacheSize = 50; // Smaller cache = less memory, faster
+      // Reduce terrain detail significantly for faster rendering on CPU
+      viewer.scene.globe.maximumScreenSpaceError = 32; // Higher = lower quality = faster (default 2, increased to 32 for better CPU performance)
+      viewer.scene.globe.tileCacheSize = 25; // Smaller cache = less memory, faster (reduced from 50)
     }
 
     if (viewerRef) {
@@ -104,36 +104,26 @@ export default function useViewerInit(
       }
     })();
 
-    // Load imagery - synchronous for Docker to prevent CORS errors
-    if (isDocker) {
-      // Docker: Load OSM immediately and synchronously
-      viewer.imageryLayers.removeAll();
-      const osm = new Cesium.OpenStreetMapImageryProvider({
-        url: 'https://a.tile.openstreetmap.org/'
-      });
-      viewer.imageryLayers.addImageryProvider(osm);
-      console.log('✅ Loaded OSM imagery for Docker');
-    } else {
-      // Browser: Try Cesium Ion (Bing Maps), fallback to OSM
-      (async () => {
+    // Load imagery - try Cesium Ion (Bing Maps) with web security disabled in Docker
+    (async () => {
+      try {
+        viewer.imageryLayers.removeAll();
+        const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {});
+        viewer.imageryLayers.addImageryProvider(ionImagery);
+        console.log('✅ Loaded Bing Maps imagery');
+      } catch (error) {
+        console.warn('Could not load Cesium Ion imagery, falling back to OpenStreetMap:', error);
         try {
-          viewer.imageryLayers.removeAll();
-          const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {});
-          viewer.imageryLayers.addImageryProvider(ionImagery);
-          console.log('✅ Loaded Bing Maps imagery');
-        } catch (error) {
-          console.warn('Could not load Cesium imagery, falling back to OpenStreetMap:', error);
-          try {
-            const osm = new Cesium.OpenStreetMapImageryProvider({
-              url: 'https://a.tile.openstreetmap.org/'
-            });
-            viewer.imageryLayers.addImageryProvider(osm);
-          } catch (osmError) {
-            console.error('Could not load any imagery provider:', osmError);
-          }
+          const osm = new Cesium.OpenStreetMapImageryProvider({
+            url: 'https://a.tile.openstreetmap.org/'
+          });
+          viewer.imageryLayers.addImageryProvider(osm);
+          console.log('✅ Loaded OSM imagery fallback');
+        } catch (osmError) {
+          console.error('Could not load any imagery provider:', osmError);
         }
-      })();
-    }
+      }
+    })();
 
     return () => {
       if (viewer) {

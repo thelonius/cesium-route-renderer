@@ -69,7 +69,7 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = 30; // 30 FPS for smoother video (was 10)
+const RECORD_FPS = 24; // 24 FPS for better CPU performance
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 
@@ -100,6 +100,8 @@ async function recordRoute() {
       '--no-sandbox',
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
+      '--disable-web-security',
+      '--disable-features=IsolateOrigins,site-per-process',
       '--enable-webgl',
       '--use-gl=angle',
       '--use-angle=swiftshader',
@@ -321,8 +323,8 @@ async function recordRoute() {
     '-framerate', String(RECORD_FPS),
     '-i', path.join(FRAMES_DIR, 'frame-%06d.jpg'),
     '-c:v', 'libx264',
-    '-preset', 'medium', // Better quality than 'faster'
-    '-crf', '20', // Higher quality (lower = better, was 23)
+    '-preset', 'medium',
+    '-crf', '23', // Good quality for 720p
     '-pix_fmt', 'yuv420p',
     '-y',
     outputPath
