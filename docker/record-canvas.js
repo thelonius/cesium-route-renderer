@@ -95,6 +95,20 @@ function getTerrainQualityLevel(errorValue) {
   return 'Minimal';
 }
 
+// Get build version
+function getBuildVersion() {
+  try {
+    const packagePath = path.join(__dirname, 'package.json');
+    if (fs.existsSync(packagePath)) {
+      const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+      return packageJson.version || 'dev';
+    }
+  } catch (err) {
+    console.warn('Could not read package.json:', err.message);
+  }
+  return 'unknown';
+}
+
 // Display status bar
 function displayStatusBar() {
   const elapsed = statusInfo.startTime ? ((Date.now() - statusInfo.startTime) / 1000).toFixed(1) : '0.0';
