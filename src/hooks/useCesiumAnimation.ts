@@ -492,9 +492,14 @@ export default function useCesiumAnimation({
                                 const outroInterval = setInterval(() => {
                                   outroProgress += 0.02; // 50 steps = 5 seconds
                                   
-                                  if (outroProgress >= 1) {
+                                  if (!viewer || viewer.isDestroyed() || outroProgress >= 1) {
                                     clearInterval(outroInterval);
-                                    console.log('✅ Outro sequence complete');
+                                    if (outroProgress >= 1) {
+                                      console.log('🎬 Outro complete');
+                                      // Signal that animation is fully complete (for recording scripts)
+                                      (window as any).CESIUM_ANIMATION_COMPLETE = true;
+                                      console.log('✅ CESIUM_ANIMATION_COMPLETE flag set');
+                                    }
                                     return;
                                   }
                                   
