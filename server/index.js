@@ -60,7 +60,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const MAX_FILE_SIZE_MB = 50;
 
   // Parse GPX/KML to estimate route duration
-  let animationSpeed = 12; // Default 12x speed (reduced for better quality)
+  let animationSpeed = 5; // Default 12x speed (reduced for better quality)
   try {
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
     const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>|<when>([^<]+)<\/when>/g);

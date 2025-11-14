@@ -34,6 +34,16 @@ function displayStatusBar() {
   console.log(`📊 [${statusInfo.buildVersion}] FPS:${statusInfo.averageFps.toFixed(1)} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Speed:${statusInfo.animationSpeed}x | Frame:${averageFrameTime.toFixed(2)}ms`);
 }
 
+// Convert terrain quality value to descriptive level
+function getTerrainQualityLevel(errorValue: number): string {
+  if (errorValue <= 1) return 'Ultra High';
+  if (errorValue <= 2) return 'High';
+  if (errorValue <= 4) return 'Medium';
+  if (errorValue <= 8) return 'Low';
+  if (errorValue <= 16) return 'Very Low';
+  return 'Minimal';
+}
+
 interface UseCesiumAnimationProps {
   viewer: Cesium.Viewer | null;
   trackPoints: TrackPoint[];
@@ -512,7 +522,12 @@ export default function useCesiumAnimation({
           let terrainQuality = 'unknown';
           if (viewer.scene && viewer.scene.globe) {
             const errorValue = viewer.scene.globe.maximumScreenSpaceError;
-            terrainQuality = errorValue ? errorValue.toString() : 'unknown';
+            if (errorValue !== undefined) {
+              const qualityLevel = getTerrainQualityLevel(errorValue);
+              terrainQuality = `${errorValue} (${qualityLevel})`;
+            } else {
+              terrainQuality = 'unknown';
+            }
           }
 
           statusInfo.mapProvider = mapProvider;

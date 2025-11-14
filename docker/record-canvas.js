@@ -73,6 +73,39 @@ const RECORD_FPS = 24; // 24 FPS for better CPU performance
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 
+// Status tracking
+let statusInfo = {
+  buildVersion: 'unknown',
+  averageFps: 0,
+  mapProvider: 'unknown',
+  terrainQuality: 'unknown',
+  avgFrameTime: 0,
+  totalFrames: 0,
+  startTime: null,
+  frameTimes: []
+};
+
+// Convert terrain quality value to descriptive level
+function getTerrainQualityLevel(errorValue) {
+  if (errorValue <= 1) return 'Ultra High';
+  if (errorValue <= 2) return 'High';
+  if (errorValue <= 4) return 'Medium';
+  if (errorValue <= 8) return 'Low';
+  if (errorValue <= 16) return 'Very Low';
+  return 'Minimal';
+}
+
+// Display status bar
+function displayStatusBar() {
+  const elapsed = statusInfo.startTime ? ((Date.now() - statusInfo.startTime) / 1000).toFixed(1) : '0.0';
+  const avgFps = statusInfo.frameTimes.length > 0 ?
+    (statusInfo.frameTimes.length / (elapsed / 60)).toFixed(1) : '0.0';
+  const avgFrameTime = statusInfo.frameTimes.length > 0 ?
+    (statusInfo.frameTimes.reduce((a, b) => a + b, 0) / statusInfo.frameTimes.length).toFixed(2) : '0.00';
+
+  console.log(`📊 [${statusInfo.buildVersion}] FPS:${avgFps} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Frame:${avgFrameTime}ms | Elapsed:${elapsed}s`);
+}
+
 async function startServer() {
   const server = http.createServer((request, response) => {
     return handler(request, response, {
@@ -91,6 +124,10 @@ async function startServer() {
 
 async function recordRoute() {
   console.log('Starting Cesium canvas-based recording...');
+
+  // Initialize status tracking
+  statusInfo.buildVersion = getBuildVersion();
+  statusInfo.startTime = Date.now();
 
   const server = await startServer();
 
@@ -151,6 +188,58 @@ async function recordRoute() {
   console.log('Waiting for CESIUM_ANIMATION_READY signal...');
   await page.waitForFunction(() => window.CESIUM_ANIMATION_READY === true, { timeout: 60000 });
   console.log('✅ Animation ready!');
+
+  // Get rendering info from browser
+  const renderInfo = await page.evaluate(() => {
+    try {
+      // Get map provider info
+      let mapProvider = 'unknown';
+      if (window.Cesium && window.Cesium.Viewer) {
+        const viewer = window.Cesium.Viewer.instances[0];
+        if (viewer && viewer.imageryLayers) {
+          const layers = viewer.imageryLayers;
+          for (let i = 0; i < layers.length; i++) {
+            const layer = layers.get(i);
+            if (layer && layer.imageryProvider) {
+              const provider = layer.imageryProvider;
+              if (provider.constructor.name.includes('IonImageryProvider')) {
+                if (provider._assetId === 2) mapProvider = 'Bing Maps';
+                else if (provider._assetId === 3954) mapProvider = 'Sentinel-2';
+                else mapProvider = `Cesium Ion (${provider._assetId})`;
+              } else if (provider.constructor.name.includes('OpenStreetMap')) {
+                mapProvider = 'OpenStreetMap';
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      // Get terrain quality
+      let terrainQuality = 'unknown';
+      if (window.Cesium && window.Cesium.Viewer) {
+        const viewer = window.Cesium.Viewer.instances[0];
+        if (viewer && viewer.scene && viewer.scene.globe) {
+          const errorValue = viewer.scene.globe.maximumScreenSpaceError;
+          if (errorValue !== undefined) {
+            const qualityLevel = getTerrainQualityLevel(errorValue);
+            terrainQuality = `${errorValue} (${qualityLevel})`;
+          }
+        }
+      }
+
+      return { mapProvider, terrainQuality };
+    } catch (e) {
+      console.warn('Could not get render info:', e.message);
+      return { mapProvider: 'unknown', terrainQuality: 'unknown' };
+    }
+  });
+
+  statusInfo.mapProvider = renderInfo.mapProvider;
+  statusInfo.terrainQuality = renderInfo.terrainQuality;
+
+  console.log(`🎨 Map Provider: ${statusInfo.mapProvider}`);
+  console.log(`🏔️  Terrain Quality: ${statusInfo.terrainQuality}`);
 
   // Wait an additional 2 seconds for the first frame to render
   console.log('Waiting for first frame to render...');
@@ -268,6 +357,8 @@ async function recordRoute() {
   const startTime = Date.now();
 
   while (frameCount < totalFrames) {
+    const frameStartTime = Date.now();
+
     try {
       // Check if animation is complete (outro finished)
       const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
@@ -291,9 +382,15 @@ async function recordRoute() {
         const framePath = path.join(FRAMES_DIR, `frame-${String(frameCount).padStart(6, '0')}.jpg`);
         fs.writeFileSync(framePath, Buffer.from(frameDataBase64, 'base64'));
 
+        // Track frame timing
+        const frameTime = Date.now() - frameStartTime;
+        statusInfo.frameTimes.push(frameTime);
+        statusInfo.totalFrames = frameCount + 1;
+
         frameCount++;
 
         if (frameCount === 1 || frameCount % 30 === 0) {
+          displayStatusBar();
           const progress = ((frameCount / totalFrames) * 100).toFixed(1);
           const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
           const animationTime = (frameCount / RECORD_FPS).toFixed(1);
@@ -312,6 +409,9 @@ async function recordRoute() {
 
   console.log('✅ All frames captured!');
   console.log('🎬 Starting FFmpeg encoding...');
+
+  // Final status display
+  displayStatusBar();
 
   // Close browser
   await browser.close();
