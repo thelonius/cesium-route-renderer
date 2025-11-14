@@ -421,25 +421,35 @@ export default function useCesiumAnimation({
       setTimeout(() => {
         console.log('Globe settled, marking ready for recording and starting transition');
         (window as any).CESIUM_ANIMATION_READY = true;
-        viewer.clock.shouldAnimate = true; // Start route movement
 
-          // Phase 1: Simultaneous azimuth, tilt, and panning (5 seconds)
+        // Start route movement immediately with very slow speed
+        viewer.clock.shouldAnimate = true;
+        viewer.clock.multiplier = animationSpeed * 0.1; // Start at 10% speed
+
+          // Phase 1: Simultaneous azimuth, tilt, and panning with route speed increase (5 seconds)
           let cameraProgress = 0;
           const cameraInterval = setInterval(() => {
             cameraProgress += 0.02; // 50 steps at 100ms = 5 seconds
 
             // Add subtle side-to-side panning during opening (sine wave: -200 to +200)
             cameraPanOffsetRef.current = Math.sin(cameraProgress * Math.PI * 2) * 200;
+
+            // Gradually increase route speed during camera animation
+            const speedEased = cameraProgress * cameraProgress; // Quadratic ease in
+            const currentSpeed = animationSpeed * (0.1 + 0.4 * speedEased); // From 10% to 50% speed
+            if (isFinite(currentSpeed) && currentSpeed >= 0) {
+              viewer.clock.multiplier = currentSpeed;
+            }
           if (cameraProgress >= 1) {
             cameraAzimuthProgressRef.current = 1;
             cameraTiltProgressRef.current = 1;
             clearInterval(cameraInterval);
-            console.log('Camera animation complete, starting route movement ease-in');
+            console.log('Camera animation complete, route at 50% speed, starting final speed increase');
 
-                  // Phase 3: Ease in route movement speed (3 seconds)
+                  // Phase 2: Continue route speed increase to full speed (2 seconds)
                   let speedProgress = 0;
                   const speedInterval = setInterval(() => {
-                    speedProgress += 0.033; // 30 steps at 100ms = 3 seconds
+                    speedProgress += 0.05; // 20 steps at 100ms = 2 seconds
                     if (speedProgress >= 1) {
                       viewer.clock.multiplier = animationSpeed;
                       isInitialAnimationRef.current = false; // Initial animation complete
@@ -473,11 +483,11 @@ export default function useCesiumAnimation({
                         // The postRenderListener will handle route ending naturally
                       }, 100);
                     } else {
-                      // Cubic ease in for speed
-                      const speedEased = speedProgress * speedProgress * speedProgress;
-                      const newMultiplier = animationSpeed * speedEased;
-                      if (isFinite(newMultiplier) && newMultiplier >= 0) {
-                        viewer.clock.multiplier = newMultiplier;
+                      // Continue easing speed from 50% to 100%
+                      const speedEased = speedProgress * speedProgress; // Quadratic ease in
+                      const currentSpeed = animationSpeed * (0.5 + 0.5 * speedEased); // From 50% to 100% speed
+                      if (isFinite(currentSpeed) && currentSpeed >= 0) {
+                        viewer.clock.multiplier = currentSpeed;
                       }
                     }
                   }, 100);
