@@ -165,6 +165,9 @@ function analyzeTrackPoints(points) {
     let minEle = points[0].ele;
     let maxEle = points[0].ele;
 
+    // Threshold to filter GPS noise - only count elevation changes > 3 meters
+    const ELEVATION_THRESHOLD = 3;
+
     for (let i = 1; i < points.length; i++) {
       // Distance
       const distance = calculateDistance(
@@ -173,12 +176,14 @@ function analyzeTrackPoints(points) {
       );
       totalDistance += distance;
 
-      // Elevation
+      // Elevation - filter GPS noise with threshold
       const elevationDiff = points[i].ele - points[i-1].ele;
-      if (elevationDiff > 0) {
-        elevationGain += elevationDiff;
-      } else {
-        elevationLoss += Math.abs(elevationDiff);
+      if (Math.abs(elevationDiff) >= ELEVATION_THRESHOLD) {
+        if (elevationDiff > 0) {
+          elevationGain += elevationDiff;
+        } else {
+          elevationLoss += Math.abs(elevationDiff);
+        }
       }
 
       minEle = Math.min(minEle, points[i].ele);
