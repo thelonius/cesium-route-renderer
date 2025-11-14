@@ -137,8 +137,8 @@ function getRecordingDuration() {
   // Auto-calculate from GPX
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
-    // Get animation speed multiplier from environment or default to 50
-    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '50');
+    // Get animation speed multiplier from environment or default to 25
+    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '25');
 
     // Calculate playback duration (route duration / speed multiplier)
     const playbackDuration = gpxDuration / speedMultiplier;
@@ -249,7 +249,7 @@ async function recordRoute() {
     throw new Error('GPX_FILENAME environment variable is required');
   }
   const userName = process.env.USER_NAME || 'Hiker';
-  const animationSpeed = process.env.ANIMATION_SPEED || '50'; // Default to 50x for better FPS
+  const animationSpeed = process.env.ANIMATION_SPEED || '25'; // Default to 25x for better FPS
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   // Navigate to the app FIRST

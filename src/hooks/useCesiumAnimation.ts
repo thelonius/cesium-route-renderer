@@ -49,7 +49,7 @@ interface UseCesiumAnimationProps {
   trackPoints: TrackPoint[];
   startTime: Cesium.JulianDate | undefined;
   stopTime: Cesium.JulianDate | undefined;
-  animationSpeed?: number; // Optional animation speed multiplier (default 50x)
+  animationSpeed?: number; // Optional animation speed multiplier (default 25x)
 }
 
 const CAMERA_BASE_BACK = 6240; // Increased by 2.6x (was 2400)
@@ -63,7 +63,7 @@ export default function useCesiumAnimation({
   trackPoints,
   startTime,
   stopTime,
-  animationSpeed = 25 // Reduced to 25x for better quality and less trail artifacts
+  animationSpeed = 12 // Reduced to 12x for better quality and less trail artifacts
 }: UseCesiumAnimationProps) {
 
   const trailPositionsRef = useRef<Cesium.Cartesian3[]>([]);
