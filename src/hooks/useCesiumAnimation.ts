@@ -287,12 +287,12 @@ export default function useCesiumAnimation({
             viewer.clock.shouldAnimate = false;
             viewer.clock.multiplier = 0;
             console.log('✅ Route ended - starting outro');
-            
+
             // Get final position and start vertical outro
             const finalPosition = hikerEntity.position!.getValue(stopTime);
             if (finalPosition && !isEndingAnimationRef.current) {
               isEndingAnimationRef.current = true;
-              
+
               let outroProgress = 0;
               const outroInterval = setInterval(() => {
                 if (!viewer || viewer.isDestroyed() || outroProgress >= 1) {
@@ -304,14 +304,14 @@ export default function useCesiumAnimation({
                   }
                   return;
                 }
-                
+
                 outroProgress += 0.02; // 5 seconds
                 const eased = 1 - Math.pow(1 - outroProgress, 3); // Cubic ease-out
-                
+
                 // Go from -45° to -89° (vertical)
                 const tilt = -45 + (-44 * eased);
                 const distance = 1500 * (1 + eased);
-                
+
                 const lookAtZ = distance * Math.sin(Cesium.Math.toRadians(Math.abs(tilt)));
                 viewer.camera.lookAt(finalPosition, new Cesium.Cartesian3(0, 0, lookAtZ));
               }, 100);
@@ -319,7 +319,7 @@ export default function useCesiumAnimation({
           }
           return;
         }
-        
+
         const position = hikerEntity.position.getValue(currentTime);
         if (!position || !position.x || !Cesium.Cartesian3.equals(position, position)) {
           console.warn('Invalid hiker position at time:', currentTime);
@@ -350,7 +350,7 @@ export default function useCesiumAnimation({
               // Interpolate heading (azimuth): 0° → 25°
               const targetHeading = 25; // degrees
               const currentHeading = targetHeading * azimuth;
-              
+
               // Interpolate lookAt offset for tilt with panning
               // Start: looking straight down (0, 0, height)
               // End: looking forward/behind (-1500, 0, 1200)
@@ -370,13 +370,13 @@ export default function useCesiumAnimation({
               const baseHeading = 25; // Base heading in degrees
               const continuousRotation = continuousAzimuthRef.current; // Slow continuous rotation
               const totalHeading = baseHeading + continuousRotation;
-              
+
               const headingRadians = Cesium.Math.toRadians(totalHeading);
               const baseOffsetX = -1500;
               const baseOffsetY = 0;
               const rotatedX = baseOffsetX * Math.cos(headingRadians) - baseOffsetY * Math.sin(headingRadians);
               const rotatedY = baseOffsetX * Math.sin(headingRadians) + baseOffsetY * Math.cos(headingRadians);
-              
+
               const lookAtOffset = new Cesium.Cartesian3(rotatedX, rotatedY, 1200);
               viewer.camera.lookAt(position, lookAtOffset);
             }
@@ -408,18 +408,18 @@ export default function useCesiumAnimation({
 
     if (startingPosition && fullRoutePositions.length > 1) {
       console.log('Camera at working start position, waiting for globe to settle...');
-      
+
       // Wait 1 second at starting position for globe to settle and mark ready
       setTimeout(() => {
         console.log('Globe settled, marking ready for recording and starting transition');
         (window as any).CESIUM_ANIMATION_READY = true;
         viewer.clock.shouldAnimate = true; // Start route movement
-          
+
           // Phase 1: Simultaneous azimuth, tilt, and panning (5 seconds)
           let cameraProgress = 0;
           const cameraInterval = setInterval(() => {
             cameraProgress += 0.02; // 50 steps at 100ms = 5 seconds
-            
+
             // Add subtle side-to-side panning during opening (sine wave: -200 to +200)
             cameraPanOffsetRef.current = Math.sin(cameraProgress * Math.PI * 2) * 200;
           if (cameraProgress >= 1) {
@@ -427,7 +427,7 @@ export default function useCesiumAnimation({
             cameraTiltProgressRef.current = 1;
             clearInterval(cameraInterval);
             console.log('Camera animation complete, starting route movement ease-in');
-                  
+
                   // Phase 3: Ease in route movement speed (3 seconds)
                   let speedProgress = 0;
                   const speedInterval = setInterval(() => {
@@ -437,7 +437,7 @@ export default function useCesiumAnimation({
                       isInitialAnimationRef.current = false; // Initial animation complete
                       clearInterval(speedInterval);
                       console.log(`Route animation at full speed: ${animationSpeed}x`);
-                      
+
                       // Start continuous slow azimuth rotation during main route
                       const azimuthRotationInterval = setInterval(() => {
                         if (!isEndingAnimationRef.current && viewer.clock.shouldAnimate) {
@@ -450,7 +450,7 @@ export default function useCesiumAnimation({
                           clearInterval(azimuthRotationInterval);
                         }
                       }, 100);
-                      
+
                       // Monitor for route completion
                       const checkCompletion = setInterval(() => {
                         // Stop checking if animation is already stopped
@@ -458,10 +458,10 @@ export default function useCesiumAnimation({
                           clearInterval(checkCompletion);
                           return;
                         }
-                        
+
                         const currentTime = viewer.clock.currentTime;
                         const timeRemaining = Cesium.JulianDate.secondsDifference(stopTime, currentTime);
-                        
+
                         // The postRenderListener will handle route ending naturally
                       }, 100);
                     } else {
@@ -486,7 +486,7 @@ export default function useCesiumAnimation({
               const t = (cameraProgress - 0.5) * 2;
               eased = 0.5 + (1 - Math.pow(1 - t, 4)) / 2;
             }
-            
+
             // Apply same easing to both azimuth and tilt
             cameraAzimuthProgressRef.current = eased;
             cameraTiltProgressRef.current = eased;
@@ -521,7 +521,7 @@ export default function useCesiumAnimation({
       if (entitiesRef.current.trail) {
         viewer.entities.remove(entitiesRef.current.trail);
       }
-      
+
       // Re-enable camera controller on cleanup
       viewer.scene.screenSpaceCameraController.enableRotate = true;
       viewer.scene.screenSpaceCameraController.enableTranslate = true;

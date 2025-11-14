@@ -59,15 +59,15 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const MAX_VIDEO_MINUTES = 10; // Increased from 5 to 10 for slower, more viewable animation
   const MAX_FILE_SIZE_MB = 50;
 
-  // Parse GPX to estimate route duration
-  let animationSpeed = 10; // Reduced from 30x to 10x for slower, more natural-looking animation
+  // Parse GPX/KML to estimate route duration
+  let animationSpeed = 25; // Default 25x speed (current setting)
   try {
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
-    const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
+    const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>|<when>([^<]+)<\/when>/g);
 
     if (timeMatches && timeMatches.length >= 2) {
-      const firstTime = new Date(timeMatches[0].replace(/<\/?time>/g, ''));
-      const lastTime = new Date(timeMatches[timeMatches.length - 1].replace(/<\/?time>/g, ''));
+      const firstTime = new Date(timeMatches[0].replace(/<\/?(?:time|when)>/g, ''));
+      const lastTime = new Date(timeMatches[timeMatches.length - 1].replace(/<\/?(?:time|when)>/g, ''));
       const routeDurationMinutes = (lastTime - firstTime) / 1000 / 60;
 
       console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
@@ -78,9 +78,12 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
 
-        if (requiredSpeed > 10) {
+        if (requiredSpeed > 25) {
           animationSpeed = requiredSpeed;
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
+          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+        } else {
+          console.log(`✓ Using default speed 25x for ${routeDurationMinutes.toFixed(1)} min route`);
           console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
         }
       } else {
@@ -89,7 +92,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     }
 
     // No timestamps or invalid duration - estimate from distance
-    if (animationSpeed === 100) {
+    if (animationSpeed === 25 && (!timeMatches || timeMatches.length < 2)) {
       console.log('Estimating from route distance...');
       const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
 
@@ -128,17 +131,17 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
         console.log(`Calculated required speed: ${requiredSpeed}x for ${MAX_VIDEO_MINUTES} min video`);
 
-        if (requiredSpeed > 100) {
+        if (requiredSpeed > 25) {
           animationSpeed = requiredSpeed;
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
         } else {
-          console.log(`✓ Using default speed ${animationSpeed}x`);
+          console.log(`✓ Using default speed 25x`);
         }
         console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
       }
     }
   } catch (err) {
-    console.warn('Could not parse GPX for duration, using default speed:', err.message);
+    console.warn('Could not parse file for duration, using default speed 25x:', err.message);
   }
 
   // Run Docker container with the GPX file and filename

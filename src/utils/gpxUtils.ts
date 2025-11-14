@@ -104,6 +104,48 @@ export async function parseGPX(url: string): Promise<TrackPoint[]> {
   return trackPoints;
 }
 
+export function calculateElevationStats(trackPoints: TrackPoint[]): {
+  totalGain: number;
+  totalLoss: number;
+  maxElevation: number;
+  minElevation: number;
+} {
+  if (trackPoints.length < 2) {
+    return { totalGain: 0, totalLoss: 0, maxElevation: 0, minElevation: 0 };
+  }
+
+  let totalGain = 0;
+  let totalLoss = 0;
+  let maxElevation = trackPoints[0].ele;
+  let minElevation = trackPoints[0].ele;
+
+  const ELEVATION_THRESHOLD = 3; // meters - ignore small changes to filter noise
+
+  for (let i = 1; i < trackPoints.length; i++) {
+    const elevDiff = trackPoints[i].ele - trackPoints[i - 1].ele;
+
+    // Update min/max
+    if (trackPoints[i].ele > maxElevation) maxElevation = trackPoints[i].ele;
+    if (trackPoints[i].ele < minElevation) minElevation = trackPoints[i].ele;
+
+    // Calculate gain/loss with threshold to ignore GPS noise
+    if (Math.abs(elevDiff) >= ELEVATION_THRESHOLD) {
+      if (elevDiff > 0) {
+        totalGain += elevDiff;
+      } else {
+        totalLoss += Math.abs(elevDiff);
+      }
+    }
+  }
+
+  return {
+    totalGain: Math.round(totalGain),
+    totalLoss: Math.round(totalLoss),
+    maxElevation: Math.round(maxElevation),
+    minElevation: Math.round(minElevation)
+  };
+}
+
 export function calculateTimestamps(trackPoints: TrackPoint[], normalizeSpeed: boolean = true): {
   startTime: Cesium.JulianDate;
   stopTime: Cesium.JulianDate;
