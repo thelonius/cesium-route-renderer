@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import * as Cesium from 'cesium';
 
 // Type declaration for version injected at build time
 declare const __APP_VERSION__: string;
@@ -22,6 +23,8 @@ interface RenderInfo {
 export default function FpsCounter({ viewer }: FpsCounterProps) {
   const [fps, setFps] = useState<number>(0);
   const [avgFps, setAvgFps] = useState<number>(0);
+  const [animationSpeed, setAnimationSpeed] = useState<number>(0);
+  const [avgFrameTime, setAvgFrameTime] = useState<number>(0);
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     browser: 'unknown',
     os: 'unknown',
@@ -56,15 +59,15 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
       else if (ua.includes('Android')) os = 'Android';
       else if (ua.includes('iOS')) os = 'iOS';
 
-      // Get memory info if available
-      const memory = (navigator as any).deviceMemory ?
-        `${(navigator as any).deviceMemory}GB` : 'unknown';
+      // Get memory info if available (deviceMemory is in GB)
+      const memoryGB = (navigator as any).deviceMemory;
+      const memory = memoryGB ? `${memoryGB}GB` : 'Unknown';
 
       // Get CPU cores if available
-      const cores = navigator.hardwareConcurrency ?
-        `${navigator.hardwareConcurrency} cores` : 'unknown';
+      const cores = navigator.hardwareConcurrency || 'Unknown';
+      const coresStr = typeof cores === 'number' ? `${cores} cores` : cores;
 
-      return { browser, os, memory, cores };
+      return { browser, os, memory, cores: coresStr };
     } catch (err) {
       return { browser: 'unknown', os: 'unknown', memory: 'unknown', cores: 'unknown' };
     }
@@ -130,9 +133,15 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
         frameTimesRef.current.shift();
       }
 
-      // Calculate average FPS
+      // Calculate average FPS and frame time
       const avgDelta = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
       setAvgFps(Math.round(1000 / avgDelta));
+      setAvgFrameTime(avgDelta);
+
+      // Update animation speed
+      if (viewer?.clock?.multiplier !== undefined) {
+        setAnimationSpeed(viewer.clock.multiplier);
+      }
     };
 
     // Update on every render frame
@@ -150,38 +159,53 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
       position: 'absolute',
       top: '10px',
       left: '10px',
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+      backgroundColor: 'rgba(0, 0, 0, 0.9)',
       color: '#00ff00',
-      padding: '12px 16px',
-      borderRadius: '6px',
+      padding: '16px 20px',
+      borderRadius: '8px',
       fontFamily: 'monospace',
-      fontSize: '12px',
+      fontSize: '13px',
       fontWeight: 'bold',
       zIndex: 1000,
       pointerEvents: 'none',
-      lineHeight: '1.4',
-      maxWidth: '300px'
+      lineHeight: '1.5',
+      maxWidth: '350px',
+      border: '1px solid #333',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
     }}>
-      <div style={{ marginBottom: '8px' }}>
-        <div>FPS: {fps}</div>
-        <div style={{ fontSize: '11px', color: '#88ff88' }}>Avg: {avgFps}</div>
-        <div style={{ fontSize: '10px', color: '#666666', marginTop: '4px' }}>
-          v{__APP_VERSION__}
+      {/* Performance Section */}
+      <div style={{ marginBottom: '12px' }}>
+        <div style={{ fontSize: '16px', marginBottom: '4px' }}>
+          FPS: <span style={{ color: '#00ffff' }}>{fps}</span>
+        </div>
+        <div style={{ fontSize: '12px', color: '#88ff88' }}>
+          Avg: {avgFps} FPS ({avgFrameTime.toFixed(2)}ms)
+        </div>
+        <div style={{ fontSize: '11px', color: '#666666', marginTop: '6px' }}>
+          Build: v{__APP_VERSION__}
         </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #333', paddingTop: '8px', fontSize: '10px' }}>
-        <div style={{ color: '#ffff88' }}>
-          {systemInfo.browser}/{systemInfo.os}
+      {/* System Section */}
+      <div style={{ borderTop: '1px solid #444', paddingTop: '12px', marginBottom: '12px' }}>
+        <div style={{ fontSize: '12px', color: '#ffff88', marginBottom: '6px' }}>
+          🖥️  {systemInfo.browser}/{systemInfo.os}
         </div>
-        <div style={{ color: '#ff8888' }}>
-          {systemInfo.memory} RAM • {systemInfo.cores}
+        <div style={{ fontSize: '12px', color: '#ff8888', marginBottom: '6px' }}>
+          🧠 RAM: {systemInfo.memory} • CPU: {systemInfo.cores}
         </div>
-        <div style={{ color: '#88ffff', marginTop: '4px' }}>
-          Map: {renderInfo.mapProvider}
+      </div>
+
+      {/* Rendering Section */}
+      <div style={{ borderTop: '1px solid #444', paddingTop: '12px' }}>
+        <div style={{ fontSize: '12px', color: '#88ffff', marginBottom: '6px' }}>
+          🗺️  Map: {renderInfo.mapProvider}
         </div>
-        <div style={{ color: '#ff88ff' }}>
-          Terrain: {renderInfo.terrainQuality}
+        <div style={{ fontSize: '12px', color: '#ff88ff', marginBottom: '6px' }}>
+          🏔️  Terrain: {renderInfo.terrainQuality}
+        </div>
+        <div style={{ fontSize: '12px', color: '#ffffff' }}>
+          ⚡ Speed: {animationSpeed.toFixed(1)}x
         </div>
       </div>
     </div>
