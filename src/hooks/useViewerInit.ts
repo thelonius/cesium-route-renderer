@@ -104,23 +104,42 @@ export default function useViewerInit(
       }
     })();
 
-    // Load imagery - try Cesium Ion (Bing Maps) with web security disabled in Docker
+    // Load imagery - prioritize Bing Maps in all environments with robust fallback
     (async () => {
       try {
         viewer.imageryLayers.removeAll();
-        const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {});
+
+        // Try Cesium Ion Bing Maps first (highest quality)
+        console.log('🔄 Attempting to load Bing Maps imagery...');
+        const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {
+          // Add timeout and retry options
+        });
         viewer.imageryLayers.addImageryProvider(ionImagery);
-        console.log('✅ Loaded Bing Maps imagery');
+        console.log('✅ Successfully loaded Bing Maps imagery');
+
       } catch (error) {
-        console.warn('Could not load Cesium Ion imagery, falling back to OpenStreetMap:', error);
+        console.warn('❌ Bing Maps failed, trying Sentinel-2...', error instanceof Error ? error.message : String(error));
+
         try {
-          const osm = new Cesium.OpenStreetMapImageryProvider({
-            url: 'https://a.tile.openstreetmap.org/'
-          });
-          viewer.imageryLayers.addImageryProvider(osm);
-          console.log('✅ Loaded OSM imagery fallback');
-        } catch (osmError) {
-          console.error('Could not load any imagery provider:', osmError);
+          // Try Sentinel-2 as high-quality alternative
+          const sentinelImagery = await Cesium.IonImageryProvider.fromAssetId(3954, {});
+          viewer.imageryLayers.addImageryProvider(sentinelImagery);
+          console.log('✅ Loaded Sentinel-2 imagery (high quality)');
+
+        } catch (sentinelError) {
+          console.warn('❌ Sentinel-2 failed, falling back to OpenStreetMap...', sentinelError instanceof Error ? sentinelError.message : String(sentinelError));
+
+          try {
+            // Final fallback to OpenStreetMap
+            const osm = new Cesium.OpenStreetMapImageryProvider({
+              url: 'https://a.tile.openstreetmap.org/'
+            });
+            viewer.imageryLayers.addImageryProvider(osm);
+            console.log('✅ Loaded OpenStreetMap imagery (reliable fallback)');
+
+          } catch (osmError) {
+            console.error('❌ All imagery providers failed:', osmError instanceof Error ? osmError.message : String(osmError));
+          }
         }
       }
     })();
