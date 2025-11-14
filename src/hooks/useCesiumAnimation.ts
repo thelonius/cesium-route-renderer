@@ -12,7 +12,13 @@ let statusInfo = {
   frameCount: 0,
   startTime: null as number | null,
   lastFrameTime: 0,
-  frameTimes: [] as number[]
+  frameTimes: [] as number[],
+  systemInfo: {
+    browser: 'unknown',
+    os: 'unknown',
+    memory: 'unknown',
+    cores: 'unknown'
+  }
 };
 
 // Get build version
@@ -25,13 +31,49 @@ function getBuildVersion() {
   }
 }
 
+// Get system information
+function getSystemInfo() {
+  try {
+    const ua = navigator.userAgent;
+    let browser = 'unknown';
+    let os = 'unknown';
+
+    // Detect browser
+    if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
+    else if (ua.includes('Firefox')) browser = 'Firefox';
+    else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+    else if (ua.includes('Edg')) browser = 'Edge';
+    else if (ua.includes('Opera')) browser = 'Opera';
+
+    // Detect OS
+    if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Mac')) os = 'macOS';
+    else if (ua.includes('Linux')) os = 'Linux';
+    else if (ua.includes('Android')) os = 'Android';
+    else if (ua.includes('iOS')) os = 'iOS';
+
+    // Get memory info if available
+    const memory = (navigator as any).deviceMemory ?
+      `${(navigator as any).deviceMemory}GB` : 'unknown';
+
+    // Get CPU cores if available
+    const cores = navigator.hardwareConcurrency ?
+      `${navigator.hardwareConcurrency} cores` : 'unknown';
+
+    return { browser, os, memory, cores };
+  } catch (err) {
+    return { browser: 'unknown', os: 'unknown', memory: 'unknown', cores: 'unknown' };
+  }
+}
+
 // Display status bar in console
 function displayStatusBar() {
   const averageFrameTime = statusInfo.frameTimes.length > 0
     ? statusInfo.frameTimes.reduce((a, b) => a + b, 0) / statusInfo.frameTimes.length
     : 0;
 
-  console.log(`📊 [${statusInfo.buildVersion}] FPS:${statusInfo.averageFps.toFixed(1)} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Speed:${statusInfo.animationSpeed}x | Frame:${averageFrameTime.toFixed(2)}ms`);
+  const sys = statusInfo.systemInfo;
+  console.log(`📊 [${statusInfo.buildVersion}] FPS:${statusInfo.averageFps.toFixed(1)} | ${sys.browser}/${sys.os} | ${sys.memory} RAM | ${sys.cores} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Speed:${statusInfo.animationSpeed}x | Frame:${averageFrameTime.toFixed(2)}ms`);
 }
 
 interface UseCesiumAnimationProps {
@@ -88,6 +130,7 @@ export default function useCesiumAnimation({
     const initializeAnimation = () => {
       // Initialize status tracking
       statusInfo.buildVersion = getBuildVersion();
+      statusInfo.systemInfo = getSystemInfo();
       statusInfo.animationSpeed = animationSpeed;
       statusInfo.startTime = Date.now();
       statusInfo.frameCount = 0;
