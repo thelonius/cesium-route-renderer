@@ -63,7 +63,7 @@ export default function useViewerInit(
       // viewer.scene.backgroundColor = Cesium.Color.BLACK;
 
       // Reduce terrain detail significantly for faster rendering on CPU
-      viewer.scene.globe.maximumScreenSpaceError = 32; // Higher = lower quality = faster (default 2, increased to 32 for better CPU performance)
+      viewer.scene.globe.maximumScreenSpaceError = 8; // Higher = lower quality = faster (default 2, set to 8 for better quality)
       viewer.scene.globe.tileCacheSize = 25; // Smaller cache = less memory, faster (reduced from 50)
     }
 
