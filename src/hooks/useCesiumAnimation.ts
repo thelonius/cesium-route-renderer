@@ -210,6 +210,9 @@ export default function useCesiumAnimation({
     // Setup camera tracking
     const preRenderListener = () => {
       try {
+        // Stop updating trail during ending animation
+        if (isEndingAnimationRef.current) return;
+
         if (!hikerEntity || !hikerEntity.position || !lastAddedTimeRef.current) return;
         const currentTime = viewer.clock.currentTime;
 
@@ -292,6 +295,11 @@ export default function useCesiumAnimation({
             const finalPosition = hikerEntity.position!.getValue(stopTime);
             if (finalPosition && !isEndingAnimationRef.current) {
               isEndingAnimationRef.current = true;
+
+              // Hide trail during outro to prevent artifacts
+              if (entitiesRef.current.trail) {
+                entitiesRef.current.trail.show = false;
+              }
 
               let outroProgress = 0;
               const outroInterval = setInterval(() => {
