@@ -267,6 +267,13 @@ async function recordRoute() {
 
   while (frameCount < totalFrames) {
     try {
+      // Check if animation is complete (outro finished)
+      const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
+      if (isComplete) {
+        console.log('✅ Animation outro complete, stopping recording');
+        break;
+      }
+
       const targetTime = startTime + (frameCount * frameInterval);
       const now = Date.now();
 
