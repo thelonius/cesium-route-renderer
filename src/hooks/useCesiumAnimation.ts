@@ -2,6 +2,38 @@ import * as Cesium from 'cesium';
 import { useEffect, useRef, useState } from 'react';
 import { TrackPoint } from '../types';
 
+// Status tracking for local development
+let statusInfo = {
+  buildVersion: 'dev',
+  averageFps: 0,
+  mapProvider: 'unknown',
+  terrainQuality: 'unknown',
+  animationSpeed: 0,
+  frameCount: 0,
+  startTime: null as number | null,
+  lastFrameTime: 0
+};
+
+// Get build version
+function getBuildVersion() {
+  try {
+    // In development, return dev version
+    return 'dev';
+  } catch (err) {
+    return 'unknown';
+  }
+}
+
+// Display status bar in console
+function displayStatusBar() {
+  const elapsed = statusInfo.startTime ? ((Date.now() - statusInfo.startTime) / 1000) : 0;
+  const elapsedStr = elapsed.toFixed(1);
+  const avgFps = statusInfo.frameCount > 0 && statusInfo.startTime ?
+    (statusInfo.frameCount / (elapsed / 60)).toFixed(1) : '0.0';
+
+  console.log(`📊 [${statusInfo.buildVersion}] FPS:${avgFps} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Speed:${statusInfo.animationSpeed}x | Elapsed:${elapsedStr}s`);
+}
+
 interface UseCesiumAnimationProps {
   viewer: Cesium.Viewer | null;
   trackPoints: TrackPoint[];
@@ -52,6 +84,12 @@ export default function useCesiumAnimation({
     console.log('Animation state reset for new route');
 
     const initializeAnimation = () => {
+      // Initialize status tracking
+      statusInfo.buildVersion = getBuildVersion();
+      statusInfo.animationSpeed = animationSpeed;
+      statusInfo.startTime = Date.now();
+      statusInfo.frameCount = 0;
+
       // Initialize lastAddedTimeRef
       lastAddedTimeRef.current = Cesium.JulianDate.clone(startTime);
 
@@ -272,6 +310,9 @@ export default function useCesiumAnimation({
 
     const postRenderListener = () => {
       try {
+        // Track frame count for FPS calculation
+        statusInfo.frameCount++;
+
         // Stop controlling camera during ending animation
         if (isEndingAnimationRef.current) return;
 
@@ -309,6 +350,9 @@ export default function useCesiumAnimation({
                     console.log('🎬 Outro complete');
                     (window as any).CESIUM_ANIMATION_COMPLETE = true;
                     console.log('✅ CESIUM_ANIMATION_COMPLETE flag set');
+
+                    // Final status display
+                    displayStatusBar();
                   }
                   return;
                 }
@@ -422,6 +466,48 @@ export default function useCesiumAnimation({
         console.log('Globe settled, marking ready for recording and starting transition');
         (window as any).CESIUM_ANIMATION_READY = true;
 
+        // Get rendering info from browser
+        try {
+          // Get map provider info
+          let mapProvider = 'unknown';
+          if (viewer.imageryLayers) {
+            const layers = viewer.imageryLayers;
+            for (let i = 0; i < layers.length; i++) {
+              const layer = layers.get(i);
+              if (layer && layer.imageryProvider) {
+                const provider = layer.imageryProvider;
+                if (provider.constructor.name.includes('IonImageryProvider')) {
+                  const ionProvider = provider as any; // Cast to access private properties
+                  if (ionProvider._assetId === 2) mapProvider = 'Bing Maps';
+                  else if (ionProvider._assetId === 3954) mapProvider = 'Sentinel-2';
+                  else mapProvider = `Cesium Ion (${ionProvider._assetId || 'unknown'})`;
+                } else if (provider.constructor.name.includes('OpenStreetMap')) {
+                  mapProvider = 'OpenStreetMap';
+                }
+                break;
+              }
+            }
+          }
+
+          // Get terrain quality
+          let terrainQuality = 'unknown';
+          if (viewer.scene && viewer.scene.globe) {
+            const errorValue = viewer.scene.globe.maximumScreenSpaceError;
+            terrainQuality = errorValue ? errorValue.toString() : 'unknown';
+          }
+
+          statusInfo.mapProvider = mapProvider;
+          statusInfo.terrainQuality = terrainQuality;
+
+          console.log(`🎨 Map Provider: ${statusInfo.mapProvider}`);
+          console.log(`🏔️  Terrain Quality: ${statusInfo.terrainQuality}`);
+        } catch (e) {
+          console.warn('Could not get render info:', e);
+        }
+
+        // Initial status display
+        displayStatusBar();
+
         // Start route movement immediately with very slow speed
         viewer.clock.shouldAnimate = true;
         viewer.clock.multiplier = animationSpeed * 0.1; // Start at 10% speed
@@ -521,6 +607,21 @@ export default function useCesiumAnimation({
     }
 
     console.log('Animation setup complete, starting camera tilt animation...');
+
+    // Start periodic status display (every 5 seconds)
+    const statusInterval = setInterval(() => {
+      if (statusInfo.startTime && !isEndingAnimationRef.current) {
+        displayStatusBar();
+      }
+    }, 5000);
+
+    // Clear status interval on cleanup
+    const cleanup = () => {
+      clearInterval(statusInterval);
+    };
+
+    // Store cleanup function
+    (window as any).animationCleanup = cleanup;
     }; // End of initializeAnimation
 
     // Start animation immediately - postRenderListener will position camera correctly
@@ -538,6 +639,11 @@ export default function useCesiumAnimation({
       }
       if (entitiesRef.current.trail) {
         viewer.entities.remove(entitiesRef.current.trail);
+      }
+
+      // Call animation cleanup if it exists
+      if ((window as any).animationCleanup) {
+        (window as any).animationCleanup();
       }
 
       // Re-enable camera controller on cleanup
