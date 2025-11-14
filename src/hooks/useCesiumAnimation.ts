@@ -13,15 +13,15 @@ interface UseCesiumAnimationProps {
 const CAMERA_BASE_BACK = 6240; // Increased by 2.6x (was 2400)
 const CAMERA_BASE_HEIGHT = 3120; // Increased by 2.6x (was 1200)
 const CAMERA_SMOOTH_ALPHA = 0.15;
-const ADD_INTERVAL_SECONDS = 1.0; // Increased from 0.5 for better performance
-const MAX_TRAIL_POINTS = 200; // Reduced from 500 for better performance
+const ADD_INTERVAL_SECONDS = 2.0; // Increased to reduce trail artifacts at lower animation speeds
+const MAX_TRAIL_POINTS = 100; // Reduced to minimize trail rendering artifacts on CPU
 
 export default function useCesiumAnimation({
   viewer,
   trackPoints,
   startTime,
   stopTime,
-  animationSpeed = 50 // Default to 50x for better FPS (reduced from 100x)
+  animationSpeed = 25 // Reduced to 25x for better quality and less trail artifacts
 }: UseCesiumAnimationProps) {
 
   const trailPositionsRef = useRef<Cesium.Cartesian3[]>([]);
@@ -194,13 +194,13 @@ export default function useCesiumAnimation({
       });
     }
 
-    // Create dynamic trail
+    // Create dynamic trail with reduced artifacts
     const trailEntity = viewer.entities.add({
       polyline: {
         positions: new Cesium.CallbackProperty(() => trailPositionsRef.current, false),
-        width: 5,
-        material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
-        depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW),
+        width: 4, // Reduced from 5 to minimize rendering artifacts
+        material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.9)), // Slight transparency to reduce artifacts
+        depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.5)),
         clampToGround: true,
         show: true
       }
