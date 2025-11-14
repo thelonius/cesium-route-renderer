@@ -32,7 +32,6 @@ export default function useCesiumAnimation({
   const cameraTiltProgressRef = useRef(0); // 0 = looking down, 1 = fully tilted
   const isInitialAnimationRef = useRef(true); // Track if we're still in opening animation
   const isEndingAnimationRef = useRef(false); // Track if we're in ending animation
-  const isOutroAnimationRef = useRef(false); // Track if we're in outro animation
   const continuousAzimuthRef = useRef(0); // Continuous slow rotation during main route
   const cameraPanOffsetRef = useRef(0); // Side-to-side panning offset
   const [entity, setEntity] = useState<Cesium.Entity | null>(null);
@@ -47,7 +46,6 @@ export default function useCesiumAnimation({
     cameraTiltProgressRef.current = 0;
     isInitialAnimationRef.current = true;
     isEndingAnimationRef.current = false;
-    isOutroAnimationRef.current = false;
     continuousAzimuthRef.current = 0;
     cameraPanOffsetRef.current = 0;
     trailPositionsRef.current = [];
@@ -271,24 +269,53 @@ export default function useCesiumAnimation({
 
     const postRenderListener = () => {
       try {
-        // Stop controlling camera during outro animation
-        if (isOutroAnimationRef.current) return;
-        
+        // Stop controlling camera during ending animation
+        if (isEndingAnimationRef.current) return;
+
         if (!hikerEntity || !hikerEntity.position) return;
         const currentTime = viewer.clock.currentTime;
-        
-        // Validate current time is within route bounds
-        if (Cesium.JulianDate.compare(currentTime, startTime) < 0 || 
+
+        // Validate current time is within route bounds (but not during ending sequence)
+        if (Cesium.JulianDate.compare(currentTime, startTime) < 0 ||
             Cesium.JulianDate.compare(currentTime, stopTime) >= 0) {
           // Time is out of bounds - clamp to valid range and STOP
           if (Cesium.JulianDate.compare(currentTime, startTime) < 0) {
             viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
           } else {
-            // Route has ended - stop everything immediately
+            // Route has ended naturally - start outro
             viewer.clock.currentTime = Cesium.JulianDate.clone(stopTime);
             viewer.clock.shouldAnimate = false;
             viewer.clock.multiplier = 0;
-            console.log('Route ended - animation stopped at stopTime');
+            console.log('✅ Route ended - starting outro');
+            
+            // Get final position and start vertical outro
+            const finalPosition = hikerEntity.position!.getValue(stopTime);
+            if (finalPosition && !isEndingAnimationRef.current) {
+              isEndingAnimationRef.current = true;
+              
+              let outroProgress = 0;
+              const outroInterval = setInterval(() => {
+                if (!viewer || viewer.isDestroyed() || outroProgress >= 1) {
+                  clearInterval(outroInterval);
+                  if (outroProgress >= 1) {
+                    console.log('🎬 Outro complete');
+                    (window as any).CESIUM_ANIMATION_COMPLETE = true;
+                    console.log('✅ CESIUM_ANIMATION_COMPLETE flag set');
+                  }
+                  return;
+                }
+                
+                outroProgress += 0.02; // 5 seconds
+                const eased = 1 - Math.pow(1 - outroProgress, 3); // Cubic ease-out
+                
+                // Go from -45° to -89° (vertical)
+                const tilt = -45 + (-44 * eased);
+                const distance = 1500 * (1 + eased);
+                
+                const lookAtZ = distance * Math.sin(Cesium.Math.toRadians(Math.abs(tilt)));
+                viewer.camera.lookAt(finalPosition, new Cesium.Cartesian3(0, 0, lookAtZ));
+              }, 100);
+            }
           }
           return;
         }
@@ -435,141 +462,7 @@ export default function useCesiumAnimation({
                         const currentTime = viewer.clock.currentTime;
                         const timeRemaining = Cesium.JulianDate.secondsDifference(stopTime, currentTime);
                         
-                        // Check if we've reached or passed the end
-                        if (timeRemaining <= 0 || Cesium.JulianDate.compare(currentTime, stopTime) >= 0) {
-                          console.log('Route ended - stopping animation immediately');
-                          viewer.clock.currentTime = Cesium.JulianDate.clone(stopTime);
-                          viewer.clock.multiplier = 0;
-                          viewer.clock.shouldAnimate = false;
-                          clearInterval(checkCompletion);
-                          return;
-                        }
-                        
-                        // Start ending sequence 15 seconds before finish to give time to brake
-                        if (timeRemaining <= 15 && !isEndingAnimationRef.current) {
-                          console.log('Route ending, starting calm outro sequence');
-                          clearInterval(checkCompletion);
-                          isEndingAnimationRef.current = true; // Enable ending animation mode
-                          
-                          // Capture current state before entering ending mode
-                          const currentAzimuth = continuousAzimuthRef.current;
-                          console.log(`Ending state: azimuth=${currentAzimuth.toFixed(2)}°, panning=${cameraPanOffsetRef.current.toFixed(2)}px`);
-                          
-                          // Ease speed back down over 15 seconds
-                          const startSpeed = viewer.clock.multiplier;
-                          const endingStartTime = Cesium.JulianDate.now();
-                          
-                          const slowdownInterval = setInterval(() => {
-                            // Check if route has ended first
-                            const now = viewer.clock.currentTime;
-                            const remaining = Cesium.JulianDate.secondsDifference(stopTime, now);
-                            
-                            if (remaining <= 0) {
-                              // Route finished - start outro sequence
-                              viewer.clock.currentTime = Cesium.JulianDate.clone(stopTime);
-                              viewer.clock.multiplier = 0;
-                              viewer.clock.shouldAnimate = false;
-                              cameraPanOffsetRef.current = 0;
-                              continuousAzimuthRef.current = currentAzimuth; // Freeze azimuth
-                              isOutroAnimationRef.current = true; // Enable outro mode - postRenderListener will stop
-                              clearInterval(slowdownInterval);
-                              console.log('🎬 Route ended - starting outro sequence');
-                              
-                              // Start outro: smooth camera pullback over 5 seconds
-                              const finalPosition = hikerEntity.position!.getValue(stopTime);
-                              if (finalPosition) {
-                                viewer.camera.cancelFlight();
-                                
-                                // Calculate a nice overview position
-                                const transform = Cesium.Transforms.eastNorthUpToFixedFrame(finalPosition);
-                                const outroStartOffset = new Cesium.Cartesian3(-CAMERA_BASE_BACK, 0, CAMERA_BASE_HEIGHT);
-                                const outroEndOffset = new Cesium.Cartesian3(-CAMERA_BASE_BACK * 3, 0, CAMERA_BASE_HEIGHT * 3);
-                                
-                                let outroProgress = 0;
-                                const outroStartTilt = -45; // Current tilt angle in degrees
-                                const outroEndTilt = -70; // More vertical at the end
-                                
-                                const outroInterval = setInterval(() => {
-                                  outroProgress += 0.02; // 50 steps = 5 seconds
-                                  
-                                  if (!viewer || viewer.isDestroyed() || outroProgress >= 1) {
-                                    clearInterval(outroInterval);
-                                    if (outroProgress >= 1) {
-                                      console.log('🎬 Outro complete');
-                                      // Signal that animation is fully complete (for recording scripts)
-                                      (window as any).CESIUM_ANIMATION_COMPLETE = true;
-                                      console.log('✅ CESIUM_ANIMATION_COMPLETE flag set');
-                                    }
-                                    return;
-                                  }
-                                  
-                                  console.log(`Outro progress: ${(outroProgress * 100).toFixed(0)}%`);
-                                  
-                                  // Quartic ease out for smooth deceleration
-                                  const eased = 1 - Math.pow(1 - outroProgress, 4);
-                                  
-                                  // Add sine wave panning during outro
-                                  const panningX = Math.sin(outroProgress * Math.PI * 2) * 300 * (1 - eased); // Fade out panning
-                                  
-                                  // Interpolate tilt angle - go more vertical
-                                  const currentTilt = Cesium.Math.lerp(outroStartTilt, outroEndTilt, eased);
-                                  
-                                  // Gradually increase camera distance
-                                  const finalHeading = 25 + currentAzimuth;
-                                  const baseDistance = 1500;
-                                  const currentDistance = baseDistance * (1 + eased * 2.5); // Pull back further
-                                  
-                                  // Calculate lookAt offset with tilt and panning
-                                  const lookAtOffsetX = currentDistance * Math.cos(Cesium.Math.toRadians(currentTilt));
-                                  const lookAtOffsetY = panningX;
-                                  const lookAtOffsetZ = currentDistance * Math.sin(Cesium.Math.toRadians(Math.abs(currentTilt)));
-                                  
-                                  // Apply heading rotation
-                                  const headingRadians = Cesium.Math.toRadians(finalHeading);
-                                  const rotatedX = lookAtOffsetX * Math.cos(headingRadians) - lookAtOffsetY * Math.sin(headingRadians);
-                                  const rotatedY = lookAtOffsetX * Math.sin(headingRadians) + lookAtOffsetY * Math.cos(headingRadians);
-                                  
-                                  viewer.camera.lookAt(finalPosition, new Cesium.Cartesian3(rotatedX, rotatedY, lookAtOffsetZ));
-                                }, 100);
-                              }
-                              
-                              return;
-                            }
-                            
-                            // Calculate progress based on how close we are to the end
-                            // Use remaining time instead of elapsed time to ensure we stop in time
-                            const slowProgress = Math.min((15 - remaining) / 15, 1);
-                            
-                            // Use more aggressive easing - quintic (x^5) for faster deceleration
-                            const eased = 1 - Math.pow(1 - slowProgress, 5);
-                            
-                            // Gradually reduce panning to zero (smooth fade out)
-                            const panFade = Math.max(0, 1 - slowProgress);
-                            cameraPanOffsetRef.current = Math.sin(slowProgress * Math.PI * 2) * -200 * panFade;
-                            
-                            // Gradually slow down azimuth rotation
-                            const azimuthFade = Math.max(0, 1 - slowProgress);
-                            continuousAzimuthRef.current = currentAzimuth + (slowProgress * 10 * azimuthFade);
-                            
-                            // Apply speed reduction - more aggressive near the end
-                            const newMultiplier = startSpeed * (1 - eased);
-                            if (isFinite(newMultiplier) && newMultiplier >= 0) {
-                              // Ensure we slow down significantly: minimum speed drops as we approach end
-                              const minSpeed = Math.max(0.05, (1 - slowProgress) * 0.5);
-                              viewer.clock.multiplier = Math.max(minSpeed, newMultiplier);
-                            }
-                            
-                            // Extra safety: if we're very close to the end (last 2 seconds), slow to crawl
-                            if (remaining <= 2) {
-                              viewer.clock.multiplier = Math.min(viewer.clock.multiplier, 0.1);
-                            }
-                            
-                            // Stop if we've completed the slowdown
-                            if (slowProgress >= 1 || remaining <= 0.5) {
-                              clearInterval(slowdownInterval);
-                            }
-                          }, 100);
-                        }
+                        // The postRenderListener will handle route ending naturally
                       }, 100);
                     } else {
                       // Cubic ease in for speed
