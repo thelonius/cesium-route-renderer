@@ -596,14 +596,14 @@ export default function useCesiumAnimation({
             cameraTiltProgressRef.current = eased;
           }
         }, 100);
-      }, 1000); // 1 second for globe to settle
+      }, 3000); // 3 seconds for globe and terrain to fully settle
     } else {
       // Fallback
       setTimeout(() => {
         viewer.clock.shouldAnimate = true;
         viewer.clock.multiplier = animationSpeed;
         (window as any).CESIUM_ANIMATION_READY = true;
-      }, 2000);
+      }, 4000);
     }
 
     console.log('Animation setup complete, starting camera tilt animation...');
