@@ -104,24 +104,36 @@ export default function useViewerInit(
       }
     })();
 
-    // Load imagery
-    (async () => {
-      try {
-        viewer.imageryLayers.removeAll();
-        const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {});
-        viewer.imageryLayers.addImageryProvider(ionImagery);
-      } catch (error) {
-        console.warn('Could not load Cesium imagery, falling back to OpenStreetMap:', error);
+    // Load imagery - synchronous for Docker to prevent CORS errors
+    if (isDocker) {
+      // Docker: Load OSM immediately and synchronously
+      viewer.imageryLayers.removeAll();
+      const osm = new Cesium.OpenStreetMapImageryProvider({
+        url: 'https://a.tile.openstreetmap.org/'
+      });
+      viewer.imageryLayers.addImageryProvider(osm);
+      console.log('✅ Loaded OSM imagery for Docker');
+    } else {
+      // Browser: Try Cesium Ion (Bing Maps), fallback to OSM
+      (async () => {
         try {
-          const osm = new Cesium.OpenStreetMapImageryProvider({
-            url: 'https://a.tile.openstreetmap.org/'
-          });
-          viewer.imageryLayers.addImageryProvider(osm);
-        } catch (osmError) {
-          console.error('Could not load any imagery provider:', osmError);
+          viewer.imageryLayers.removeAll();
+          const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {});
+          viewer.imageryLayers.addImageryProvider(ionImagery);
+          console.log('✅ Loaded Bing Maps imagery');
+        } catch (error) {
+          console.warn('Could not load Cesium imagery, falling back to OpenStreetMap:', error);
+          try {
+            const osm = new Cesium.OpenStreetMapImageryProvider({
+              url: 'https://a.tile.openstreetmap.org/'
+            });
+            viewer.imageryLayers.addImageryProvider(osm);
+          } catch (osmError) {
+            console.error('Could not load any imagery provider:', osmError);
+          }
         }
-      }
-    })();
+      })();
+    }
 
     return () => {
       if (viewer) {
