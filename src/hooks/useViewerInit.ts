@@ -56,15 +56,15 @@ export default function useViewerInit(
       viewer.scene.fog.enabled = false; // Disable fog
       viewer.scene.sun.show = false; // Hide sun
       viewer.scene.moon.show = false; // Hide moon
+      
+      // Disable skybox and atmosphere for better performance
+      viewer.scene.skyAtmosphere.show = false;
+      viewer.scene.skyBox.show = false;
+      viewer.scene.backgroundColor = Cesium.Color.BLACK;
 
-      // Keep skybox and atmosphere for better visuals (they're relatively cheap)
-      // viewer.scene.skyAtmosphere.show = false;
-      // viewer.scene.skyBox.show = false;
-      // viewer.scene.backgroundColor = Cesium.Color.BLACK;
-
-      // Reduce terrain detail significantly for faster rendering
-      viewer.scene.globe.maximumScreenSpaceError = 16; // Higher = lower quality = faster (default 2, was 4, now 16 for 4x speed)
-      viewer.scene.globe.tileCacheSize = 50; // Smaller cache = less memory, faster
+      // Moderate terrain detail for balance of quality and performance
+      viewer.scene.globe.maximumScreenSpaceError = 4; // Moderate quality (default 2, higher = faster)
+      viewer.scene.globe.tileCacheSize = 100; // Moderate cache size
     }
 
     if (viewerRef) {
