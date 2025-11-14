@@ -182,25 +182,16 @@ async function recordRoute() {
   const server = await startServer();
 
   // Allow overriding recording FPS and resolution via environment variables
-  // If running in a headless/container environment, automatically prefer
-  // lower-quality but stable defaults unless explicit env vars are provided.
-  const isHeadlessEnv = (process.env.HEADLESS === 'true' || process.env.HEADLESS === '1')
-
-  // Default high-quality values
+  // Docker environment - use moderate settings that work well on CPU
+  // These settings worked well on November 12th
   const DEFAULT_FPS = 60
-  const DEFAULT_WIDTH = 1080
-  const DEFAULT_HEIGHT = 1920
+  const DEFAULT_WIDTH = 720
+  const DEFAULT_HEIGHT = 1280
 
-  // Optimized defaults for headless/container runs - 30 FPS for smooth playback
-  const HEADLESS_FPS = 30
-  const HEADLESS_WIDTH = 1080
-  const HEADLESS_HEIGHT = 1920
+  const TARGET_FPS = parseInt(process.env.RECORD_FPS || String(DEFAULT_FPS), 10)
+  const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || String(DEFAULT_WIDTH), 10)
+  const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || String(DEFAULT_HEIGHT), 10)
 
-  const TARGET_FPS = parseInt(process.env.RECORD_FPS || (isHeadlessEnv ? String(HEADLESS_FPS) : String(DEFAULT_FPS)), 10)
-  const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || (isHeadlessEnv ? String(HEADLESS_WIDTH) : String(DEFAULT_WIDTH)), 10)
-  const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || (isHeadlessEnv ? String(HEADLESS_HEIGHT) : String(DEFAULT_HEIGHT)), 10)
-
-  console.log(`HEADLESS mode: ${isHeadlessEnv}`)
   console.log(`Recording target FPS: ${TARGET_FPS}, resolution: ${RECORD_WIDTH}x${RECORD_HEIGHT}`)
 
   const browser = await puppeteer.launch({
