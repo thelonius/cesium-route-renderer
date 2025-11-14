@@ -11,7 +11,8 @@ let statusInfo = {
   animationSpeed: 0,
   frameCount: 0,
   startTime: null as number | null,
-  lastFrameTime: 0
+  lastFrameTime: 0,
+  frameTimes: [] as number[]
 };
 
 // Get build version
@@ -26,12 +27,11 @@ function getBuildVersion() {
 
 // Display status bar in console
 function displayStatusBar() {
-  const elapsed = statusInfo.startTime ? ((Date.now() - statusInfo.startTime) / 1000) : 0;
-  const elapsedStr = elapsed.toFixed(1);
-  const avgFps = statusInfo.frameCount > 0 && statusInfo.startTime ?
-    (statusInfo.frameCount / (elapsed / 60)).toFixed(1) : '0.0';
+  const averageFrameTime = statusInfo.frameTimes.length > 0
+    ? statusInfo.frameTimes.reduce((a, b) => a + b, 0) / statusInfo.frameTimes.length
+    : 0;
 
-  console.log(`📊 [${statusInfo.buildVersion}] FPS:${avgFps} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Speed:${statusInfo.animationSpeed}x | Elapsed:${elapsedStr}s`);
+  console.log(`📊 [${statusInfo.buildVersion}] FPS:${statusInfo.averageFps.toFixed(1)} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Speed:${statusInfo.animationSpeed}x | Frame:${averageFrameTime.toFixed(2)}ms`);
 }
 
 interface UseCesiumAnimationProps {
@@ -89,6 +89,8 @@ export default function useCesiumAnimation({
       statusInfo.animationSpeed = animationSpeed;
       statusInfo.startTime = Date.now();
       statusInfo.frameCount = 0;
+      statusInfo.lastFrameTime = performance.now();
+      statusInfo.frameTimes = [];
 
       // Initialize lastAddedTimeRef
       lastAddedTimeRef.current = Cesium.JulianDate.clone(startTime);
@@ -310,8 +312,23 @@ export default function useCesiumAnimation({
 
     const postRenderListener = () => {
       try {
-        // Track frame count for FPS calculation
+        // Track frame count and timing for FPS calculation
+        const frameTimeStamp = performance.now();
+        const frameTime = frameTimeStamp - statusInfo.lastFrameTime;
+        statusInfo.lastFrameTime = frameTimeStamp;
         statusInfo.frameCount++;
+
+        // Track frame times for average calculation (keep last 60 frames)
+        statusInfo.frameTimes.push(frameTime);
+        if (statusInfo.frameTimes.length > 60) {
+          statusInfo.frameTimes.shift();
+        }
+
+        // Calculate average FPS from frame times
+        if (statusInfo.frameTimes.length > 0) {
+          const averageFrameTime = statusInfo.frameTimes.reduce((a, b) => a + b, 0) / statusInfo.frameTimes.length;
+          statusInfo.averageFps = 1000 / averageFrameTime;
+        }
 
         // Stop controlling camera during ending animation
         if (isEndingAnimationRef.current) return;
