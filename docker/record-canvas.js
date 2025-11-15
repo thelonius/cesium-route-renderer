@@ -53,7 +53,7 @@ function getRecordingDuration() {
 
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
-    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '25');
+    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '12');
     const playbackDuration = gpxDuration / speedMultiplier;
     const totalDuration = Math.ceil(playbackDuration + 19);
 

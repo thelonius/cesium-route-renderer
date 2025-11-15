@@ -50,7 +50,7 @@ Control playback speed without changing code:
 ```bash
 docker run --rm \
   -v "$(pwd)/output:/output" \
-  -e ANIMATION_SPEED=20 \
+  -e ANIMATION_SPEED=10 \
   cesium-route-recorder
 ```
 
@@ -66,7 +66,7 @@ This calculates: `(GPX Duration / 20) + 10 seconds`
 **Note:** This only affects recording duration calculation. To actually change animation speed, modify `CesiumViewer.tsx`:
 
 ```typescript
-viewer.clock.multiplier = 20; // Change from 10 to 20
+viewer.clock.multiplier = 12; // Change from 10 to 20
 ```
 
 ## Time Calculation Examples
