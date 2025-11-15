@@ -249,7 +249,7 @@ async function recordRoute() {
     throw new Error('GPX_FILENAME environment variable is required');
   }
   const userName = process.env.USER_NAME || 'Hiker';
-  const animationSpeed = process.env.ANIMATION_SPEED || '17'; // Default to 17x for better FPS
+  const animationSpeed = process.env.ANIMATION_SPEED || '8'; // Default to 8x for balanced speed
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   // Navigate to the app FIRST
