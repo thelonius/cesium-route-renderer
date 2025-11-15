@@ -1,0 +1,14 @@
+{
+  "animation": {
+    "defaultSpeed": 2,
+    "minSpeed": 1,
+    "maxSpeed": 100,
+    "adaptiveSpeedEnabled": true,
+    "maxVideoMinutes": 10
+  },
+  "recording": {
+    "fps": 30,
+    "width": 720,
+    "height": 1280
+  }
+}

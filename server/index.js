@@ -56,45 +56,65 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   // Calculate adaptive animation speed based on route length
   // Goal: Keep video reasonable length and file size under 50MB
-  const MAX_VIDEO_MINUTES = 10; // Increased from 5 to 10 for slower, more viewable animation
-  const MAX_FILE_SIZE_MB = 50;
-
-  // Parse GPX/KML to estimate route duration
-  let animationSpeed = 5; // Default 12x speed (reduced for better quality)
-  try {
-    const gpxContent = fs.readFileSync(gpxPath, 'utf8');
-    const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>|<when>([^<]+)<\/when>/g);
-
-    if (timeMatches && timeMatches.length >= 2) {
-      const firstTime = new Date(timeMatches[0].replace(/<\/?(?:time|when)>/g, ''));
-      const lastTime = new Date(timeMatches[timeMatches.length - 1].replace(/<\/?(?:time|when)>/g, ''));
-      const routeDurationMinutes = (lastTime - firstTime) / 1000 / 60;
-
-      console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
-
-      // If duration is invalid (< 1 minute or negative), fall back to distance calculation
-      if (routeDurationMinutes >= 1) {
-        // Calculate required speed to keep video under MAX_VIDEO_MINUTES
-        // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
-        const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
-
-        if (requiredSpeed > 25) {
-          animationSpeed = requiredSpeed;
-          console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
-          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
-        } else {
-          console.log(`✓ Using default speed 25x for ${routeDurationMinutes.toFixed(1)} min route`);
-          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
-        }
-      } else {
-        console.log('Duration invalid or too small, falling back to distance calculation...');
-      }
+  let animationSpeed = 2; // Default will be loaded from settings
+  
+  // Load settings
+  let settings = {
+    animation: {
+      defaultSpeed: 2,
+      adaptiveSpeedEnabled: true,
+      maxVideoMinutes: 10
     }
+  };
+  
+  try {
+    if (fs.existsSync(settingsPath)) {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    }
+  } catch (error) {
+    console.error('Error loading settings, using defaults:', error);
+  }
+  
+  animationSpeed = settings.animation.defaultSpeed;
+  const MAX_VIDEO_MINUTES = settings.animation.maxVideoMinutes;
+  const ADAPTIVE_SPEED_ENABLED = settings.animation.adaptiveSpeedEnabled;
+  
+  // Only apply adaptive speed if enabled
+  if (ADAPTIVE_SPEED_ENABLED) {
+    try {
+      const gpxContent = fs.readFileSync(gpxPath, 'utf8');
+      const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>|<when>([^<]+)<\/when>/g);
 
-    // No timestamps or invalid duration - estimate from distance
-    if (animationSpeed === 25 && (!timeMatches || timeMatches.length < 2)) {
-      console.log('Estimating from route distance...');
-      const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
+      if (timeMatches && timeMatches.length >= 2) {
+        const firstTime = new Date(timeMatches[0].replace(/<\/?(?:time|when)>/g, ''));
+        const lastTime = new Date(timeMatches[timeMatches.length - 1].replace(/<\/?(?:time|when)>/g, ''));
+        const routeDurationMinutes = (lastTime - firstTime) / 1000 / 60;
+
+        console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
+
+        // If duration is invalid (< 1 minute or negative), fall back to distance calculation
+        if (routeDurationMinutes >= 1) {
+          // Calculate required speed to keep video under MAX_VIDEO_MINUTES
+          // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
+          const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
+
+          if (requiredSpeed > animationSpeed) {
+            animationSpeed = requiredSpeed;
+            console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
+            console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+          } else {
+            console.log(`✓ Using default speed ${animationSpeed}x for ${routeDurationMinutes.toFixed(1)} min route`);
+            console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+          }
+        } else {
+          console.log('Duration invalid or too small, falling back to distance calculation...');
+        }
+      }
+
+      // No timestamps or invalid duration - estimate from distance
+      if (animationSpeed === settings.animation.defaultSpeed && (!timeMatches || timeMatches.length < 2)) {
+        console.log('Estimating from route distance...');
+        const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
 
       if (trkptMatches && trkptMatches.length > 1) {
         let totalDistance = 0;
@@ -140,8 +160,11 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
       }
     }
-  } catch (err) {
-    console.warn('Could not parse file for duration, using default speed 25x:', err.message);
+    } catch (err) {
+      console.warn('Could not parse file for duration, using default speed:', err.message);
+    }
+  } else {
+    console.log(`Using fixed speed ${animationSpeed}x (adaptive speed disabled)`);
   }
 
   // Run Docker container with the GPX file and filename
@@ -450,6 +473,123 @@ app.get('/cleanup', (req, res) => {
       success: false,
       error: error.message
     });
+  }
+});
+
+// Settings management
+const settingsPath = path.join(__dirname, 'settings.json');
+
+// Get current settings
+app.get('/api/settings', (req, res) => {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      res.json(settings);
+    } else {
+      // Return default settings
+      const defaultSettings = {
+        animation: {
+          defaultSpeed: 2,
+          minSpeed: 1,
+          maxSpeed: 100,
+          adaptiveSpeedEnabled: true,
+          maxVideoMinutes: 10
+        },
+        recording: {
+          fps: 30,
+          width: 720,
+          height: 1280
+        }
+      };
+      res.json(defaultSettings);
+    }
+  } catch (error) {
+    console.error('Error reading settings:', error);
+    res.status(500).json({ error: 'Failed to read settings' });
+  }
+});
+
+// Update settings
+app.put('/api/settings', (req, res) => {
+  try {
+    const newSettings = req.body;
+    
+    // Validate settings
+    if (newSettings.animation) {
+      const { defaultSpeed, minSpeed, maxSpeed } = newSettings.animation;
+      if (defaultSpeed < minSpeed || defaultSpeed > maxSpeed) {
+        return res.status(400).json({ error: 'Invalid speed range' });
+      }
+    }
+    
+    fs.writeFileSync(settingsPath, JSON.stringify(newSettings, null, 2));
+    console.log('Settings updated:', newSettings);
+    res.json({ success: true, settings: newSettings });
+  } catch (error) {
+    console.error('Error updating settings:', error);
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// Get animation speed specifically (for route analytics integration)
+app.get('/api/animation-speed', (req, res) => {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      res.json({
+        speed: settings.animation.defaultSpeed,
+        adaptiveEnabled: settings.animation.adaptiveSpeedEnabled,
+        minSpeed: settings.animation.minSpeed,
+        maxSpeed: settings.animation.maxSpeed
+      });
+    } else {
+      res.json({ speed: 2, adaptiveEnabled: true, minSpeed: 1, maxSpeed: 100 });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to read animation speed' });
+  }
+});
+
+// Update animation speed specifically
+app.put('/api/animation-speed', (req, res) => {
+  try {
+    const { speed, adaptiveEnabled } = req.body;
+    
+    let settings = {};
+    if (fs.existsSync(settingsPath)) {
+      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    } else {
+      settings = {
+        animation: {
+          defaultSpeed: 2,
+          minSpeed: 1,
+          maxSpeed: 100,
+          adaptiveSpeedEnabled: true,
+          maxVideoMinutes: 10
+        },
+        recording: { fps: 30, width: 720, height: 1280 }
+      };
+    }
+    
+    if (speed !== undefined) {
+      if (speed < settings.animation.minSpeed || speed > settings.animation.maxSpeed) {
+        return res.status(400).json({ 
+          error: `Speed must be between ${settings.animation.minSpeed} and ${settings.animation.maxSpeed}` 
+        });
+      }
+      settings.animation.defaultSpeed = speed;
+    }
+    
+    if (adaptiveEnabled !== undefined) {
+      settings.animation.adaptiveSpeedEnabled = adaptiveEnabled;
+    }
+    
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    console.log(`Animation speed updated to ${settings.animation.defaultSpeed}x (adaptive: ${settings.animation.adaptiveSpeedEnabled})`);
+    res.json({ success: true, speed: settings.animation.defaultSpeed, adaptiveEnabled: settings.animation.adaptiveSpeedEnabled });
+  } catch (error) {
+    console.error('Error updating animation speed:', error);
+    res.status(500).json({ error: 'Failed to update animation speed' });
   }
 });
 

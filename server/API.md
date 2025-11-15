@@ -212,3 +212,165 @@ These files contain:
 - Cesium app console output
 - Recording progress
 - Error stack traces (if any)
+
+---
+
+## Settings Management
+
+### Get All Settings
+**GET** `/api/settings`
+
+Retrieve current animation and recording settings.
+
+**Response:**
+```json
+{
+  "animation": {
+    "defaultSpeed": 2,
+    "minSpeed": 1,
+    "maxSpeed": 100,
+    "adaptiveSpeedEnabled": true,
+    "maxVideoMinutes": 10
+  },
+  "recording": {
+    "fps": 30,
+    "width": 720,
+    "height": 1280
+  }
+}
+```
+
+### Update All Settings
+**PUT** `/api/settings`
+
+Update all settings at once.
+
+**Request:**
+```json
+{
+  "animation": {
+    "defaultSpeed": 3,
+    "minSpeed": 1,
+    "maxSpeed": 100,
+    "adaptiveSpeedEnabled": true,
+    "maxVideoMinutes": 10
+  },
+  "recording": {
+    "fps": 30,
+    "width": 720,
+    "height": 1280
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "settings": { /* updated settings */ }
+}
+```
+
+---
+
+## Animation Speed Control
+
+### Get Animation Speed
+**GET** `/api/animation-speed`
+
+Get current animation speed settings.
+
+**Response:**
+```json
+{
+  "speed": 2,
+  "adaptiveEnabled": true,
+  "minSpeed": 1,
+  "maxSpeed": 100
+}
+```
+
+### Update Animation Speed
+**PUT** `/api/animation-speed`
+
+Update animation speed dynamically.
+
+**Request:**
+```json
+{
+  "speed": 3,
+  "adaptiveEnabled": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "speed": 3,
+  "adaptiveEnabled": true
+}
+```
+
+**Examples:**
+
+Set slow speed for detailed viewing:
+```bash
+curl -X PUT http://localhost:3000/api/animation-speed \
+  -H "Content-Type: application/json" \
+  -d '{"speed": 1.5}'
+```
+
+Set fast speed for quick previews:
+```bash
+curl -X PUT http://localhost:3000/api/animation-speed \
+  -H "Content-Type: application/json" \
+  -d '{"speed": 10}'
+```
+
+Disable adaptive speed for consistent rendering:
+```bash
+curl -X PUT http://localhost:3000/api/animation-speed \
+  -H "Content-Type: application/json" \
+  -d '{"speed": 3, "adaptiveEnabled": false}'
+```
+
+---
+
+## Animation Speed Behavior
+
+### Fixed Speed Mode
+When `adaptiveSpeedEnabled: false`, all routes use the `defaultSpeed` value regardless of route duration.
+
+### Adaptive Speed Mode (Default)
+When `adaptiveSpeedEnabled: true`, the system automatically adjusts speed based on route duration:
+- **Short routes**: Use `defaultSpeed`
+- **Long routes**: Automatically increase speed to keep video under `maxVideoMinutes`
+
+**Example:**
+- Route duration: 60 minutes
+- maxVideoMinutes: 10
+- defaultSpeed: 2x
+- **Result**: System increases to ~6x to keep video under 10 minutes
+
+---
+
+## Future: Route Analytics Integration
+
+These settings endpoints are designed for integration with route analytics:
+
+```javascript
+// Example: Adjust speed based on route type
+const routeAnalytics = analyzeRoute(gpxData);
+
+if (routeAnalytics.type === 'hiking' && routeAnalytics.elevationGain > 1000) {
+  // Technical mountain route - slow speed
+  await updateSpeed(2);
+} else if (routeAnalytics.avgSpeed > 50) {
+  // Fast route (driving) - higher speed
+  await updateSpeed(15);
+} else if (routeAnalytics.type === 'cycling') {
+  // Cycling route - medium speed
+  await updateSpeed(5);
+}
+```
