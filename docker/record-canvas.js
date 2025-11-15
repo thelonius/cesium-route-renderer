@@ -57,9 +57,13 @@ function getRecordingDuration() {
     const playbackDuration = gpxDuration / speedMultiplier;
     const totalDuration = Math.ceil(playbackDuration + 19);
 
+    // Store durations for status display (will be updated later when statusInfo is available)
+    global.gpxDurationSeconds = gpxDuration;
+    global.videoDurationSeconds = totalDuration;
+
     console.log(`Animation speed: ${speedMultiplier}x`);
-    console.log(`Calculated playback duration: ${(playbackDuration / 60).toFixed(1)} minutes`);
-    console.log(`Recording duration (with buffer): ${totalDuration} seconds`);
+    console.log(`Route duration: ${(gpxDuration / 60).toFixed(1)} minutes`);
+    console.log(`Video duration (with buffer): ${(totalDuration / 60).toFixed(1)} minutes`);
 
     return totalDuration;
   }
@@ -70,8 +74,8 @@ function getRecordingDuration() {
 
 const RECORD_DURATION = getRecordingDuration();
 const RECORD_FPS = 24; // 24 FPS for better CPU performance
-const RECORD_WIDTH = 720;
-const RECORD_HEIGHT = 1280;
+const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || '720', 10);
+const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || '1280', 10);
 
 // Status tracking
 let statusInfo = {
@@ -82,7 +86,10 @@ let statusInfo = {
   avgFrameTime: 0,
   totalFrames: 0,
   startTime: null,
-  frameTimes: []
+  frameTimes: [],
+  routeDurationMinutes: 0,
+  videoDurationMinutes: 0,
+  animationSpeed: parseInt(process.env.ANIMATION_SPEED || '2')
 };
 
 // Convert terrain quality value to descriptive level
@@ -117,7 +124,11 @@ function displayStatusBar() {
   const avgFrameTime = statusInfo.frameTimes.length > 0 ?
     (statusInfo.frameTimes.reduce((a, b) => a + b, 0) / statusInfo.frameTimes.length).toFixed(2) : '0.00';
 
-  console.log(`📊 [${statusInfo.buildVersion}] FPS:${avgFps} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Frame:${avgFrameTime}ms | Elapsed:${elapsed}s`);
+  // Format durations
+  const routeDur = global.gpxDurationSeconds ? `${(global.gpxDurationSeconds / 60).toFixed(0)}m` : 'N/A';
+  const videoDur = global.videoDurationSeconds ? `${(global.videoDurationSeconds / 60).toFixed(1)}m` : 'N/A';
+
+  console.log(`📊 [v${statusInfo.buildVersion}] Speed:${statusInfo.animationSpeed}x | Route:${routeDur}→Video:${videoDur} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | FPS:${avgFps} | Frame:${avgFrameTime}ms`);
 }
 
 async function startServer() {

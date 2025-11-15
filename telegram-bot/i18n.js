@@ -6,9 +6,9 @@ const messages = {
     // Welcome & Help
     welcome: {
       title: '🗺️ Welcome to GPX Route Video Renderer!',
-      description: 'Send me a GPX file and I\'ll create a beautiful 3D video animation of your route.',
+      description: 'Send me a GPX file and I will create a beautiful 3D animated video of your route.',
       features: [
-        '📱 Video format: Vertical (1080x1920) perfect for mobile',
+        '📱 Video format: Vertical (720x1280) perfect for mobile',
         '🎥 Features: Intro/outro animations, smooth camera tracking',
         '⏱️ Processing time: ~2-3 minutes per route'
       ],
@@ -24,7 +24,7 @@ const messages = {
       tips: '💡 Tips:',
       tipsList: [
         '• Routes without timestamps will use 5 km/h walking speed',
-        '• Animation plays at 100x speed',
+        '• Animation speed adapts to route length (2-100x)',
         '• Video includes 5s intro and 4s outro'
       ],
       commands: 'Commands:',
@@ -116,7 +116,7 @@ const messages = {
     },
 
     // Video caption
-    videoCaption: '🎬 Your route video: {{filename}}\n\n📊 Size: {{size}} MB\n🎥 Format: 1080x1920 (Vertical)\n⚡ Animation: 100x speed',
+    videoCaption: '🎬 Your route video: {{filename}}\n\n📊 Size: {{size}} MB ({{bitrate}})\n⏱️ Video: {{videoDuration}} | Route: {{routeDuration}}\n🎥 Format: {{resolution}} (Vertical)\n⚡ Animation: {{speed}}x speed',
 
     // Buttons
     buttons: {
@@ -134,7 +134,7 @@ const messages = {
       title: '🗺️ Добро пожаловать в GPX Route Video Renderer!',
       description: 'Отправьте мне GPX файл, и я создам красивое 3D видео анимации вашего маршрута.',
       features: [
-        '📱 Формат видео: Вертикальный (1080x1920) идеально для мобильных',
+        '📱 Формат видео: Вертикальный (720x1280) идеально для мобильных',
         '🎥 Возможности: Интро/аутро анимации, плавное отслеживание камеры',
         '⏱️ Время обработки: ~2-3 минуты на маршрут'
       ],
@@ -150,7 +150,7 @@ const messages = {
       tips: '💡 Советы:',
       tipsList: [
         '• Маршруты без временных меток будут использовать скорость 5 км/ч',
-        '• Анимация воспроизводится со скоростью 100x',
+        '• Скорость анимации адаптируется к длине маршрута (2-100x)',
         '• Видео включает 5с интро и 4с аутро'
       ],
       commands: 'Команды:',
@@ -242,7 +242,7 @@ const messages = {
     },
 
     // Video caption
-    videoCaption: '🎬 Ваше видео маршрута: {{filename}}\n\n📊 Размер: {{size}} МБ\n🎥 Формат: 1080x1920 (Вертикальный)\n⚡ Анимация: 100x скорость',
+    videoCaption: '🎬 Ваше видео маршрута: {{filename}}\n\n📊 Размер: {{size}} МБ ({{bitrate}})\n⏱️ Видео: {{videoDuration}} | Маршрут: {{routeDuration}}\n🎥 Формат: {{resolution}} (Вертикальный)\n⚡ Анимация: {{speed}}x скорость',
 
     // Buttons
     buttons: {

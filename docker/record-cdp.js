@@ -70,8 +70,8 @@ function getRecordingDuration() {
 
 const RECORD_DURATION = getRecordingDuration();
 const RECORD_FPS = 5; // Target 5 FPS (reduced from 10 to prevent timeouts)
-const RECORD_WIDTH = 720;
-const RECORD_HEIGHT = 1280;
+const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || '720', 10);
+const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || '1280', 10);
 
 async function startServer() {
   const server = http.createServer((request, response) => {

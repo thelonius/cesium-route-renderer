@@ -618,16 +618,16 @@ bot.on('document', async (msg) => {
     // Calculate render time estimation based on analysis
     let estimatedRenderMinutes = null;
     let estimatedSizeMB = null;
-    let animationSpeed = 10;
+    let animationSpeed = 2; // Default speed matching server settings
 
     if (analysis.success && analysis.statistics.duration) {
       const routeDurationMinutes = analysis.statistics.duration.minutes;
 
       // Calculate adaptive animation speed (same logic as server)
-      const MAX_VIDEO_MINUTES = 10; // Increased for slower animation
+      const MAX_VIDEO_MINUTES = 10;
       const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
 
-      if (requiredSpeed > 10) {
+      if (requiredSpeed > animationSpeed) {
         animationSpeed = requiredSpeed;
       }
 
@@ -895,10 +895,48 @@ bot.on('document', async (msg) => {
       } else {
         // File is within limits, send normally
         try {
+          // Format video duration
+          let videoDurationText = 'N/A';
+          if (result.videoDurationSeconds) {
+            const minutes = Math.floor(result.videoDurationSeconds / 60);
+            const seconds = result.videoDurationSeconds % 60;
+            videoDurationText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+          }
+
+          // Format route duration
+          let routeDurationText = 'N/A';
+          if (result.routeDurationMinutes) {
+            const totalMinutes = parseFloat(result.routeDurationMinutes);
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = Math.round(totalMinutes % 60);
+            if (hours > 0) {
+              routeDurationText = `${hours}h ${minutes}m`;
+            } else {
+              routeDurationText = `${minutes}m`;
+            }
+          }
+
+          // Calculate video bitrate (kbps)
+          let bitrateText = 'N/A';
+          if (result.videoDurationSeconds && result.fileSize) {
+            const bitrateKbps = Math.round((result.fileSize * 8) / (result.videoDurationSeconds * 1000));
+            bitrateText = `${bitrateKbps} kbps`;
+          }
+
+          // Format video resolution
+          const videoResolution = (result.videoWidth && result.videoHeight) 
+            ? `${result.videoWidth}x${result.videoHeight}` 
+            : '720x1280';
+
           await bot.sendVideo(chatId, videoPath, {
             caption: t(chatId, 'videoCaption', {
               filename: doc.file_name,
-              size: fileSizeMB.toFixed(2)
+              size: fileSizeMB.toFixed(2),
+              bitrate: bitrateText,
+              videoDuration: videoDurationText,
+              routeDuration: routeDurationText,
+              resolution: videoResolution,
+              speed: result.animationSpeed || 2 // Use actual speed from server, fallback to 2x
             }, userLang),
             supports_streaming: true
           });

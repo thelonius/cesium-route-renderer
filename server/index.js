@@ -57,16 +57,21 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   // Calculate adaptive animation speed based on route length
   // Goal: Keep video reasonable length and file size under 50MB
   let animationSpeed = 2; // Default will be loaded from settings
-  
+
   // Load settings
   let settings = {
     animation: {
       defaultSpeed: 2,
       adaptiveSpeedEnabled: true,
       maxVideoMinutes: 10
+    },
+    recording: {
+      fps: 30,
+      width: 720,
+      height: 1280
     }
   };
-  
+
   try {
     if (fs.existsSync(settingsPath)) {
       settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -74,11 +79,13 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   } catch (error) {
     console.error('Error loading settings, using defaults:', error);
   }
-  
+
   animationSpeed = settings.animation.defaultSpeed;
   const MAX_VIDEO_MINUTES = settings.animation.maxVideoMinutes;
   const ADAPTIVE_SPEED_ENABLED = settings.animation.adaptiveSpeedEnabled;
   
+  let routeDurationSeconds = null; // Store route duration for video calculation
+
   // Only apply adaptive speed if enabled
   if (ADAPTIVE_SPEED_ENABLED) {
     try {
@@ -89,6 +96,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         const firstTime = new Date(timeMatches[0].replace(/<\/?(?:time|when)>/g, ''));
         const lastTime = new Date(timeMatches[timeMatches.length - 1].replace(/<\/?(?:time|when)>/g, ''));
         const routeDurationMinutes = (lastTime - firstTime) / 1000 / 60;
+        routeDurationSeconds = (lastTime - firstTime) / 1000; // Store for video duration calc
 
         console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
 
@@ -145,6 +153,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         const distanceKm = totalDistance / 1000;
         const walkingSpeed = 5; // km/h assumption
         const routeDurationMinutes = (distanceKm / walkingSpeed) * 60;
+        routeDurationSeconds = routeDurationMinutes * 60; // Store for video duration calc
 
         console.log(`Estimated route: ${distanceKm.toFixed(1)}km, ~${routeDurationMinutes.toFixed(0)} minutes at 5km/h`);
 
@@ -167,14 +176,24 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     console.log(`Using fixed speed ${animationSpeed}x (adaptive speed disabled)`);
   }
 
+  // Calculate expected video duration
+  // Formula: (route duration / animation speed) + 19 seconds buffer
+  let videoDurationSeconds = null;
+  let routeDurationMinutes = null;
+  if (routeDurationSeconds) {
+    videoDurationSeconds = Math.ceil((routeDurationSeconds / animationSpeed) + 19);
+    routeDurationMinutes = (routeDurationSeconds / 60).toFixed(1);
+    const videoDurationMinutes = (videoDurationSeconds / 60).toFixed(1);
+    console.log(`📹 Route duration: ${routeDurationMinutes} min | Video duration: ${videoDurationMinutes} min | Speed: ${animationSpeed}x`);
+  }
+
   // Run Docker container with the GPX file and filename
   // Don't pass RECORD_DURATION - let the script auto-calculate from GPX
-  // Defaults for recorder envs - these can be overridden by setting the corresponding
-  // env vars on the server process (e.g. RECORD_FPS, RECORD_WIDTH, RECORD_HEIGHT).
+  // Load recording settings from settings.json
   const dockerHeadless = '1'; // Force headless-quality defaults inside the container
-  const dockerRecordFps = process.env.RECORD_FPS || '30';
-  const dockerRecordWidth = process.env.RECORD_WIDTH || '720';
-  const dockerRecordHeight = process.env.RECORD_HEIGHT || '1280';
+  const dockerRecordFps = process.env.RECORD_FPS || String(settings.recording?.fps || 30);
+  const dockerRecordWidth = process.env.RECORD_WIDTH || String(settings.recording?.width || 720);
+  const dockerRecordHeight = process.env.RECORD_HEIGHT || String(settings.recording?.height || 1280);
 
   // Log to file so Telegram bot can read it
   const logPath = path.join(outputDir, 'recorder.log');
@@ -273,6 +292,11 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         videoUrl: `/output/${outputId}/route-video.mp4`,
         outputId,
         fileSize: stats.size,
+        animationSpeed, // Include animation speed for client display
+        videoDurationSeconds, // Include expected video duration
+        routeDurationMinutes, // Include route duration
+        videoWidth: parseInt(dockerRecordWidth, 10), // Include video resolution
+        videoHeight: parseInt(dockerRecordHeight, 10),
         logsUrl: `/logs/${outputId}`,
         logsTextUrl: `/logs/${outputId}/text`
       });
@@ -513,7 +537,7 @@ app.get('/api/settings', (req, res) => {
 app.put('/api/settings', (req, res) => {
   try {
     const newSettings = req.body;
-    
+
     // Validate settings
     if (newSettings.animation) {
       const { defaultSpeed, minSpeed, maxSpeed } = newSettings.animation;
@@ -521,7 +545,7 @@ app.put('/api/settings', (req, res) => {
         return res.status(400).json({ error: 'Invalid speed range' });
       }
     }
-    
+
     fs.writeFileSync(settingsPath, JSON.stringify(newSettings, null, 2));
     console.log('Settings updated:', newSettings);
     res.json({ success: true, settings: newSettings });
@@ -554,7 +578,7 @@ app.get('/api/animation-speed', (req, res) => {
 app.put('/api/animation-speed', (req, res) => {
   try {
     const { speed, adaptiveEnabled } = req.body;
-    
+
     let settings = {};
     if (fs.existsSync(settingsPath)) {
       settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
@@ -570,20 +594,20 @@ app.put('/api/animation-speed', (req, res) => {
         recording: { fps: 30, width: 720, height: 1280 }
       };
     }
-    
+
     if (speed !== undefined) {
       if (speed < settings.animation.minSpeed || speed > settings.animation.maxSpeed) {
-        return res.status(400).json({ 
-          error: `Speed must be between ${settings.animation.minSpeed} and ${settings.animation.maxSpeed}` 
+        return res.status(400).json({
+          error: `Speed must be between ${settings.animation.minSpeed} and ${settings.animation.maxSpeed}`
         });
       }
       settings.animation.defaultSpeed = speed;
     }
-    
+
     if (adaptiveEnabled !== undefined) {
       settings.animation.adaptiveSpeedEnabled = adaptiveEnabled;
     }
-    
+
     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
     console.log(`Animation speed updated to ${settings.animation.defaultSpeed}x (adaptive: ${settings.animation.adaptiveSpeedEnabled})`);
     res.json({ success: true, speed: settings.animation.defaultSpeed, adaptiveEnabled: settings.animation.adaptiveSpeedEnabled });
