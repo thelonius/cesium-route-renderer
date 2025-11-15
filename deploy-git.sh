@@ -59,8 +59,15 @@ cd telegram-bot && npm install && cd ..
 echo "🐳 Rebuilding Docker image..."
 docker build -t cesium-route-recorder .
 
-# Restart services
+# Restart services with proper cleanup
 echo "♻️  Restarting services..."
+# Stop processes first to ensure clean port release
+pm2 stop cesium-api telegram-bot 2>/dev/null || true
+sleep 2
+# Kill any lingering processes on port 3000
+lsof -ti:3000 | xargs kill -9 2>/dev/null || true
+sleep 1
+# Start services
 pm2 restart cesium-api || pm2 start server/index.js --name cesium-api
 pm2 restart telegram-bot || pm2 start telegram-bot/index.js --name telegram-bot --env PUBLIC_URL="http://195.133.27.96:3000"
 pm2 save
