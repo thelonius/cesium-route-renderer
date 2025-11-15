@@ -198,13 +198,7 @@ bot.onText(/\/status/, async (msg) => {
       const seconds = elapsed % 60;
       statusMessage += `⏱️ Elapsed: ${minutes}m ${seconds}s`;
 
-      // Show estimated time remaining if we have it
-      if (render.estimatedMinutes) {
-        const remaining = Math.max(0, render.estimatedMinutes - (elapsed / 60));
-        if (remaining > 0) {
-          statusMessage += ` / ~${Math.ceil(remaining)}m remaining`;
-        }
-      }
+      // Don't show generic remaining time estimate here - it will be shown from Docker logs if available
       statusMessage += '\n';
     }
 
