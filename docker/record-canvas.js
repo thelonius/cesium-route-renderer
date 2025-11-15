@@ -53,7 +53,7 @@ function getRecordingDuration() {
 
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
-    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '4');
+    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '2');
     const playbackDuration = gpxDuration / speedMultiplier;
     const totalDuration = Math.ceil(playbackDuration + 19);
 
@@ -178,7 +178,7 @@ async function recordRoute() {
     throw new Error('GPX_FILENAME environment variable is required');
   }
   const userName = process.env.USER_NAME || 'Hiker';
-  const animationSpeed = process.env.ANIMATION_SPEED || '4';
+  const animationSpeed = process.env.ANIMATION_SPEED || '2';
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   console.log(`Loading Cesium app: ${appUrl}`);
