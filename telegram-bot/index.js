@@ -6,6 +6,10 @@ const axios = require('axios');
 const { analyzeGPX, analyzeKML, formatAnalytics } = require('./gpxAnalyzer');
 const { getUserLanguage, setUserLanguage, t, formatMessage } = require('./i18n');
 
+// Configuration
+const CONSTANTS = require('../config/constants');
+const renderingConfig = require('../config/rendering');
+
 const BOT_TOKEN = '8418496404:AAGLdVNW_Pla_u1bMVfFia-s9klwRsgYZhs';
 const API_SERVER = process.env.API_SERVER || 'http://localhost:3000';
 const PUBLIC_URL = process.env.PUBLIC_URL || 'http://195.133.27.96:3000'; // Public URL for downloads
@@ -63,9 +67,9 @@ function addRouteToHistory(chatId, fileName, filePath, videoUrl, fileSize) {
     date: new Date().toISOString()
   });
 
-  // Keep only last 10 routes
-  if (history.length > 10) {
-    history.splice(10);
+  // Keep only last N routes
+  if (history.length > CONSTANTS.TELEGRAM.HISTORY_LIMIT) {
+    history.splice(CONSTANTS.TELEGRAM.HISTORY_LIMIT);
   }
 
   routeHistory.set(chatId, history);
@@ -212,7 +216,7 @@ bot.onText(/\/status/, async (msg) => {
       try {
         const logsUrl = `${API_SERVER}/logs/${render.outputId}/text`;
         const response = await axios.get(logsUrl, {
-          timeout: 5000,
+          timeout: CONSTANTS.TELEGRAM.STATUS_CHECK_TIMEOUT_MS,
           validateStatus: (status) => status === 200 // Only accept 200, throw on anything else
         });
         const logs = response.data;
@@ -612,40 +616,24 @@ bot.on('document', async (msg) => {
     // Calculate render time estimation based on analysis
     let estimatedRenderMinutes = null;
     let estimatedSizeMB = null;
-    let animationSpeed = 2; // Default speed matching server settings
+    let animationSpeed = CONSTANTS.ANIMATION.DEFAULT_SPEED;
 
     if (analysis.success && analysis.statistics.duration) {
       const routeDurationMinutes = analysis.statistics.duration.minutes;
 
       // Calculate adaptive animation speed (same logic as server)
-      const MAX_VIDEO_MINUTES = 10;
-      const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
+      const requiredSpeed = Math.ceil(routeDurationMinutes / (CONSTANTS.RENDER.MAX_VIDEO_MINUTES - CONSTANTS.ANIMATION.ADAPTIVE_BUFFER_MINUTES));
 
       if (requiredSpeed > animationSpeed) {
         animationSpeed = requiredSpeed;
       }
 
-      // Estimate render time (conservative estimate for software rendering)
-      // Recording duration in seconds
-      const recordingSeconds = (routeDurationMinutes * 60 / animationSpeed) + 19;
-      const recordingMinutes = recordingSeconds / 60;
-      const totalFrames = Math.ceil(recordingSeconds * 30); // 30 FPS
-
-      // Software rendering is VERY slow - approximately 0.4-0.5 fps
-      // This means each frame takes ~2-2.5 seconds to capture
-      const FRAMES_PER_SECOND = 0.45; // Conservative estimate
-      const captureMinutes = totalFrames / FRAMES_PER_SECOND / 60;
-
-      // Encoding is relatively fast - about 2-3x real-time
-      const encodingMinutes = recordingMinutes * 2.5;
-
-      // Total with overhead
-      const overheadMinutes = 2; // Startup time
-      estimatedRenderMinutes = Math.ceil(captureMinutes + encodingMinutes + overheadMinutes);
-
-      // Estimate file size based on actual CRF 20 encoding
-      // CRF 20 at 1280x720 typically produces ~1-1.5 MB/minute for aerial footage
-      estimatedSizeMB = Math.ceil(recordingMinutes * 1.3);
+      // Estimate render time using config
+      const estimation = renderingConfig.estimateRenderTime(routeDurationMinutes, animationSpeed);
+      if (estimation) {
+        estimatedRenderMinutes = estimation.totalMinutes;
+        estimatedSizeMB = estimation.estimatedSizeMB;
+      }
 
       const lang = getUserLanguage(chatId, userLang);
       let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
@@ -654,7 +642,7 @@ bot.on('document', async (msg) => {
       statusMsg += t(chatId, 'estimation.size', { size: estimatedSizeMB }, userLang) + '\n';
       statusMsg += t(chatId, 'estimation.time', { time: estimatedRenderMinutes }, userLang) + '\n\n';
 
-      if (estimatedSizeMB > 50) {
+      if (estimatedSizeMB > CONSTANTS.TELEGRAM.MAX_FILE_SIZE_MB) {
         statusMsg += t(chatId, 'estimation.tooLarge', {}, userLang) + '\n\n';
       }
 
@@ -788,18 +776,16 @@ bot.on('document', async (msg) => {
           }
         }
       } catch (err) {
-        // Silently ignore errors (logs might not be available yet)
+          // Silently ignore errors (logs might not be available yet)
         console.log('Progress check:', err.message);
       }
-    }, 20000); // Check every 20 seconds (was 2 minutes)
-
-    let renderResponse;
+    }, CONSTANTS.TELEGRAM.PROGRESS_UPDATE_INTERVAL_MS);    let renderResponse;
     try {
       renderResponse = await axios.post(`${API_SERVER}/render-route`, formData, {
         headers: formData.getHeaders(),
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
-        timeout: 3600000, // 60 minute timeout (long routes can take 30-45 minutes)
+        timeout: CONSTANTS.RENDER.TIMEOUT_MS,
         validateStatus: () => true // Don't throw on any status code, we'll handle it
       });
     } catch (err) {
@@ -809,7 +795,8 @@ bot.on('document', async (msg) => {
 
       // Check if it's a timeout
       if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-        throw new Error('Render timed out after 60 minutes. The route is extremely long. Please try splitting it into shorter segments.');
+        const timeoutMinutes = CONSTANTS.RENDER.TIMEOUT_MS / 60000;
+        throw new Error(`Render timed out after ${timeoutMinutes} minutes. The route is extremely long. Please try splitting it into shorter segments.`);
       }
 
       throw new Error('Render API request failed: ' + (respData ? JSON.stringify(respData) : err.message));
@@ -875,15 +862,14 @@ bot.on('document', async (msg) => {
       console.log('Sending video to chat:', chatId);
 
       const fileSizeMB = result.fileSize / 1024 / 1024;
-      const TELEGRAM_MAX_SIZE_MB = 50; // Telegram's limit for bots
 
       // Check if file is too large for Telegram
-      if (fileSizeMB > TELEGRAM_MAX_SIZE_MB) {
-        console.warn(`Video is too large (${fileSizeMB.toFixed(2)}MB). Telegram limit is ${TELEGRAM_MAX_SIZE_MB}MB`);
+      if (fileSizeMB > CONSTANTS.TELEGRAM.MAX_FILE_SIZE_MB) {
+        console.warn(`Video is too large (${fileSizeMB.toFixed(2)}MB). Telegram limit is ${CONSTANTS.TELEGRAM.MAX_FILE_SIZE_MB}MB`);
 
         await bot.sendMessage(chatId, t(chatId, 'fileSize.tooLarge', {
           size: fileSizeMB.toFixed(2),
-          limit: TELEGRAM_MAX_SIZE_MB,
+          limit: CONSTANTS.TELEGRAM.MAX_FILE_SIZE_MB,
           url: `${PUBLIC_URL}${result.videoUrl}`
         }, userLang));
       } else {

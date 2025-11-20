@@ -5,6 +5,11 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 
+// Configuration
+const CONSTANTS = require('../config/constants');
+const dockerConfig = require('../config/docker');
+const renderingConfig = require('../config/rendering');
+
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 
@@ -58,17 +63,17 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   // Goal: Keep video reasonable length and file size under 50MB
   let animationSpeed = 2; // Default will be loaded from settings
 
-  // Load settings
+  // Load settings with defaults from config
   let settings = {
     animation: {
-      defaultSpeed: 2,
+      defaultSpeed: CONSTANTS.ANIMATION.DEFAULT_SPEED,
       adaptiveSpeedEnabled: true,
-      maxVideoMinutes: 10
+      maxVideoMinutes: CONSTANTS.RENDER.MAX_VIDEO_MINUTES
     },
     recording: {
-      fps: 30,
-      width: 720,
-      height: 1280
+      fps: CONSTANTS.RENDER.DEFAULT_FPS,
+      width: CONSTANTS.RENDER.DEFAULT_WIDTH,
+      height: CONSTANTS.RENDER.DEFAULT_HEIGHT
     }
   };
 
@@ -151,7 +156,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         }
 
         const distanceKm = totalDistance / 1000;
-        const walkingSpeed = 5; // km/h assumption
+        const walkingSpeed = CONSTANTS.GEO.DEFAULT_WALKING_SPEED_KMH;
         const routeDurationMinutes = (distanceKm / walkingSpeed) * 60;
         routeDurationSeconds = routeDurationMinutes * 60; // Store for video duration calc
 
@@ -181,7 +186,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   let videoDurationSeconds = null;
   let routeDurationMinutes = null;
   if (routeDurationSeconds) {
-    videoDurationSeconds = Math.ceil((routeDurationSeconds / animationSpeed) + 19);
+    videoDurationSeconds = renderingConfig.calculateVideoDuration(routeDurationSeconds, animationSpeed);
     routeDurationMinutes = (routeDurationSeconds / 60).toFixed(1);
     const videoDurationMinutes = (videoDurationSeconds / 60).toFixed(1);
     console.log(`📹 Route duration: ${routeDurationMinutes} min | Video duration: ${videoDurationMinutes} min | Speed: ${animationSpeed}x`);
@@ -201,29 +206,18 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${animationSpeed}x\n`);
 
   // Use spawn instead of exec to stream Docker output in real-time
-  const dockerArgs = [
-    'run',
-    '--rm',
-    '--user', '1001:1002', // Run as theo user to avoid permission issues
-    '--shm-size=2g',
-    '-v', `${absGpxPath}:/app/dist/${gpxFilename}:ro`,
-    '-v', `${absOutputDir}:/output`,
-    '-e', `GPX_FILENAME=${gpxFilename}`,
-    '-e', `ANIMATION_SPEED=${animationSpeed}`,
-    '-e', `USER_NAME=${userName}`,
-    '-e', `HEADLESS=${dockerHeadless}`,
-    '-e', `RECORD_FPS=${dockerRecordFps}`,
-    '-e', `RECORD_WIDTH=${dockerRecordWidth}`,
-    '-e', `RECORD_HEIGHT=${dockerRecordHeight}`
-  ];
-
-  // Try to enable GPU acceleration if available
-  if (fs.existsSync('/dev/dri/card0')) {
-    dockerArgs.push('--device=/dev/dri/card0');
-    console.log('GPU device found, enabling hardware acceleration');
-  }
-
-  dockerArgs.push('cesium-route-recorder');  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
+  const dockerArgs = dockerConfig.buildCompleteArgs({
+    gpxPath: absGpxPath,
+    gpxFilename,
+    outputDir: absOutputDir,
+    animationSpeed,
+    userName,
+    recording: {
+      fps: dockerRecordFps,
+      width: dockerRecordWidth,
+      height: dockerRecordHeight
+    }
+  });  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
 
   const dockerProcess = spawn('docker', dockerArgs);
 
@@ -245,15 +239,15 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     fs.appendFileSync(logPath, memLog);
     
     // Warn if memory usage is high
-    if (rss > 1500) {
+    if (rss > CONSTANTS.MEMORY.WARNING_THRESHOLD_MB) {
       const warnLog = `[${new Date().toISOString()}] ⚠️  High memory usage detected: ${rss}MB RSS\n`;
       fs.appendFileSync(logPath, warnLog);
       console.warn(warnLog.trim());
     }
   };
   
-  // Log memory usage every 30 seconds
-  memoryCheckInterval = setInterval(logMemoryUsage, 30000);
+  // Log memory usage at configured interval
+  memoryCheckInterval = setInterval(logMemoryUsage, CONSTANTS.MEMORY.CHECK_INTERVAL_MS);
   logMemoryUsage(); // Log initial state
 
   // Stream stdout to log file in real-time
@@ -298,7 +292,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
       console.error(`Docker process exited with code ${code}`);
 
       // Helper to trim logs to a sensible size for API responses
-      const trim = (s, n = 8000) => {
+      const trim = (s, n = CONSTANTS.API.LOG_TRIM_LENGTH) => {
         if (!s) return '';
         return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
       };
@@ -439,10 +433,10 @@ app.get('/logs/:outputId/text', (req, res) => {
   if (fs.existsSync(logPath)) {
     try {
       const logContent = fs.readFileSync(logPath, 'utf8');
-      // Limit to last 4000 characters for Telegram's message limit
-      if (logContent.length > 4000) {
+      // Limit to last N characters for Telegram's message limit
+      if (logContent.length > CONSTANTS.TELEGRAM.LOG_TRUNCATE_LENGTH) {
         output += '...TRUNCATED...\n';
-        output += logContent.slice(-4000);
+        output += logContent.slice(-CONSTANTS.TELEGRAM.LOG_TRUNCATE_LENGTH);
       } else {
         output += logContent;
       }
@@ -471,7 +465,7 @@ app.get('/logs/:outputId/text', (req, res) => {
 
 // Cleanup old renders
 app.get('/cleanup', (req, res) => {
-  const daysOld = parseInt(req.query.daysOld) || 7; // Default to 7 days
+  const daysOld = parseInt(req.query.daysOld) || CONSTANTS.CLEANUP.DEFAULT_AGE_DAYS;
   const outputBaseDir = path.join(__dirname, '../output');
 
   try {
@@ -653,7 +647,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || CONSTANTS.API.DEFAULT_PORT;
 
 app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
