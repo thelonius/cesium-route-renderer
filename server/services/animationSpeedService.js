@@ -3,7 +3,7 @@ const { haversineDistance, calculateTotalDistance, calculateElevationGain } = re
 
 /**
  * Animation Speed Service
- * 
+ *
  * Manages animation speed calculations for route rendering with support for:
  * - Adaptive speed based on route duration
  * - Route pattern detection (point-to-point, out-and-back, loop)
@@ -19,7 +19,7 @@ class AnimationSpeedService {
 
   /**
    * Calculate adaptive animation speed for a route
-   * 
+   *
    * @param {Object} routeAnalysis - Route analysis from gpxService
    * @param {Object} settings - Application settings
    * @returns {Object} { speed, videoMinutes, adjustmentReason, suggested }
@@ -78,7 +78,7 @@ class AnimationSpeedService {
 
   /**
    * Validate animation speed is within acceptable range
-   * 
+   *
    * @param {number} speed - Speed to validate
    * @param {Object} settings - Application settings
    * @returns {Object} { valid, message, corrected }
@@ -113,7 +113,7 @@ class AnimationSpeedService {
   /**
    * Detect route pattern including repeated/recursive patterns
    * Patterns: point-to-point, out-and-back, loop, figure-eight, multi-lap, repeated-segment
-   * 
+   *
    * @param {Object} routeAnalysis - Route analysis from gpxService
    * @param {Object} thresholds - Detection thresholds
    * @returns {Object} Pattern detection result with repetition info
@@ -131,7 +131,7 @@ class AnimationSpeedService {
 
     // Extract points from route analysis
     const points = routeAnalysis.points || [];
-    
+
     if (points.length < 2) {
       return {
         pattern: 'unknown',
@@ -142,7 +142,7 @@ class AnimationSpeedService {
 
     // First, check for repeated patterns (multi-lap or repeated segments)
     const repetitionAnalysis = this.detectRepeatedSegments(points, config);
-    
+
     const start = points[0];
     const end = points[points.length - 1];
     const startEndDistance = haversineDistance(
@@ -153,11 +153,11 @@ class AnimationSpeedService {
     // Check if route returns to start (loop or out-and-back)
     if (startEndDistance < config.closeProximityMeters) {
       const pathOverlap = this.calculatePathOverlap(points, config.proximityCheckMeters);
-      
+
       if (pathOverlap > config.pathOverlapPercent) {
         // Out-and-back: significant path overlap
         const turnaroundPoint = this.findTurnaroundPoint(points);
-        
+
         // Check if it's a repeated out-and-back
         if (repetitionAnalysis.hasRepetition && repetitionAnalysis.repetitionCount > 1) {
           return {
@@ -179,8 +179,8 @@ class AnimationSpeedService {
             reason: `${repetitionAnalysis.repetitionCount} repeated out-and-back segments with ${pathOverlap.toFixed(1)}% overlap`
           };
         }
-        
-        
+
+
         return {
           pattern: 'out-and-back',
           confidence: Math.min(pathOverlap / 100, 0.95),
@@ -199,7 +199,7 @@ class AnimationSpeedService {
         // Loop: returns to start without retracing
         const enclosedArea = this.calculateEnclosedArea(points);
         const intersections = this.findIntersections(points, config.proximityCheckMeters);
-        
+
         // Check if it's multiple laps of the same loop
         if (repetitionAnalysis.hasRepetition && repetitionAnalysis.repetitionCount > 1) {
           return {
@@ -221,7 +221,7 @@ class AnimationSpeedService {
             reason: `${repetitionAnalysis.repetitionCount} laps of loop, ${enclosedArea.toFixed(0)}m² area`
           };
         }
-        
+
         return {
           pattern: intersections.length > 2 ? 'figure-eight' : 'loop',
           confidence: Math.max(0.7, 1 - (pathOverlap / 100)),
@@ -242,7 +242,7 @@ class AnimationSpeedService {
       // Point-to-point: distinct start and end
       const routeDistance = routeAnalysis.distance || calculateTotalDistance(points);
       const linearityRatio = startEndDistance / routeDistance;
-      
+
       // Check for repeated segments in point-to-point (unusual but possible)
       if (repetitionAnalysis.hasRepetition) {
         return {
@@ -263,7 +263,7 @@ class AnimationSpeedService {
           reason: `${repetitionAnalysis.repetitionCount} repeated segments, ends ${startEndDistance.toFixed(0)}m from start`
         };
       }
-      
+
       return {
         pattern: 'point-to-point',
         confidence: Math.min(startEndDistance / 1000, 0.95),
@@ -283,7 +283,7 @@ class AnimationSpeedService {
 
   /**
    * Detect repeated segments in route (multi-lap or repeated out-and-back)
-   * 
+   *
    * @param {Array} points - Route points
    * @param {Object} config - Detection configuration
    * @returns {Object} { hasRepetition, repetitionCount, segmentLength, keyPoints }
@@ -295,14 +295,14 @@ class AnimationSpeedService {
 
     // Strategy: Look for segments that repeat by comparing sequential portions
     // of the route for similarity
-    
+
     const proximityMeters = config.proximityCheckMeters;
     const minSegmentLength = config.minRepetitionLength;
-    
+
     // Try different segment lengths (from 10% to 40% of total route)
     const totalPoints = points.length;
     const maxSegmentLength = Math.floor(totalPoints * 0.4);
-    
+
     let bestMatch = {
       hasRepetition: false,
       repetitionCount: 1,
@@ -313,7 +313,7 @@ class AnimationSpeedService {
 
     for (let segmentLength = minSegmentLength; segmentLength < maxSegmentLength; segmentLength += 5) {
       const repetitions = Math.floor(totalPoints / segmentLength);
-      
+
       if (repetitions < 2) continue;
 
       // Compare first segment with subsequent segments
@@ -324,16 +324,16 @@ class AnimationSpeedService {
       for (let lap = 1; lap < repetitions; lap++) {
         const lapStart = lap * segmentLength;
         keyPoints.push(lapStart);
-        
+
         let lapMatches = 0;
         const compareLength = Math.min(segmentLength, totalPoints - lapStart);
 
         for (let i = 0; i < compareLength; i += 3) { // Sample every 3rd point for performance
           const p1 = points[i];
           const p2 = points[lapStart + i];
-          
+
           const distance = haversineDistance(p1.lat, p1.lon, p2.lat, p2.lon);
-          
+
           if (distance < proximityMeters * 2) { // Slightly relaxed for lap detection
             lapMatches++;
           }
@@ -363,7 +363,7 @@ class AnimationSpeedService {
   /**
    * Calculate percentage of path that overlaps with itself
    * Used to distinguish out-and-back from loop routes
-   * 
+   *
    * @param {Array} points - Route points
    * @param {number} proximityMeters - Distance threshold for overlap
    * @returns {number} Percentage of overlapping path (0-100)
@@ -373,7 +373,7 @@ class AnimationSpeedService {
 
     let overlapCount = 0;
     const midpoint = Math.floor(points.length / 2);
-    
+
     // Compare first half with second half in reverse
     const firstHalf = points.slice(0, midpoint);
     const secondHalf = points.slice(midpoint).reverse();
@@ -382,9 +382,9 @@ class AnimationSpeedService {
     for (let i = 0; i < compareLength; i++) {
       const p1 = firstHalf[i];
       const p2 = secondHalf[i];
-      
+
       const distance = haversineDistance(p1.lat, p1.lon, p2.lat, p2.lon);
-      
+
       if (distance < proximityMeters) {
         overlapCount++;
       }
@@ -395,7 +395,7 @@ class AnimationSpeedService {
 
   /**
    * Find the furthest point from start (turnaround point)
-   * 
+   *
    * @param {Array} points - Route points
    * @returns {Object} { index, point, distanceFromStart }
    */
@@ -411,7 +411,7 @@ class AnimationSpeedService {
         start.lat, start.lon,
         points[i].lat, points[i].lon
       );
-      
+
       if (distance > maxDistance) {
         maxDistance = distance;
         turnaroundIndex = i;
@@ -428,14 +428,14 @@ class AnimationSpeedService {
 
   /**
    * Find self-intersections in route
-   * 
+   *
    * @param {Array} points - Route points
    * @param {number} proximityMeters - Distance threshold for intersection
    * @returns {Array} Array of intersection points
    */
   findIntersections(points, proximityMeters = 10) {
     const intersections = [];
-    
+
     // Check each point against non-adjacent points
     for (let i = 0; i < points.length - 10; i++) {
       for (let j = i + 10; j < points.length; j++) {
@@ -443,7 +443,7 @@ class AnimationSpeedService {
           points[i].lat, points[i].lon,
           points[j].lat, points[j].lon
         );
-        
+
         if (distance < proximityMeters) {
           intersections.push({
             index1: i,
@@ -460,7 +460,7 @@ class AnimationSpeedService {
 
   /**
    * Calculate area enclosed by route using Shoelace formula
-   * 
+   *
    * @param {Array} points - Route points
    * @returns {number} Area in square meters (approximate)
    */
@@ -488,14 +488,14 @@ class AnimationSpeedService {
 
   /**
    * Get camera strategy recommendations for route pattern
-   * 
+   *
    * @param {Object} patternResult - Result from detectRoutePattern()
    * @param {Object} routeAnalysis - Full route analysis
    * @returns {Object} Camera strategy recommendations
    */
   getCameraStrategyForPattern(patternResult, routeAnalysis) {
     const strategy = patternResult.cameraStrategy || {};
-    
+
     return {
       pattern: patternResult.pattern,
       recommendations: {
@@ -508,7 +508,7 @@ class AnimationSpeedService {
 
   /**
    * Get speed adjustment recommendations for pattern
-   * 
+   *
    * @param {Object} patternResult - Pattern detection result
    * @returns {Object} Speed adjustment recommendations
    */
@@ -520,7 +520,7 @@ class AnimationSpeedService {
           turnaround: 0.5,  // Slow down at turnaround
           return: 1.2       // Can be faster on return (familiar terrain)
         };
-      
+
       case 'repeated-out-and-back':
         return {
           outbound: 1.0,
@@ -529,14 +529,14 @@ class AnimationSpeedService {
           perLap: [1.0, 1.1, 1.2], // Progressively faster on subsequent laps
           finalLap: 0.9     // Slow down on final lap
         };
-      
+
       case 'loop':
       case 'figure-eight':
         return {
           general: 1.0,
           nearStart: 0.8    // Slow down near completion
         };
-      
+
       case 'multi-lap':
         return {
           general: 1.0,
@@ -544,14 +544,14 @@ class AnimationSpeedService {
           nearStart: 0.8,
           finalLap: 0.85    // Slow final lap for completion
         };
-      
+
       case 'point-to-point':
         return {
           beginning: 0.8,   // Slow start to establish location
           middle: 1.0,
           ending: 0.7       // Slow ending for arrival
         };
-      
+
       case 'repeated-segment':
         return {
           beginning: 0.8,
@@ -559,7 +559,7 @@ class AnimationSpeedService {
           ending: 0.7,
           perRepetition: 1.1 // Slightly faster on repeated segments
         };
-      
+
       default:
         return { general: 1.0 };
     }
@@ -567,7 +567,7 @@ class AnimationSpeedService {
 
   /**
    * Get key points for camera focus
-   * 
+   *
    * @param {Object} patternResult - Pattern detection result
    * @param {Object} routeAnalysis - Route analysis
    * @returns {Array} Key points with camera recommendations
@@ -576,9 +576,9 @@ class AnimationSpeedService {
     const keyPoints = [];
 
     // Handle out-and-back patterns (single or repeated)
-    if ((patternResult.pattern === 'out-and-back' || patternResult.pattern === 'repeated-out-and-back') 
+    if ((patternResult.pattern === 'out-and-back' || patternResult.pattern === 'repeated-out-and-back')
         && patternResult.turnaroundPoint) {
-      
+
       if (patternResult.pattern === 'repeated-out-and-back' && patternResult.turnaroundPoints) {
         // Multiple turnaround points for repeated out-and-back
         patternResult.turnaroundPoints.forEach((pointIndex, lap) => {
@@ -606,7 +606,7 @@ class AnimationSpeedService {
       if (patternResult.pattern === 'multi-lap' && patternResult.laps > 1) {
         // Mark start of each lap
         const lapLength = patternResult.lapLength || Math.floor(routeAnalysis.points.length / patternResult.laps);
-        
+
         for (let lap = 1; lap < patternResult.laps; lap++) {
           keyPoints.push({
             type: 'lap-start',
@@ -617,7 +617,7 @@ class AnimationSpeedService {
           });
         }
       }
-      
+
       // Add start/end overlap zone
       keyPoints.push({
         type: 'completion',
@@ -650,7 +650,7 @@ class AnimationSpeedService {
   /**
    * Calculate terrain complexity factor for speed adjustment
    * TODO: Implement with Cesium terrain provider in Phase 6
-   * 
+   *
    * @param {Object} segment - Route segment
    * @param {Object} terrainProvider - Cesium terrain provider
    * @returns {Object} { factor: 0.5-2.0, complexity: 'simple'|'moderate'|'complex' }
@@ -669,7 +669,7 @@ class AnimationSpeedService {
   /**
    * Check line-of-sight between camera and target positions
    * TODO: Implement with Cesium terrain sampling in Phase 6
-   * 
+   *
    * @param {Object} cameraPosition - { lat, lon, height }
    * @param {Object} targetPosition - { lat, lon, height }
    * @param {Object} terrainProvider - Cesium terrain provider
@@ -689,7 +689,7 @@ class AnimationSpeedService {
   /**
    * Get minimum safe camera height to avoid terrain collision
    * TODO: Implement with Cesium terrain sampling in Phase 6
-   * 
+   *
    * @param {Object} position - { lat, lon }
    * @param {number} radius - Sample radius in meters
    * @param {Object} terrainProvider - Cesium terrain provider
@@ -704,7 +704,7 @@ class AnimationSpeedService {
   /**
    * Calculate optimal camera orientation based on local terrain
    * TODO: Implement with Cesium terrain analysis in Phase 6
-   * 
+   *
    * @param {Object} position - { lat, lon, height }
    * @param {Object} terrainProvider - Cesium terrain provider
    * @param {number} routeDirection - Bearing in degrees
@@ -726,7 +726,7 @@ class AnimationSpeedService {
   /**
    * Get terrain-aware camera profile for route segment
    * TODO: Implement with full terrain analysis in Phase 6
-   * 
+   *
    * @param {Object} segment - Route segment with points
    * @param {Object} terrainProvider - Cesium terrain provider
    * @returns {Object} Camera profile with orientation, height, speed
@@ -750,7 +750,7 @@ class AnimationSpeedService {
   /**
    * Identify scenic viewpoints along route
    * TODO: Implement with terrain visibility analysis in Phase 6
-   * 
+   *
    * @param {Array} points - Route points
    * @param {Object} terrainProvider - Cesium terrain provider
    * @returns {Array} Scenic viewpoints with scores
@@ -765,7 +765,7 @@ class AnimationSpeedService {
   /**
    * Generate complete camera path with all optimizations
    * TODO: Implement complete path generation in Phase 6
-   * 
+   *
    * @param {Object} routeAnalysis - Route analysis from gpxService
    * @param {Object} settings - Camera settings
    * @param {Object} terrainProvider - Cesium terrain provider
@@ -785,6 +785,349 @@ class AnimationSpeedService {
       totalDuration: 0,
       note: 'Camera path generation not yet implemented'
     };
+  }
+
+  // ============================================================================
+  // UI OVERLAY HOOKS (For Phase 5/6 - Overlay system)
+  // ============================================================================
+
+  /**
+   * Generate UI overlay events/hooks based on route pattern and key points
+   * These trigger overlays during video playback showing contextual information
+   * 
+   * @param {Object} routeAnalysis - Route analysis from gpxService
+   * @param {Object} patternResult - Pattern detection result
+   * @returns {Object} Overlay configuration with triggers and content
+   */
+  generateOverlayHooks(routeAnalysis, patternResult) {
+    const hooks = [];
+
+    // Start location overlay (all routes)
+    hooks.push({
+      type: 'location-title',
+      trigger: 'time',
+      timeSeconds: 2, // Show 2 seconds into video
+      duration: 5,
+      priority: 'high',
+      content: {
+        title: routeAnalysis.metadata?.name || 'Route Start',
+        subtitle: this.formatLocation(routeAnalysis.points[0]),
+        description: routeAnalysis.metadata?.description || null
+      },
+      animation: 'fade-in-out',
+      position: 'top-left'
+    });
+
+    // Pattern-specific overlays
+    switch (patternResult.pattern) {
+      case 'point-to-point':
+        hooks.push(...this.generatePointToPointOverlays(routeAnalysis, patternResult));
+        break;
+      
+      case 'out-and-back':
+      case 'repeated-out-and-back':
+        hooks.push(...this.generateOutAndBackOverlays(routeAnalysis, patternResult));
+        break;
+      
+      case 'loop':
+      case 'multi-lap':
+      case 'figure-eight':
+        hooks.push(...this.generateLoopOverlays(routeAnalysis, patternResult));
+        break;
+    }
+
+    // Elevation-based overlays (peaks, valleys)
+    if (routeAnalysis.elevation?.gain > 100) {
+      hooks.push(...this.generateElevationOverlays(routeAnalysis));
+    }
+
+    // Segment stats overlays (every 25% of route)
+    hooks.push(...this.generateSegmentStatsOverlays(routeAnalysis, patternResult));
+
+    return {
+      hooks: hooks.sort((a, b) => (a.timeSeconds || 0) - (b.timeSeconds || 0)),
+      metadata: {
+        totalOverlays: hooks.length,
+        patterns: patternResult.pattern,
+        hasElevationData: !!routeAnalysis.elevation,
+        hasTimestamps: !!routeAnalysis.duration
+      }
+    };
+  }
+
+  /**
+   * Generate overlays for point-to-point routes
+   * Shows start, destination, and journey progress
+   */
+  generatePointToPointOverlays(routeAnalysis, patternResult) {
+    const overlays = [];
+    const points = routeAnalysis.points;
+
+    // Destination preview at 90% completion
+    overlays.push({
+      type: 'destination-preview',
+      trigger: 'progress',
+      progressPercent: 90,
+      duration: 8,
+      priority: 'medium',
+      content: {
+        title: 'Approaching Destination',
+        location: this.formatLocation(points[points.length - 1]),
+        distance: `${patternResult.startEndDistance.toFixed(1)}m from start`
+      },
+      animation: 'slide-in-right',
+      position: 'bottom-right'
+    });
+
+    return overlays;
+  }
+
+  /**
+   * Generate overlays for out-and-back routes
+   * Shows turnaround points and return progress
+   */
+  generateOutAndBackOverlays(routeAnalysis, patternResult) {
+    const overlays = [];
+
+    if (patternResult.pattern === 'repeated-out-and-back') {
+      // Lap counter for repeated out-and-backs
+      overlays.push({
+        type: 'lap-counter',
+        trigger: 'persistent',
+        duration: 'full-video',
+        priority: 'low',
+        content: {
+          currentLap: 1, // Will be updated dynamically
+          totalLaps: patternResult.repetitions,
+          lapTimes: [] // Populated during playback
+        },
+        animation: 'none',
+        position: 'top-right',
+        updateTriggers: patternResult.turnaroundPoints?.map(index => ({
+          type: 'index',
+          pointIndex: index,
+          action: 'increment-lap'
+        }))
+      });
+    }
+
+    // Turnaround point overlay
+    const turnaroundIndex = patternResult.turnaroundPoint?.index;
+    if (turnaroundIndex) {
+      const turnaroundPercent = (turnaroundIndex / routeAnalysis.points.length) * 100;
+      
+      overlays.push({
+        type: 'turnaround-marker',
+        trigger: 'progress',
+        progressPercent: turnaroundPercent,
+        duration: 6,
+        priority: 'high',
+        content: {
+          title: 'Turnaround Point',
+          distance: `${patternResult.turnaroundPoint.distanceFromStart.toFixed(1)}m from start`,
+          message: 'Heading back'
+        },
+        animation: 'zoom-in',
+        position: 'center'
+      });
+    }
+
+    return overlays;
+  }
+
+  /**
+   * Generate overlays for loop routes
+   * Shows lap counter, completion progress, and loop stats
+   */
+  generateLoopOverlays(routeAnalysis, patternResult) {
+    const overlays = [];
+
+    if (patternResult.pattern === 'multi-lap') {
+      // Persistent lap counter
+      overlays.push({
+        type: 'lap-counter',
+        trigger: 'persistent',
+        duration: 'full-video',
+        priority: 'low',
+        content: {
+          currentLap: 1,
+          totalLaps: patternResult.laps,
+          lapTimes: [],
+          bestLap: null // Updated after first lap
+        },
+        animation: 'none',
+        position: 'top-right',
+        updateTriggers: Array.from({ length: patternResult.laps - 1 }, (_, i) => ({
+          type: 'progress',
+          progressPercent: ((i + 1) / patternResult.laps) * 100,
+          action: 'increment-lap'
+        }))
+      });
+
+      // Lap completion overlays
+      for (let lap = 1; lap < patternResult.laps; lap++) {
+        overlays.push({
+          type: 'lap-complete',
+          trigger: 'progress',
+          progressPercent: (lap / patternResult.laps) * 100,
+          duration: 4,
+          priority: 'medium',
+          content: {
+            title: `Lap ${lap} Complete`,
+            message: `${patternResult.laps - lap} to go`
+          },
+          animation: 'flash',
+          position: 'center'
+        });
+      }
+    }
+
+    // Loop completion overlay
+    overlays.push({
+      type: 'loop-complete',
+      trigger: 'progress',
+      progressPercent: 95,
+      duration: 6,
+      priority: 'high',
+      content: {
+        title: 'Completing Loop',
+        area: `${patternResult.enclosedArea?.toFixed(0) || 'N/A'}m²`,
+        distance: `${routeAnalysis.distance?.toFixed(1) || 'N/A'}km`
+      },
+      animation: 'fade-in',
+      position: 'bottom-center'
+    });
+
+    return overlays;
+  }
+
+  /**
+   * Generate overlays for elevation changes
+   * Shows peaks, climbs, and elevation stats
+   */
+  generateElevationOverlays(routeAnalysis) {
+    const overlays = [];
+
+    // Find highest point
+    const points = routeAnalysis.points;
+    let highestPoint = points[0];
+    let highestIndex = 0;
+
+    points.forEach((point, index) => {
+      if (point.ele && (!highestPoint.ele || point.ele > highestPoint.ele)) {
+        highestPoint = point;
+        highestIndex = index;
+      }
+    });
+
+    // Peak overlay
+    if (highestPoint.ele) {
+      overlays.push({
+        type: 'peak-marker',
+        trigger: 'index',
+        pointIndex: highestIndex,
+        duration: 8,
+        priority: 'high',
+        content: {
+          title: 'Highest Point',
+          elevation: `${highestPoint.ele.toFixed(0)}m`,
+          gain: `${routeAnalysis.elevation.gain.toFixed(0)}m climb`,
+          location: this.formatLocation(highestPoint)
+        },
+        animation: 'scale-in',
+        position: 'top-center'
+      });
+    }
+
+    return overlays;
+  }
+
+  /**
+   * Generate segment statistics overlays
+   * Shows periodic stats updates (distance, speed, elevation)
+   */
+  generateSegmentStatsOverlays(routeAnalysis, patternResult) {
+    const overlays = [];
+    const segments = [25, 50, 75]; // Show stats at 25%, 50%, 75%
+
+    segments.forEach(percent => {
+      const segmentIndex = Math.floor((percent / 100) * routeAnalysis.points.length);
+      const point = routeAnalysis.points[segmentIndex];
+      
+      overlays.push({
+        type: 'segment-stats',
+        trigger: 'progress',
+        progressPercent: percent,
+        duration: 5,
+        priority: 'low',
+        content: {
+          title: `${percent}% Complete`,
+          distance: `${((routeAnalysis.distance || 0) * (percent / 100)).toFixed(1)}km`,
+          elevation: point?.ele ? `${point.ele.toFixed(0)}m` : null,
+          // Placeholders for future features:
+          calories: null, // TODO: Calculate based on distance, elevation, user weight
+          avgSpeed: null, // TODO: Calculate from timestamps
+          pace: null // TODO: Calculate from distance and time
+        },
+        animation: 'slide-in-bottom',
+        position: 'bottom-left'
+      });
+    });
+
+    return overlays;
+  }
+
+  /**
+   * Format location for display
+   */
+  formatLocation(point) {
+    if (!point) return 'Unknown';
+    return `${point.lat.toFixed(5)}°, ${point.lon.toFixed(5)}°`;
+  }
+
+  /**
+   * Generate overlay triggers for specific route events
+   * TODO: Expand with more event types in Phase 5/6
+   * 
+   * @param {Object} routeAnalysis - Route analysis
+   * @param {Object} patternResult - Pattern result
+   * @returns {Array} Event triggers for overlay system
+   */
+  generateOverlayTriggers(routeAnalysis, patternResult) {
+    const triggers = [];
+
+    // Start trigger
+    triggers.push({
+      event: 'route-start',
+      timeSeconds: 0,
+      data: {
+        totalDistance: routeAnalysis.distance,
+        totalDuration: routeAnalysis.duration?.minutes,
+        pattern: patternResult.pattern
+      }
+    });
+
+    // Key point triggers
+    const keyPoints = this.getKeyPointsForPattern(patternResult, routeAnalysis);
+    keyPoints.forEach(kp => {
+      triggers.push({
+        event: `key-point-${kp.type}`,
+        pointIndex: kp.index,
+        data: kp
+      });
+    });
+
+    // End trigger
+    triggers.push({
+      event: 'route-end',
+      timeSeconds: 'end',
+      data: {
+        pattern: patternResult.pattern,
+        completed: true
+      }
+    });
+
+    return triggers;
   }
 }
 
