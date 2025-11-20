@@ -111,18 +111,20 @@ class AnimationSpeedService {
   }
 
   /**
-   * Detect route pattern (point-to-point, out-and-back, loop, figure-eight)
+   * Detect route pattern including repeated/recursive patterns
+   * Patterns: point-to-point, out-and-back, loop, figure-eight, multi-lap, repeated-segment
    * 
    * @param {Object} routeAnalysis - Route analysis from gpxService
    * @param {Object} thresholds - Detection thresholds
-   * @returns {Object} Pattern detection result
+   * @returns {Object} Pattern detection result with repetition info
    */
   detectRoutePattern(routeAnalysis, thresholds = {}) {
     const defaults = {
       closeProximityMeters: 50,     // A to A' distance for loops/out-and-back
       pathOverlapPercent: 50,        // Threshold for out-and-back detection
       minLoopAreaMeters: 10000,      // Minimum area to consider a significant loop
-      proximityCheckMeters: 10       // Distance threshold for path overlap
+      proximityCheckMeters: 10,      // Distance threshold for path overlap
+      minRepetitionLength: 20        // Minimum points for a repeated segment
     };
 
     const config = { ...defaults, ...thresholds };
@@ -138,6 +140,9 @@ class AnimationSpeedService {
       };
     }
 
+    // First, check for repeated patterns (multi-lap or repeated segments)
+    const repetitionAnalysis = this.detectRepeatedSegments(points, config);
+    
     const start = points[0];
     const end = points[points.length - 1];
     const startEndDistance = haversineDistance(
@@ -153,12 +158,36 @@ class AnimationSpeedService {
         // Out-and-back: significant path overlap
         const turnaroundPoint = this.findTurnaroundPoint(points);
         
+        // Check if it's a repeated out-and-back
+        if (repetitionAnalysis.hasRepetition && repetitionAnalysis.repetitionCount > 1) {
+          return {
+            pattern: 'repeated-out-and-back',
+            basePattern: 'out-and-back',
+            confidence: Math.min(pathOverlap / 100, 0.95),
+            startEndDistance: startEndDistance,
+            pathOverlap: pathOverlap,
+            turnaroundPoint: turnaroundPoint,
+            repetitions: repetitionAnalysis.repetitionCount,
+            segmentLength: repetitionAnalysis.segmentLength,
+            turnaroundPoints: repetitionAnalysis.keyPoints,
+            cameraStrategy: {
+              outbound: 'forward-view',
+              turnaround: 'dramatic-angle-change',
+              return: 'alternate-angles',
+              repetition: 'vary-angles-per-lap'
+            },
+            reason: `${repetitionAnalysis.repetitionCount} repeated out-and-back segments with ${pathOverlap.toFixed(1)}% overlap`
+          };
+        }
+        
+        
         return {
           pattern: 'out-and-back',
           confidence: Math.min(pathOverlap / 100, 0.95),
           startEndDistance: startEndDistance,
           pathOverlap: pathOverlap,
           turnaroundPoint: turnaroundPoint,
+          repetitions: 1,
           cameraStrategy: {
             outbound: 'forward-view',
             turnaround: 'dramatic-angle-change',
@@ -171,6 +200,28 @@ class AnimationSpeedService {
         const enclosedArea = this.calculateEnclosedArea(points);
         const intersections = this.findIntersections(points, config.proximityCheckMeters);
         
+        // Check if it's multiple laps of the same loop
+        if (repetitionAnalysis.hasRepetition && repetitionAnalysis.repetitionCount > 1) {
+          return {
+            pattern: 'multi-lap',
+            basePattern: 'loop',
+            confidence: Math.max(0.7, 1 - (pathOverlap / 100)),
+            startEndDistance: startEndDistance,
+            pathOverlap: pathOverlap,
+            enclosedArea: enclosedArea,
+            intersections: intersections.length,
+            laps: repetitionAnalysis.repetitionCount,
+            lapLength: repetitionAnalysis.segmentLength,
+            cameraStrategy: {
+              general: 'continuous-forward',
+              perLap: 'vary-height-and-angle',
+              ending: 'show-completion',
+              avoidLookback: true
+            },
+            reason: `${repetitionAnalysis.repetitionCount} laps of loop, ${enclosedArea.toFixed(0)}m² area`
+          };
+        }
+        
         return {
           pattern: intersections.length > 2 ? 'figure-eight' : 'loop',
           confidence: Math.max(0.7, 1 - (pathOverlap / 100)),
@@ -178,6 +229,7 @@ class AnimationSpeedService {
           pathOverlap: pathOverlap,
           enclosedArea: enclosedArea,
           intersections: intersections.length,
+          repetitions: 1,
           cameraStrategy: {
             general: 'continuous-forward',
             ending: 'show-completion',
@@ -191,12 +243,34 @@ class AnimationSpeedService {
       const routeDistance = routeAnalysis.distance || calculateTotalDistance(points);
       const linearityRatio = startEndDistance / routeDistance;
       
+      // Check for repeated segments in point-to-point (unusual but possible)
+      if (repetitionAnalysis.hasRepetition) {
+        return {
+          pattern: 'repeated-segment',
+          basePattern: 'point-to-point',
+          confidence: Math.min(startEndDistance / 1000, 0.85),
+          startEndDistance: startEndDistance,
+          routeDistance: routeDistance,
+          linearityRatio: linearityRatio,
+          repetitions: repetitionAnalysis.repetitionCount,
+          segmentLength: repetitionAnalysis.segmentLength,
+          cameraStrategy: {
+            beginning: 'establish-start',
+            middle: 'progressive-journey',
+            ending: 'arrival-sequence',
+            repetition: 'vary-perspectives'
+          },
+          reason: `${repetitionAnalysis.repetitionCount} repeated segments, ends ${startEndDistance.toFixed(0)}m from start`
+        };
+      }
+      
       return {
         pattern: 'point-to-point',
         confidence: Math.min(startEndDistance / 1000, 0.95),
         startEndDistance: startEndDistance,
         routeDistance: routeDistance,
         linearityRatio: linearityRatio,
+        repetitions: 1,
         cameraStrategy: {
           beginning: 'establish-start',
           middle: 'progressive-journey',
@@ -205,6 +279,85 @@ class AnimationSpeedService {
         reason: `Start and end ${startEndDistance.toFixed(0)}m apart`
       };
     }
+  }
+
+  /**
+   * Detect repeated segments in route (multi-lap or repeated out-and-back)
+   * 
+   * @param {Array} points - Route points
+   * @param {Object} config - Detection configuration
+   * @returns {Object} { hasRepetition, repetitionCount, segmentLength, keyPoints }
+   */
+  detectRepeatedSegments(points, config) {
+    if (points.length < config.minRepetitionLength * 2) {
+      return { hasRepetition: false, repetitionCount: 1 };
+    }
+
+    // Strategy: Look for segments that repeat by comparing sequential portions
+    // of the route for similarity
+    
+    const proximityMeters = config.proximityCheckMeters;
+    const minSegmentLength = config.minRepetitionLength;
+    
+    // Try different segment lengths (from 10% to 40% of total route)
+    const totalPoints = points.length;
+    const maxSegmentLength = Math.floor(totalPoints * 0.4);
+    
+    let bestMatch = {
+      hasRepetition: false,
+      repetitionCount: 1,
+      segmentLength: 0,
+      keyPoints: [],
+      matchScore: 0
+    };
+
+    for (let segmentLength = minSegmentLength; segmentLength < maxSegmentLength; segmentLength += 5) {
+      const repetitions = Math.floor(totalPoints / segmentLength);
+      
+      if (repetitions < 2) continue;
+
+      // Compare first segment with subsequent segments
+      let totalMatches = 0;
+      let totalComparisons = 0;
+      const keyPoints = [0]; // Start of first segment
+
+      for (let lap = 1; lap < repetitions; lap++) {
+        const lapStart = lap * segmentLength;
+        keyPoints.push(lapStart);
+        
+        let lapMatches = 0;
+        const compareLength = Math.min(segmentLength, totalPoints - lapStart);
+
+        for (let i = 0; i < compareLength; i += 3) { // Sample every 3rd point for performance
+          const p1 = points[i];
+          const p2 = points[lapStart + i];
+          
+          const distance = haversineDistance(p1.lat, p1.lon, p2.lat, p2.lon);
+          
+          if (distance < proximityMeters * 2) { // Slightly relaxed for lap detection
+            lapMatches++;
+          }
+          totalComparisons++;
+        }
+
+        totalMatches += lapMatches;
+      }
+
+      const matchScore = totalComparisons > 0 ? totalMatches / totalComparisons : 0;
+
+      // If this segment length shows high repetition, record it
+      if (matchScore > 0.6 && matchScore > bestMatch.matchScore) {
+        bestMatch = {
+          hasRepetition: true,
+          repetitionCount: repetitions,
+          segmentLength: segmentLength,
+          keyPoints: keyPoints,
+          matchScore: matchScore
+        };
+      }
+    }
+
+    return bestMatch;
   }
 
   /**
@@ -368,6 +521,15 @@ class AnimationSpeedService {
           return: 1.2       // Can be faster on return (familiar terrain)
         };
       
+      case 'repeated-out-and-back':
+        return {
+          outbound: 1.0,
+          turnaround: 0.5,
+          return: 1.2,
+          perLap: [1.0, 1.1, 1.2], // Progressively faster on subsequent laps
+          finalLap: 0.9     // Slow down on final lap
+        };
+      
       case 'loop':
       case 'figure-eight':
         return {
@@ -375,11 +537,27 @@ class AnimationSpeedService {
           nearStart: 0.8    // Slow down near completion
         };
       
+      case 'multi-lap':
+        return {
+          general: 1.0,
+          perLap: [0.9, 1.0, 1.1], // First lap slower, subsequent faster
+          nearStart: 0.8,
+          finalLap: 0.85    // Slow final lap for completion
+        };
+      
       case 'point-to-point':
         return {
           beginning: 0.8,   // Slow start to establish location
           middle: 1.0,
           ending: 0.7       // Slow ending for arrival
+        };
+      
+      case 'repeated-segment':
+        return {
+          beginning: 0.8,
+          middle: 1.0,
+          ending: 0.7,
+          perRepetition: 1.1 // Slightly faster on repeated segments
         };
       
       default:
@@ -397,16 +575,49 @@ class AnimationSpeedService {
   getKeyPointsForPattern(patternResult, routeAnalysis) {
     const keyPoints = [];
 
-    if (patternResult.pattern === 'out-and-back' && patternResult.turnaroundPoint) {
-      keyPoints.push({
-        type: 'turnaround',
-        index: patternResult.turnaroundPoint.index,
-        action: 'dramatic-angle-change',
-        speedMultiplier: 0.5
-      });
+    // Handle out-and-back patterns (single or repeated)
+    if ((patternResult.pattern === 'out-and-back' || patternResult.pattern === 'repeated-out-and-back') 
+        && patternResult.turnaroundPoint) {
+      
+      if (patternResult.pattern === 'repeated-out-and-back' && patternResult.turnaroundPoints) {
+        // Multiple turnaround points for repeated out-and-back
+        patternResult.turnaroundPoints.forEach((pointIndex, lap) => {
+          keyPoints.push({
+            type: 'turnaround',
+            lap: lap + 1,
+            index: pointIndex,
+            action: lap === 0 ? 'dramatic-angle-change' : 'quick-pivot',
+            speedMultiplier: lap === 0 ? 0.5 : 0.7 // First turnaround slower
+          });
+        });
+      } else {
+        // Single turnaround
+        keyPoints.push({
+          type: 'turnaround',
+          index: patternResult.turnaroundPoint.index,
+          action: 'dramatic-angle-change',
+          speedMultiplier: 0.5
+        });
+      }
     }
 
-    if (patternResult.pattern === 'loop' || patternResult.pattern === 'figure-eight') {
+    // Handle loop patterns (single or multi-lap)
+    if (patternResult.pattern === 'loop' || patternResult.pattern === 'figure-eight' || patternResult.pattern === 'multi-lap') {
+      if (patternResult.pattern === 'multi-lap' && patternResult.laps > 1) {
+        // Mark start of each lap
+        const lapLength = patternResult.lapLength || Math.floor(routeAnalysis.points.length / patternResult.laps);
+        
+        for (let lap = 1; lap < patternResult.laps; lap++) {
+          keyPoints.push({
+            type: 'lap-start',
+            lap: lap + 1,
+            index: lap * lapLength,
+            action: 'vary-camera-height',
+            speedMultiplier: 1.0
+          });
+        }
+      }
+      
       // Add start/end overlap zone
       keyPoints.push({
         type: 'completion',
@@ -414,6 +625,19 @@ class AnimationSpeedService {
         action: 'show-approaching-start',
         speedMultiplier: 0.8
       });
+    }
+
+    // Handle repeated segments in point-to-point
+    if (patternResult.pattern === 'repeated-segment' && patternResult.segmentLength) {
+      for (let i = 1; i < patternResult.repetitions; i++) {
+        keyPoints.push({
+          type: 'segment-repeat',
+          repetition: i + 1,
+          index: i * patternResult.segmentLength,
+          action: 'vary-perspective',
+          speedMultiplier: 1.0
+        });
+      }
     }
 
     return keyPoints;
