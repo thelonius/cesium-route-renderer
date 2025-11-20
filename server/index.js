@@ -81,26 +81,50 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
 // Get status of a render job
 app.get('/status/:outputId', (req, res) => {
-  const outputId = req.params.outputId;
-  const outputDir = path.join(__dirname, '../output', outputId);
-  const videoPath = path.join(outputDir, 'route-video.mp4');
+  try {
+    const outputId = req.params.outputId;
 
-  if (fs.existsSync(videoPath)) {
-    const stats = fs.statSync(videoPath);
-    res.json({
-      status: 'complete',
-      videoUrl: `/output/${outputId}/route-video.mp4`,
-      fileSize: stats.size,
-      logsUrl: `/logs/${outputId}`
-    });
-  } else if (fs.existsSync(outputDir)) {
-    res.json({
-      status: 'processing',
-      logsUrl: `/logs/${outputId}`
-    });
-  } else {
-    res.status(404).json({
-      status: 'not_found'
+    // Check for active render first
+    const activeRender = renderOrchestratorService.getRenderStatus(outputId);
+    if (activeRender) {
+      return res.json({
+        status: activeRender.status,
+        progress: activeRender.progress,
+        stage: activeRender.currentStage,
+        elapsed: activeRender.elapsed,
+        logsUrl: `/logs/${outputId}`
+      });
+    }
+
+    // Check for completed render
+    const outputDir = path.join(__dirname, '../output', outputId);
+    const videoPath = path.join(outputDir, 'route-video.mp4');
+
+    if (fs.existsSync(videoPath)) {
+      const stats = fs.statSync(videoPath);
+      return res.json({
+        status: 'complete',
+        videoUrl: `/output/${outputId}/route-video.mp4`,
+        fileSize: stats.size,
+        logsUrl: `/logs/${outputId}`
+      });
+    } else if (fs.existsSync(outputDir)) {
+      return res.json({
+        status: 'processing',
+        logsUrl: `/logs/${outputId}`
+      });
+    } else {
+      return res.status(404).json({
+        status: 'not_found',
+        error: `No render found with ID: ${outputId}`
+      });
+    }
+  } catch (error) {
+    console.error('Error checking render status:', error);
+    return res.status(500).json({
+      status: 'error',
+      error: 'Failed to check render status',
+      details: error.message
     });
   }
 });
@@ -344,10 +368,209 @@ app.put('/api/animation-speed', (req, res) => {
   }
 });
 
+// Camera settings API
+
+// Get camera settings
+app.get('/api/camera-settings', (req, res) => {
+  try {
+    const settings = settingsService.getAll();
+    const cameraSettings = settings.camera || {
+      defaultStrategy: 'follow',
+      followDistance: 1500,
+      followHeight: 1200,
+      followTilt: -45,
+      smoothing: 0.1,
+      collisionDetection: false,
+      terrainAdaptive: true
+    };
+
+    res.json({
+      success: true,
+      camera: cameraSettings
+    });
+  } catch (error) {
+    console.error('Error reading camera settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to read camera settings',
+      details: error.message
+    });
+  }
+});
+
+// Update camera settings
+app.put('/api/camera-settings', (req, res) => {
+  try {
+    const { camera } = req.body;
+
+    if (!camera) {
+      return res.status(400).json({
+        success: false,
+        error: 'Camera settings object required'
+      });
+    }
+
+    // Validate camera settings
+    const validation = validateCameraSettings(camera);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid camera settings',
+        details: validation.errors
+      });
+    }
+
+    // Update camera settings
+    const success = settingsService.update('camera', camera);
+
+    if (success) {
+      console.log('Camera settings updated:', camera);
+      res.json({
+        success: true,
+        camera: settingsService.get('camera')
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'Failed to save camera settings'
+      });
+    }
+  } catch (error) {
+    console.error('Error updating camera settings:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update camera settings',
+      details: error.message
+    });
+  }
+});
+
+// Get camera profile for a specific route pattern
+app.get('/api/camera-profile/:patternType', (req, res) => {
+  try {
+    const patternType = req.params.patternType;
+    const validPatterns = ['point-to-point', 'out-and-back', 'loop', 'figure-eight', 'multi-lap'];
+
+    if (!validPatterns.includes(patternType)) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid pattern type. Must be one of: ${validPatterns.join(', ')}`
+      });
+    }
+
+    // Get base camera settings
+    const settings = settingsService.getAll();
+    const baseCamera = settings.camera || {};
+
+    // Apply pattern-specific adjustments (placeholder for Phase 6)
+    const adjustments = getCameraAdjustmentsForPattern(patternType);
+
+    res.json({
+      success: true,
+      patternType,
+      baseSettings: baseCamera,
+      adjustments,
+      profile: { ...baseCamera, ...adjustments }
+    });
+  } catch (error) {
+    console.error('Error getting camera profile:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get camera profile',
+      details: error.message
+    });
+  }
+});
+
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({
+    status: 'ok',
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    activeRenders: renderOrchestratorService.getActiveRenders().length
+  });
 });
+
+// Helper functions
+
+/**
+ * Validate camera settings
+ */
+function validateCameraSettings(camera) {
+  const errors = [];
+
+  if (camera.followDistance !== undefined) {
+    if (typeof camera.followDistance !== 'number' || camera.followDistance < 100 || camera.followDistance > 10000) {
+      errors.push('followDistance must be between 100 and 10000 meters');
+    }
+  }
+
+  if (camera.followHeight !== undefined) {
+    if (typeof camera.followHeight !== 'number' || camera.followHeight < 100 || camera.followHeight > 5000) {
+      errors.push('followHeight must be between 100 and 5000 meters');
+    }
+  }
+
+  if (camera.followTilt !== undefined) {
+    if (typeof camera.followTilt !== 'number' || camera.followTilt < -90 || camera.followTilt > 0) {
+      errors.push('followTilt must be between -90 and 0 degrees');
+    }
+  }
+
+  if (camera.smoothing !== undefined) {
+    if (typeof camera.smoothing !== 'number' || camera.smoothing < 0 || camera.smoothing > 1) {
+      errors.push('smoothing must be between 0 and 1');
+    }
+  }
+
+  if (camera.defaultStrategy !== undefined) {
+    const validStrategies = ['follow', 'cinematic', 'bird-eye', 'first-person'];
+    if (!validStrategies.includes(camera.defaultStrategy)) {
+      errors.push(`defaultStrategy must be one of: ${validStrategies.join(', ')}`);
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Get camera adjustments for route pattern (placeholder for Phase 6)
+ */
+function getCameraAdjustmentsForPattern(patternType) {
+  const adjustments = {
+    'point-to-point': {
+      heightMultiplier: 1.0,
+      tiltAdjustment: 0,
+      description: 'Standard follow camera'
+    },
+    'out-and-back': {
+      heightMultiplier: 1.1,
+      tiltAdjustment: -5,
+      description: 'Slightly higher and steeper for turnaround visibility'
+    },
+    'loop': {
+      heightMultiplier: 1.2,
+      tiltAdjustment: -10,
+      description: 'Higher perspective to show loop pattern'
+    },
+    'figure-eight': {
+      heightMultiplier: 1.3,
+      tiltAdjustment: -15,
+      description: 'Elevated view to capture crossing point'
+    },
+    'multi-lap': {
+      heightMultiplier: 1.15,
+      tiltAdjustment: -8,
+      description: 'Balanced height for lap visibility'
+    }
+  };
+
+  return adjustments[patternType] || adjustments['point-to-point'];
+}
 
 const PORT = process.env.PORT || CONSTANTS.API.DEFAULT_PORT;
 
