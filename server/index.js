@@ -83,7 +83,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   animationSpeed = settings.animation.defaultSpeed;
   const MAX_VIDEO_MINUTES = settings.animation.maxVideoMinutes;
   const ADAPTIVE_SPEED_ENABLED = settings.animation.adaptiveSpeedEnabled;
-  
+
   let routeDurationSeconds = null; // Store route duration for video calculation
 
   // Only apply adaptive speed if enabled
@@ -204,6 +204,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const dockerArgs = [
     'run',
     '--rm',
+    '--user', '1001:1002', // Run as theo user to avoid permission issues
     '--shm-size=2g',
     '-v', `${absGpxPath}:/app/dist/${gpxFilename}:ro`,
     '-v', `${absOutputDir}:/output`,
@@ -228,6 +229,32 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   let stdoutBuffer = '';
   let stderrBuffer = '';
+  
+  // Monitor memory usage during render
+  let memoryCheckInterval;
+  const startTime = Date.now();
+  
+  const logMemoryUsage = () => {
+    const used = process.memoryUsage();
+    const rss = Math.round(used.rss / 1024 / 1024); // MB
+    const heapUsed = Math.round(used.heapUsed / 1024 / 1024); // MB
+    const external = Math.round(used.external / 1024 / 1024); // MB
+    const elapsed = Math.round((Date.now() - startTime) / 1000); // seconds
+    
+    const memLog = `[${new Date().toISOString()}] 📊 Memory: RSS ${rss}MB | Heap ${heapUsed}MB | External ${external}MB | Elapsed ${elapsed}s\n`;
+    fs.appendFileSync(logPath, memLog);
+    
+    // Warn if memory usage is high
+    if (rss > 1500) {
+      const warnLog = `[${new Date().toISOString()}] ⚠️  High memory usage detected: ${rss}MB RSS\n`;
+      fs.appendFileSync(logPath, warnLog);
+      console.warn(warnLog.trim());
+    }
+  };
+  
+  // Log memory usage every 30 seconds
+  memoryCheckInterval = setInterval(logMemoryUsage, 30000);
+  logMemoryUsage(); // Log initial state
 
   // Stream stdout to log file in real-time
   dockerProcess.stdout.on('data', (data) => {
@@ -247,6 +274,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   dockerProcess.on('error', (error) => {
     console.error('Docker spawn error:', error);
+    clearInterval(memoryCheckInterval); // Stop memory monitoring
     // Clean up uploaded file
     fs.unlinkSync(gpxFile.path);
 
@@ -260,6 +288,9 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   });
 
   dockerProcess.on('close', (code) => {
+    clearInterval(memoryCheckInterval); // Stop memory monitoring
+    logMemoryUsage(); // Log final memory state
+    
     // Clean up uploaded file
     fs.unlinkSync(gpxFile.path);
 

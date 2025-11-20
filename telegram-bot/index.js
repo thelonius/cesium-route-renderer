@@ -918,8 +918,8 @@ bot.on('document', async (msg) => {
           }
 
           // Format video resolution
-          const videoResolution = (result.videoWidth && result.videoHeight) 
-            ? `${result.videoWidth}x${result.videoHeight}` 
+          const videoResolution = (result.videoWidth && result.videoHeight)
+            ? `${result.videoWidth}x${result.videoHeight}`
             : '720x1280';
 
           await bot.sendVideo(chatId, videoPath, {
@@ -932,7 +932,8 @@ bot.on('document', async (msg) => {
               resolution: videoResolution,
               speed: result.animationSpeed || 2 // Use actual speed from server, fallback to 2x
             }, userLang),
-            supports_streaming: true
+            supports_streaming: true,
+            contentType: 'video/mp4'
           });
 
           await bot.sendMessage(chatId, t(chatId, 'processing.done', {}, userLang), {
