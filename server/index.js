@@ -78,7 +78,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   // Detect route pattern for camera strategy
   const routePattern = animationSpeedService.detectRoutePattern(routeAnalysis);
-  
+
   // Generate overlay hooks for UI elements during playback
   const overlayHooks = animationSpeedService.generateOverlayHooks(routeAnalysis, routePattern);
 

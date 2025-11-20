@@ -794,7 +794,7 @@ class AnimationSpeedService {
   /**
    * Generate UI overlay events/hooks based on route pattern and key points
    * These trigger overlays during video playback showing contextual information
-   * 
+   *
    * @param {Object} routeAnalysis - Route analysis from gpxService
    * @param {Object} patternResult - Pattern detection result
    * @returns {Object} Overlay configuration with triggers and content
@@ -823,12 +823,12 @@ class AnimationSpeedService {
       case 'point-to-point':
         hooks.push(...this.generatePointToPointOverlays(routeAnalysis, patternResult));
         break;
-      
+
       case 'out-and-back':
       case 'repeated-out-and-back':
         hooks.push(...this.generateOutAndBackOverlays(routeAnalysis, patternResult));
         break;
-      
+
       case 'loop':
       case 'multi-lap':
       case 'figure-eight':
@@ -915,7 +915,7 @@ class AnimationSpeedService {
     const turnaroundIndex = patternResult.turnaroundPoint?.index;
     if (turnaroundIndex) {
       const turnaroundPercent = (turnaroundIndex / routeAnalysis.points.length) * 100;
-      
+
       overlays.push({
         type: 'turnaround-marker',
         trigger: 'progress',
@@ -1053,7 +1053,7 @@ class AnimationSpeedService {
     segments.forEach(percent => {
       const segmentIndex = Math.floor((percent / 100) * routeAnalysis.points.length);
       const point = routeAnalysis.points[segmentIndex];
-      
+
       overlays.push({
         type: 'segment-stats',
         trigger: 'progress',
@@ -1088,7 +1088,7 @@ class AnimationSpeedService {
   /**
    * Generate overlay triggers for specific route events
    * TODO: Expand with more event types in Phase 5/6
-   * 
+   *
    * @param {Object} routeAnalysis - Route analysis
    * @param {Object} patternResult - Pattern result
    * @returns {Array} Event triggers for overlay system
