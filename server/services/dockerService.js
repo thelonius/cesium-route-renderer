@@ -2,10 +2,11 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const CONSTANTS = require('../../config/constants');
 const dockerConfig = require('../../config/docker');
+const memoryMonitorService = require('./memoryMonitorService');
 
 /**
  * Docker Service
- * 
+ *
  * Encapsulates all Docker container operations for route rendering:
  * - Container lifecycle management (start, stop, monitor)
  * - Output streaming and logging
@@ -20,7 +21,7 @@ class DockerService {
 
   /**
    * Run Docker container for route rendering
-   * 
+   *
    * @param {Object} config - Container configuration
    * @param {Object} callbacks - Event callbacks
    * @returns {Object} Container control object
@@ -64,49 +65,31 @@ class DockerService {
     let stdoutBuffer = '';
     let stderrBuffer = '';
 
-    // Memory monitoring
+    // Start memory monitoring with dedicated service
     const startTime = Date.now();
-    let memoryCheckInterval;
-
-    const logMemoryUsage = () => {
-      const used = process.memoryUsage();
-      const rss = Math.round(used.rss / 1024 / 1024); // MB
-      const heapUsed = Math.round(used.heapUsed / 1024 / 1024); // MB
-      const external = Math.round(used.external / 1024 / 1024); // MB
-      const elapsed = Math.round((Date.now() - startTime) / 1000); // seconds
-
-      const memLog = `[${new Date().toISOString()}] 📊 Memory: RSS ${rss}MB | Heap ${heapUsed}MB | External ${external}MB | Elapsed ${elapsed}s\n`;
-      
-      if (logPath) {
-        fs.appendFileSync(logPath, memLog);
+    const memoryMonitor = memoryMonitorService.createMonitor(containerId, {
+      intervalMs: CONSTANTS.MEMORY.CHECK_INTERVAL_MS,
+      warningThresholdMB: CONSTANTS.MEMORY.WARNING_THRESHOLD_MB,
+      criticalThresholdMB: CONSTANTS.MEMORY.CRITICAL_THRESHOLD_MB,
+      logPath: logPath,
+      onWarning: (measurement) => {
+        onMemoryWarning(measurement);
+      },
+      onCritical: (measurement) => {
+        console.error(`🚨 CRITICAL memory during Docker operation ${containerId}`);
+        // Could trigger container stop here if needed
       }
-
-      // Warn if memory usage is high
-      if (rss > CONSTANTS.MEMORY.WARNING_THRESHOLD_MB) {
-        const warnLog = `[${new Date().toISOString()}] ⚠️  High memory usage detected: ${rss}MB RSS\n`;
-        if (logPath) {
-          fs.appendFileSync(logPath, warnLog);
-        }
-        console.warn(warnLog.trim());
-        onMemoryWarning({ rss, heapUsed, external, elapsed });
-      }
-
-      return { rss, heapUsed, external, elapsed };
-    };
-
-    // Start memory monitoring
-    memoryCheckInterval = setInterval(logMemoryUsage, CONSTANTS.MEMORY.CHECK_INTERVAL_MS);
-    logMemoryUsage(); // Log initial state
+    });
 
     // Stream stdout
     dockerProcess.stdout.on('data', (data) => {
       const text = data.toString();
       stdoutBuffer += text;
-      
+
       if (logPath) {
         fs.appendFileSync(logPath, text);
       }
-      
+
       console.log('Docker stdout:', text.trim());
       onStdout(text, stdoutBuffer);
     });
@@ -115,11 +98,11 @@ class DockerService {
     dockerProcess.stderr.on('data', (data) => {
       const text = data.toString();
       stderrBuffer += text;
-      
+
       if (logPath) {
         fs.appendFileSync(logPath, text);
       }
-      
+
       console.error('Docker stderr:', text.trim());
       onStderr(text, stderrBuffer);
     });
@@ -127,27 +110,27 @@ class DockerService {
     // Handle errors
     dockerProcess.on('error', (error) => {
       console.error('Docker spawn error:', error);
-      clearInterval(memoryCheckInterval);
-      
+      const memoryStats = memoryMonitor.stop();
+
       this.activeContainers.delete(containerId);
-      
+
       onError(error, {
         stdout: stdoutBuffer,
-        stderr: stderrBuffer
+        stderr: stderrBuffer,
+        memoryStats
       });
     });
 
     // Handle completion
     dockerProcess.on('close', (code) => {
-      clearInterval(memoryCheckInterval);
-      const finalMemory = logMemoryUsage(); // Log final memory state
-      
+      const memoryStats = memoryMonitor.stop();
+
       this.activeContainers.delete(containerId);
-      
+
       onClose(code, {
         stdout: stdoutBuffer,
         stderr: stderrBuffer,
-        memory: finalMemory,
+        memoryStats,
         duration: Date.now() - startTime
       });
     });
@@ -158,9 +141,9 @@ class DockerService {
       process: dockerProcess,
       startTime,
       config,
-      stopMemoryMonitoring: () => clearInterval(memoryCheckInterval),
+      memoryMonitor,
       getOutput: () => ({ stdout: stdoutBuffer, stderr: stderrBuffer }),
-      getMemoryUsage: logMemoryUsage
+      getMemoryStats: () => memoryMonitor.getStats()
     };
 
     this.activeContainers.set(containerId, containerInfo);
@@ -170,19 +153,19 @@ class DockerService {
 
   /**
    * Stop a running container
-   * 
+   *
    * @param {string} containerId - Container ID
    * @returns {boolean} Success
    */
   stopContainer(containerId) {
     const container = this.activeContainers.get(containerId);
-    
+
     if (!container) {
       return false;
     }
 
     try {
-      container.stopMemoryMonitoring();
+      container.memoryMonitor.stop();
       container.process.kill('SIGTERM');
       this.activeContainers.delete(containerId);
       return true;
@@ -197,7 +180,7 @@ class DockerService {
    */
   stopAllContainers() {
     const containers = Array.from(this.activeContainers.keys());
-    
+
     containers.forEach(containerId => {
       this.stopContainer(containerId);
     });
@@ -207,7 +190,7 @@ class DockerService {
 
   /**
    * Get container information
-   * 
+   *
    * @param {string} containerId - Container ID
    * @returns {Object|null} Container info
    */
@@ -217,7 +200,7 @@ class DockerService {
 
   /**
    * Get all active containers
-   * 
+   *
    * @returns {Array} Array of container info
    */
   getActiveContainers() {
@@ -231,7 +214,7 @@ class DockerService {
 
   /**
    * Build Docker command arguments (for debugging/logging)
-   * 
+   *
    * @param {Object} config - Container configuration
    * @returns {Array} Docker arguments
    */
@@ -242,7 +225,7 @@ class DockerService {
   /**
    * Validate Docker environment
    * Checks if Docker is available and properly configured
-   * 
+   *
    * @returns {Promise<Object>} Validation result
    */
   async validateEnvironment() {
@@ -280,7 +263,7 @@ class DockerService {
 
   /**
    * Get Docker system information
-   * 
+   *
    * @returns {Promise<Object>} Docker system info
    */
   async getDockerInfo() {
@@ -332,31 +315,31 @@ class DockerService {
 
   /**
    * Trim output for API responses
-   * 
+   *
    * @param {string} output - Output string
    * @param {number} maxLength - Maximum length
    * @returns {string} Trimmed output
    */
   trimOutput(output, maxLength = CONSTANTS.API.LOG_TRIM_LENGTH) {
     if (!output) return '';
-    return output.length > maxLength 
+    return output.length > maxLength
       ? '...TRUNCATED...\n' + output.slice(-maxLength)
       : output;
   }
 
   /**
    * Get statistics about Docker service usage
-   * 
+   *
    * @returns {Object} Statistics
    */
   getStats() {
     const containers = this.getActiveContainers();
-    
+
     return {
       activeContainers: containers.length,
       containers: containers,
       totalUptime: containers.reduce((sum, c) => sum + c.uptime, 0),
-      avgUptime: containers.length > 0 
+      avgUptime: containers.length > 0
         ? containers.reduce((sum, c) => sum + c.uptime, 0) / containers.length
         : 0
     };
