@@ -54,7 +54,7 @@ class GpxService {
    */
   extractTimestamps(content) {
     const timeMatches = content.match(/<time>([^<]+)<\/time>|<when>([^<]+)<\/when>/g);
-    
+
     if (!timeMatches || timeMatches.length === 0) {
       return [];
     }
@@ -73,7 +73,7 @@ class GpxService {
   extractElevations(content) {
     // Match elevation tags within track points
     const eleMatches = content.match(/<ele>([^<]+)<\/ele>/g);
-    
+
     if (!eleMatches) {
       return [];
     }
@@ -158,7 +158,7 @@ class GpxService {
    */
   analyzeRoute(filePath) {
     const parsed = this.parseFile(filePath);
-    
+
     if (!parsed.success) {
       return parsed;
     }
@@ -168,7 +168,7 @@ class GpxService {
 
     // Calculate duration from timestamps
     let duration = this.calculateDuration(parsed.timestamps);
-    
+
     // If no timestamps, estimate from distance
     if (!duration && distance > 0) {
       const estimatedSeconds = geoMath.estimateDurationFromDistance(distance);
@@ -191,12 +191,12 @@ class GpxService {
     }
 
     // Classify route type
-    const routeType = duration 
+    const routeType = duration
       ? geoMath.estimateRouteType(distance, duration.seconds, elevation)
       : 'unknown';
 
     // Classify terrain
-    const terrain = elevation 
+    const terrain = elevation
       ? geoMath.classifyTerrain(elevation)
       : 'unknown';
 

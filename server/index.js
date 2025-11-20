@@ -11,7 +11,7 @@ const dockerConfig = require('../config/docker');
 const renderingConfig = require('../config/rendering');
 const settingsService = require('./services/settingsService');
 const gpxService = require('./services/gpxService');
-const geoMath = require('../utils/geoMath');
+const animationSpeedService = require('./services/animationSpeedService');
 const geoMath = require('../utils/geoMath');
 
 const app = express();
@@ -68,49 +68,29 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   // Load settings from service
   const settings = settingsService.load();
-  let animationSpeed = settings.animation.defaultSpeed;
-  const MAX_VIDEO_MINUTES = settings.animation.maxVideoMinutes;
-  const ADAPTIVE_SPEED_ENABLED = settings.animation.adaptiveSpeedEnabled;
-
-  let routeDurationSeconds = null; // Store route duration for video calculation
-
-  // Only apply adaptive speed if enabled
-  if (ADAPTIVE_SPEED_ENABLED) {
-    try {
-      // Parse route file
-      const analysis = gpxService.analyzeRoute(gpxPath);
-      
-      if (analysis.success && analysis.duration) {
-        routeDurationSeconds = analysis.duration.seconds;
-        const routeDurationMinutes = analysis.duration.minutes;
-
-        console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
-
-        // Calculate required speed to keep video under MAX_VIDEO_MINUTES
-        const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - CONSTANTS.ANIMATION.ADAPTIVE_BUFFER_MINUTES));
-
-        if (requiredSpeed > animationSpeed) {
-          animationSpeed = requiredSpeed;
-          console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
-          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
-        } else {
-          console.log(`✓ Using default speed ${animationSpeed}x for ${routeDurationMinutes.toFixed(1)} min route`);
-          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
-        }
-      } else {
-        console.log('No valid duration found, using default speed');
-      }
-    } catch (err) {
-      console.warn('Could not parse file for duration, using default speed:', err.message);
-    }
-  } else {
-    console.log(`Using fixed speed ${animationSpeed}x (adaptive speed disabled)`);
+  
+  // Analyze route for speed calculation and pattern detection
+  const routeAnalysis = gpxService.analyzeRoute(gpxPath);
+  
+  // Calculate adaptive speed using service
+  const speedResult = animationSpeedService.calculateAdaptiveSpeed(routeAnalysis, settings);
+  const animationSpeed = speedResult.speed;
+  
+  // Detect route pattern for camera strategy
+  const routePattern = animationSpeedService.detectRoutePattern(routeAnalysis);
+  
+  // Log speed calculation results
+  console.log(`🎬 Animation speed: ${animationSpeed}x - ${speedResult.adjustmentReason}`);
+  if (routePattern.pattern !== 'unknown') {
+    console.log(`🗺️  Route pattern: ${routePattern.pattern} (${(routePattern.confidence * 100).toFixed(0)}% confidence)`);
+    console.log(`   ${routePattern.reason}`);
   }
-
+  
   // Calculate expected video duration
-  // Formula: (route duration / animation speed) + 19 seconds buffer
   let videoDurationSeconds = null;
   let routeDurationMinutes = null;
+  let routeDurationSeconds = routeAnalysis.duration?.seconds || null;
+  
   if (routeDurationSeconds) {
     videoDurationSeconds = renderingConfig.calculateVideoDuration(routeDurationSeconds, animationSpeed);
     routeDurationMinutes = (routeDurationSeconds / 60).toFixed(1);
@@ -130,6 +110,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const logPath = path.join(outputDir, 'recorder.log');
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] 🐳 Starting Docker container...\n`);
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${animationSpeed}x\n`);
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Route pattern: ${routePattern.pattern} (${(routePattern.confidence * 100).toFixed(0)}% confidence)\n`);
 
   // Use spawn instead of exec to stream Docker output in real-time
   const dockerArgs = dockerConfig.buildCompleteArgs({
@@ -248,6 +229,11 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         routeDurationMinutes, // Include route duration
         videoWidth: parseInt(dockerRecordWidth, 10), // Include video resolution
         videoHeight: parseInt(dockerRecordHeight, 10),
+        routePattern: { // Include route pattern for client display
+          pattern: routePattern.pattern,
+          confidence: routePattern.confidence,
+          description: routePattern.reason
+        },
         logsUrl: `/logs/${outputId}`,
         logsTextUrl: `/logs/${outputId}/text`
       });
