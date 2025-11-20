@@ -10,8 +10,7 @@ const CONSTANTS = require('../config/constants');
 const dockerConfig = require('../config/docker');
 const renderingConfig = require('../config/rendering');
 const settingsService = require('./services/settingsService');
-const gpxService = require('./services/gpxService');
-const animationSpeedService = require('./services/animationSpeedService');
+const routeAnalyzerService = require('./services/routeAnalyzerService');
 const geoMath = require('../utils/geoMath');
 
 const app = express();
@@ -69,26 +68,32 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   // Load settings from service
   const settings = settingsService.load();
 
-  // Analyze route for speed calculation and pattern detection
-  const routeAnalysis = gpxService.analyzeRoute(gpxPath);
+  // Perform complete route analysis using orchestrator service
+  const routeProfile = routeAnalyzerService.analyzeComplete(gpxPath, settings);
 
-  // Calculate adaptive speed using service
-  const speedResult = animationSpeedService.calculateAdaptiveSpeed(routeAnalysis, settings);
-  const animationSpeed = speedResult.speed;
+  if (!routeProfile.success) {
+    return res.status(400).json({
+      error: 'Failed to analyze route',
+      details: routeProfile.error || 'Unknown error',
+      outputId
+    });
+  }
 
-  // Detect route pattern for camera strategy
-  const routePattern = animationSpeedService.detectRoutePattern(routeAnalysis);
+  // Extract analysis results from profile
+  const routeAnalysis = routeProfile.route;
+  const animationSpeed = routeProfile.speed.value;
+  const speedResult = routeProfile.speed;
+  const routePattern = routeProfile.pattern.details;
+  const overlayHooks = routeProfile.overlays;
 
-  // Generate overlay hooks for UI elements during playback
-  const overlayHooks = animationSpeedService.generateOverlayHooks(routeAnalysis, routePattern);
-
-  // Log speed calculation results
-  console.log(`🎬 Animation speed: ${animationSpeed}x - ${speedResult.adjustmentReason}`);
-  if (routePattern.pattern !== 'unknown') {
-    console.log(`🗺️  Route pattern: ${routePattern.pattern} (${(routePattern.confidence * 100).toFixed(0)}% confidence)`);
-    console.log(`   ${routePattern.reason}`);
+  // Log analysis results
+  console.log(`🎬 Animation speed: ${animationSpeed}x - ${speedResult.reason}`);
+  if (routeProfile.pattern.type !== 'unknown') {
+    console.log(`🗺️  Route pattern: ${routeProfile.pattern.type} (${(routeProfile.pattern.confidence * 100).toFixed(0)}% confidence)`);
+    console.log(`   ${routeProfile.pattern.description}`);
   }
   console.log(`📊 Generated ${overlayHooks.hooks.length} overlay hooks for video`);
+  console.log(`⚡ Analysis completed in ${routeProfile.metadata.analysisTime}ms`);
 
   // Calculate expected video duration
   let videoDurationSeconds = null;
@@ -114,14 +119,15 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const logPath = path.join(outputDir, 'recorder.log');
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] 🐳 Starting Docker container...\n`);
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${animationSpeed}x\n`);
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Route pattern: ${routePattern.pattern} (${(routePattern.confidence * 100).toFixed(0)}% confidence)\n`);
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Route pattern: ${routeProfile.pattern.type} (${(routeProfile.pattern.confidence * 100).toFixed(0)}% confidence)\n`);
   fs.appendFileSync(logPath, `[${new Date().toISOString()}] Overlay hooks: ${overlayHooks.hooks.length} generated\n`);
+  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Analysis time: ${routeProfile.metadata.analysisTime}ms\n`);
 
   // Save overlay hooks and route metadata to JSON file for client access
   const overlayDataPath = path.join(outputDir, 'overlay-data.json');
   fs.writeFileSync(overlayDataPath, JSON.stringify({
     overlayHooks: overlayHooks,
-    routePattern: routePattern,
+    routePattern: routeProfile.pattern,
     routeMetadata: {
       distance: routeAnalysis.distance,
       elevation: routeAnalysis.elevation,
@@ -129,8 +135,10 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
       routeType: routeAnalysis.routeType,
       metadata: routeAnalysis.metadata
     },
+    camera: routeProfile.camera,
     animationSpeed: animationSpeed,
     videoDuration: videoDurationSeconds,
+    analysisTime: routeProfile.metadata.analysisTime,
     generatedAt: new Date().toISOString()
   }, null, 2));
 
@@ -251,13 +259,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
         routeDurationMinutes, // Include route duration
         videoWidth: parseInt(dockerRecordWidth, 10), // Include video resolution
         videoHeight: parseInt(dockerRecordHeight, 10),
-        routePattern: { // Include route pattern for client display
-          pattern: routePattern.pattern,
-          confidence: routePattern.confidence,
-          description: routePattern.reason,
-          repetitions: routePattern.repetitions || 1,
-          basePattern: routePattern.basePattern || routePattern.pattern
-        },
+        routePattern: routeProfile.pattern, // Complete pattern info from analyzer
         overlayHooks: overlayHooks, // Include overlay hooks for UI system
         routeMetadata: { // Include route metadata for client
           distance: routeAnalysis.distance,
@@ -266,6 +268,8 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
           routeType: routeAnalysis.routeType,
           metadata: routeAnalysis.metadata
         },
+        camera: routeProfile.camera, // Include camera profile
+        analysisTime: routeProfile.metadata.analysisTime, // Include analysis performance
         logsUrl: `/logs/${outputId}`,
         logsTextUrl: `/logs/${outputId}/text`
       });
