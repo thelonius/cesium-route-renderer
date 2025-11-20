@@ -57,15 +57,15 @@ class SettingsService {
       if (fs.existsSync(this.settingsPath)) {
         const fileContent = fs.readFileSync(this.settingsPath, 'utf8');
         this.settings = JSON.parse(fileContent);
-        
+
         // Merge with defaults to ensure all keys exist
         this.settings = this.mergeWithDefaults(this.settings);
-        
+
         console.log('✅ Settings loaded from file');
       } else {
         console.log('⚠️  Settings file not found, using defaults');
         this.settings = this.defaultSettings;
-        
+
         // Create settings file with defaults
         this.save();
       }
@@ -84,7 +84,7 @@ class SettingsService {
    */
   mergeWithDefaults(loadedSettings) {
     const merged = JSON.parse(JSON.stringify(this.defaultSettings)); // Deep clone
-    
+
     // Recursively merge
     const deepMerge = (target, source) => {
       for (const key in source) {
@@ -219,7 +219,7 @@ class SettingsService {
    */
   validateAnimationSpeed(speed) {
     const { minSpeed, maxSpeed } = this.getAnimationSettings();
-    
+
     if (speed < minSpeed || speed > maxSpeed) {
       return {
         valid: false,

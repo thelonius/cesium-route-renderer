@@ -10,6 +10,8 @@ const CONSTANTS = require('../config/constants');
 const dockerConfig = require('../config/docker');
 const renderingConfig = require('../config/rendering');
 const settingsService = require('./services/settingsService');
+const geoMath = require('../utils/geoMath');
+const geoMath = require('../utils/geoMath');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
@@ -62,7 +64,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   // Calculate adaptive animation speed based on route length
   // Goal: Keep video reasonable length and file size under 50MB
-  
+
   // Load settings from service
   const settings = settingsService.load();
   let animationSpeed = settings.animation.defaultSpeed;
@@ -107,40 +109,15 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
       // No timestamps or invalid duration - estimate from distance
       if (animationSpeed === settings.animation.defaultSpeed && (!timeMatches || timeMatches.length < 2)) {
         console.log('Estimating from route distance...');
-        const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
+        const points = geoMath.parseTrackPoints(gpxContent);
 
-      if (trkptMatches && trkptMatches.length > 1) {
-        let totalDistance = 0;
-        const points = trkptMatches.map(match => {
-          const latMatch = match.match(/lat="([^"]+)"/);
-          const lonMatch = match.match(/lon="([^"]+)"/);
-          return {
-            lat: parseFloat(latMatch[1]),
-            lon: parseFloat(lonMatch[1])
-          };
-        });
-
-        // Calculate total distance
-        for (let i = 1; i < points.length; i++) {
-          const R = 6371000; // Earth radius in meters
-          const lat1 = points[i-1].lat * Math.PI / 180;
-          const lat2 = points[i].lat * Math.PI / 180;
-          const deltaLat = (points[i].lat - points[i-1].lat) * Math.PI / 180;
-          const deltaLon = (points[i].lon - points[i-1].lon) * Math.PI / 180;
-
-          const a = Math.sin(deltaLat/2) * Math.sin(deltaLat/2) +
-                    Math.cos(lat1) * Math.cos(lat2) *
-                    Math.sin(deltaLon/2) * Math.sin(deltaLon/2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-          totalDistance += R * c;
-        }
-
+      if (points && points.length > 1) {
+        const totalDistance = geoMath.calculateTotalDistance(points);
+        routeDurationSeconds = geoMath.estimateDurationFromDistance(totalDistance);
+        const routeDurationMinutes = routeDurationSeconds / 60;
         const distanceKm = totalDistance / 1000;
-        const walkingSpeed = CONSTANTS.GEO.DEFAULT_WALKING_SPEED_KMH;
-        const routeDurationMinutes = (distanceKm / walkingSpeed) * 60;
-        routeDurationSeconds = routeDurationMinutes * 60; // Store for video duration calc
 
-        console.log(`Estimated route: ${distanceKm.toFixed(1)}km, ~${routeDurationMinutes.toFixed(0)} minutes at 5km/h`);
+        console.log(`Estimated route: ${distanceKm.toFixed(1)}km, ~${routeDurationMinutes.toFixed(0)} minutes at ${CONSTANTS.GEO.DEFAULT_WALKING_SPEED_KMH}km/h`);
 
         const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
         console.log(`Calculated required speed: ${requiredSpeed}x for ${MAX_VIDEO_MINUTES} min video`);
@@ -579,10 +556,10 @@ app.put('/api/animation-speed', (req, res) => {
 
     const updatedSettings = settingsService.getAnimationSettings();
     console.log(`Animation speed updated to ${updatedSettings.defaultSpeed}x (adaptive: ${updatedSettings.adaptiveSpeedEnabled})`);
-    res.json({ 
-      success: true, 
-      speed: updatedSettings.defaultSpeed, 
-      adaptiveEnabled: updatedSettings.adaptiveSpeedEnabled 
+    res.json({
+      success: true,
+      speed: updatedSettings.defaultSpeed,
+      adaptiveEnabled: updatedSettings.adaptiveSpeedEnabled
     });
   } catch (error) {
     console.error('Error updating animation speed:', error);
