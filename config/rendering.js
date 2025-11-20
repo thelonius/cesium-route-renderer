@@ -61,7 +61,7 @@ class RenderingConfig {
     const totalMinutes = parseFloat(durationMinutes);
     const hours = Math.floor(totalMinutes / 60);
     const minutes = Math.round(totalMinutes % 60);
-    
+
     if (hours > 0) {
       return `${hours}h ${minutes}m`;
     }
@@ -106,7 +106,7 @@ class RenderingConfig {
     // Recording duration in minutes
     const recordingSeconds = (routeDurationMinutes * 60 / animationSpeed) + this.videoBufferSeconds;
     const recordingMinutes = recordingSeconds / 60;
-    
+
     // Total frames at configured FPS
     const totalFrames = Math.ceil(recordingSeconds * this.fps);
 

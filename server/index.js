@@ -9,6 +9,7 @@ const cors = require('cors');
 const CONSTANTS = require('../config/constants');
 const dockerConfig = require('../config/docker');
 const renderingConfig = require('../config/rendering');
+const settingsService = require('./services/settingsService');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });
@@ -61,31 +62,10 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   // Calculate adaptive animation speed based on route length
   // Goal: Keep video reasonable length and file size under 50MB
-  let animationSpeed = 2; // Default will be loaded from settings
-
-  // Load settings with defaults from config
-  let settings = {
-    animation: {
-      defaultSpeed: CONSTANTS.ANIMATION.DEFAULT_SPEED,
-      adaptiveSpeedEnabled: true,
-      maxVideoMinutes: CONSTANTS.RENDER.MAX_VIDEO_MINUTES
-    },
-    recording: {
-      fps: CONSTANTS.RENDER.DEFAULT_FPS,
-      width: CONSTANTS.RENDER.DEFAULT_WIDTH,
-      height: CONSTANTS.RENDER.DEFAULT_HEIGHT
-    }
-  };
-
-  try {
-    if (fs.existsSync(settingsPath)) {
-      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    }
-  } catch (error) {
-    console.error('Error loading settings, using defaults:', error);
-  }
-
-  animationSpeed = settings.animation.defaultSpeed;
+  
+  // Load settings from service
+  const settings = settingsService.load();
+  let animationSpeed = settings.animation.defaultSpeed;
   const MAX_VIDEO_MINUTES = settings.animation.maxVideoMinutes;
   const ADAPTIVE_SPEED_ENABLED = settings.animation.adaptiveSpeedEnabled;
 
@@ -223,21 +203,21 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   let stdoutBuffer = '';
   let stderrBuffer = '';
-  
+
   // Monitor memory usage during render
   let memoryCheckInterval;
   const startTime = Date.now();
-  
+
   const logMemoryUsage = () => {
     const used = process.memoryUsage();
     const rss = Math.round(used.rss / 1024 / 1024); // MB
     const heapUsed = Math.round(used.heapUsed / 1024 / 1024); // MB
     const external = Math.round(used.external / 1024 / 1024); // MB
     const elapsed = Math.round((Date.now() - startTime) / 1000); // seconds
-    
+
     const memLog = `[${new Date().toISOString()}] 📊 Memory: RSS ${rss}MB | Heap ${heapUsed}MB | External ${external}MB | Elapsed ${elapsed}s\n`;
     fs.appendFileSync(logPath, memLog);
-    
+
     // Warn if memory usage is high
     if (rss > CONSTANTS.MEMORY.WARNING_THRESHOLD_MB) {
       const warnLog = `[${new Date().toISOString()}] ⚠️  High memory usage detected: ${rss}MB RSS\n`;
@@ -245,7 +225,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
       console.warn(warnLog.trim());
     }
   };
-  
+
   // Log memory usage at configured interval
   memoryCheckInterval = setInterval(logMemoryUsage, CONSTANTS.MEMORY.CHECK_INTERVAL_MS);
   logMemoryUsage(); // Log initial state
@@ -284,7 +264,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   dockerProcess.on('close', (code) => {
     clearInterval(memoryCheckInterval); // Stop memory monitoring
     logMemoryUsage(); // Log final memory state
-    
+
     // Clean up uploaded file
     fs.unlinkSync(gpxFile.path);
 
@@ -526,32 +506,12 @@ app.get('/cleanup', (req, res) => {
 });
 
 // Settings management
-const settingsPath = path.join(__dirname, 'settings.json');
 
 // Get current settings
 app.get('/api/settings', (req, res) => {
   try {
-    if (fs.existsSync(settingsPath)) {
-      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      res.json(settings);
-    } else {
-      // Return default settings
-      const defaultSettings = {
-        animation: {
-          defaultSpeed: 2,
-          minSpeed: 1,
-          maxSpeed: 100,
-          adaptiveSpeedEnabled: true,
-          maxVideoMinutes: 10
-        },
-        recording: {
-          fps: 30,
-          width: 720,
-          height: 1280
-        }
-      };
-      res.json(defaultSettings);
-    }
+    const settings = settingsService.getAll();
+    res.json(settings);
   } catch (error) {
     console.error('Error reading settings:', error);
     res.status(500).json({ error: 'Failed to read settings' });
@@ -565,15 +525,19 @@ app.put('/api/settings', (req, res) => {
 
     // Validate settings
     if (newSettings.animation) {
-      const { defaultSpeed, minSpeed, maxSpeed } = newSettings.animation;
-      if (defaultSpeed < minSpeed || defaultSpeed > maxSpeed) {
-        return res.status(400).json({ error: 'Invalid speed range' });
+      const validation = settingsService.validateAnimationSpeed(newSettings.animation.defaultSpeed);
+      if (!validation.valid) {
+        return res.status(400).json({ error: validation.error });
       }
     }
 
-    fs.writeFileSync(settingsPath, JSON.stringify(newSettings, null, 2));
-    console.log('Settings updated:', newSettings);
-    res.json({ success: true, settings: newSettings });
+    const success = settingsService.updateAll(newSettings);
+    if (success) {
+      console.log('Settings updated:', newSettings);
+      res.json({ success: true, settings: settingsService.getAll() });
+    } else {
+      res.status(500).json({ error: 'Failed to save settings' });
+    }
   } catch (error) {
     console.error('Error updating settings:', error);
     res.status(500).json({ error: 'Failed to update settings' });
@@ -583,17 +547,13 @@ app.put('/api/settings', (req, res) => {
 // Get animation speed specifically (for route analytics integration)
 app.get('/api/animation-speed', (req, res) => {
   try {
-    if (fs.existsSync(settingsPath)) {
-      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-      res.json({
-        speed: settings.animation.defaultSpeed,
-        adaptiveEnabled: settings.animation.adaptiveSpeedEnabled,
-        minSpeed: settings.animation.minSpeed,
-        maxSpeed: settings.animation.maxSpeed
-      });
-    } else {
-      res.json({ speed: 2, adaptiveEnabled: true, minSpeed: 1, maxSpeed: 100 });
-    }
+    const animSettings = settingsService.getAnimationSettings();
+    res.json({
+      speed: animSettings.defaultSpeed,
+      adaptiveEnabled: animSettings.adaptiveSpeedEnabled,
+      minSpeed: animSettings.minSpeed,
+      maxSpeed: animSettings.maxSpeed
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to read animation speed' });
   }
@@ -603,39 +563,27 @@ app.get('/api/animation-speed', (req, res) => {
 app.put('/api/animation-speed', (req, res) => {
   try {
     const { speed, adaptiveEnabled } = req.body;
-
-    let settings = {};
-    if (fs.existsSync(settingsPath)) {
-      settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    } else {
-      settings = {
-        animation: {
-          defaultSpeed: 2,
-          minSpeed: 1,
-          maxSpeed: 100,
-          adaptiveSpeedEnabled: true,
-          maxVideoMinutes: 10
-        },
-        recording: { fps: 30, width: 720, height: 1280 }
-      };
-    }
+    const animSettings = settingsService.getAnimationSettings();
 
     if (speed !== undefined) {
-      if (speed < settings.animation.minSpeed || speed > settings.animation.maxSpeed) {
-        return res.status(400).json({
-          error: `Speed must be between ${settings.animation.minSpeed} and ${settings.animation.maxSpeed}`
-        });
+      const validation = settingsService.validateAnimationSpeed(speed);
+      if (!validation.valid) {
+        return res.status(400).json({ error: validation.error });
       }
-      settings.animation.defaultSpeed = speed;
+      settingsService.update('animation.defaultSpeed', speed);
     }
 
     if (adaptiveEnabled !== undefined) {
-      settings.animation.adaptiveSpeedEnabled = adaptiveEnabled;
+      settingsService.update('animation.adaptiveSpeedEnabled', adaptiveEnabled);
     }
 
-    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-    console.log(`Animation speed updated to ${settings.animation.defaultSpeed}x (adaptive: ${settings.animation.adaptiveSpeedEnabled})`);
-    res.json({ success: true, speed: settings.animation.defaultSpeed, adaptiveEnabled: settings.animation.adaptiveSpeedEnabled });
+    const updatedSettings = settingsService.getAnimationSettings();
+    console.log(`Animation speed updated to ${updatedSettings.defaultSpeed}x (adaptive: ${updatedSettings.adaptiveSpeedEnabled})`);
+    res.json({ 
+      success: true, 
+      speed: updatedSettings.defaultSpeed, 
+      adaptiveEnabled: updatedSettings.adaptiveSpeedEnabled 
+    });
   } catch (error) {
     console.error('Error updating animation speed:', error);
     res.status(500).json({ error: 'Failed to update animation speed' });
