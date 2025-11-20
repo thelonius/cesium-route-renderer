@@ -1,16 +1,15 @@
 const express = require('express');
 const multer = require('multer');
-const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 
 // Configuration
 const CONSTANTS = require('../config/constants');
-const dockerConfig = require('../config/docker');
 const renderingConfig = require('../config/rendering');
 const settingsService = require('./services/settingsService');
 const routeAnalyzerService = require('./services/routeAnalyzerService');
+const dockerService = require('./services/dockerService');
 const geoMath = require('../utils/geoMath');
 
 const app = express();
@@ -142,155 +141,107 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
     generatedAt: new Date().toISOString()
   }, null, 2));
 
-  // Use spawn instead of exec to stream Docker output in real-time
-  const dockerArgs = dockerConfig.buildCompleteArgs({
-    gpxPath: absGpxPath,
-    gpxFilename,
-    outputDir: absOutputDir,
-    animationSpeed,
-    userName,
-    recording: {
-      fps: dockerRecordFps,
-      width: dockerRecordWidth,
-      height: dockerRecordHeight
+  // Run Docker container using service
+  const containerInfo = dockerService.runContainer(
+    {
+      gpxPath: absGpxPath,
+      gpxFilename,
+      outputDir: absOutputDir,
+      animationSpeed,
+      userName,
+      recording: {
+        fps: dockerRecordFps,
+        width: dockerRecordWidth,
+        height: dockerRecordHeight
+      },
+      logPath
+    },
+    {
+      onStdout: (text) => {
+        // Real-time stdout logging handled by service
+      },
+      onStderr: (text) => {
+        // Real-time stderr logging handled by service
+      },
+      onMemoryWarning: ({ rss }) => {
+        console.warn(`High memory usage: ${rss}MB`);
+      },
+      onError: (error, { stdout, stderr }) => {
+        console.error('Docker spawn error:', error);
+        // Clean up uploaded file
+        fs.unlinkSync(gpxFile.path);
+
+        return res.status(500).json({
+          error: 'Failed to start Docker container',
+          details: error.message,
+          outputId,
+          stdout: dockerService.trimOutput(stdout),
+          stderr: dockerService.trimOutput(stderr),
+          logsUrl: `/logs/${outputId}`,
+          logsTextUrl: `/logs/${outputId}/text`
+        });
+      },
+      onClose: (code, { stdout, stderr }) => {
+        // Clean up uploaded file
+        fs.unlinkSync(gpxFile.path);
+
+        if (code !== 0) {
+          console.error(`Docker process exited with code ${code}`);
+
+          return res.status(500).json({
+            error: 'Failed to render video',
+            details: `Docker exited with code ${code}`,
+            outputId,
+            stdout: dockerService.trimOutput(stdout),
+            stderr: dockerService.trimOutput(stderr),
+            logsUrl: `/logs/${outputId}`,
+            logsTextUrl: `/logs/${outputId}/text`
+          });
+        }
+
+        // Check if video file was created
+        const videoPath = path.join(outputDir, 'route-video.mp4');
+        if (fs.existsSync(videoPath)) {
+          const stats = fs.statSync(videoPath);
+          res.json({
+            success: true,
+            videoUrl: `/output/${outputId}/route-video.mp4`,
+            outputId,
+            fileSize: stats.size,
+            animationSpeed, // Include animation speed for client display
+            videoDurationSeconds, // Include expected video duration
+            routeDurationMinutes, // Include route duration
+            videoWidth: parseInt(dockerRecordWidth, 10), // Include video resolution
+            videoHeight: parseInt(dockerRecordHeight, 10),
+            routePattern: routeProfile.pattern, // Complete pattern info from analyzer
+            overlayHooks: overlayHooks, // Include overlay hooks for UI system
+            routeMetadata: { // Include route metadata for client
+              distance: routeAnalysis.distance,
+              elevation: routeAnalysis.elevation,
+              terrain: routeAnalysis.terrain,
+              routeType: routeAnalysis.routeType,
+              metadata: routeAnalysis.metadata
+            },
+            camera: routeProfile.camera, // Include camera profile
+            analysisTime: routeProfile.metadata.analysisTime, // Include analysis performance
+            logsUrl: `/logs/${outputId}`,
+            logsTextUrl: `/logs/${outputId}/text`
+          });
+        } else {
+          // If no video was created, include trimmed logs for debugging
+          console.error('Video file not created. Docker stdout/stderr included in response.');
+          res.status(500).json({
+            error: 'Video file not created',
+            outputId, // Include outputId so logs can be accessed
+            stdout: dockerService.trimOutput(stdout),
+            stderr: dockerService.trimOutput(stderr),
+            logsUrl: `/logs/${outputId}`,
+            logsTextUrl: `/logs/${outputId}/text`
+          });
+        }
+      }
     }
-  });  console.log('Running Docker command:', 'docker', dockerArgs.join(' '));
-
-  const dockerProcess = spawn('docker', dockerArgs);
-
-  let stdoutBuffer = '';
-  let stderrBuffer = '';
-
-  // Monitor memory usage during render
-  let memoryCheckInterval;
-  const startTime = Date.now();
-
-  const logMemoryUsage = () => {
-    const used = process.memoryUsage();
-    const rss = Math.round(used.rss / 1024 / 1024); // MB
-    const heapUsed = Math.round(used.heapUsed / 1024 / 1024); // MB
-    const external = Math.round(used.external / 1024 / 1024); // MB
-    const elapsed = Math.round((Date.now() - startTime) / 1000); // seconds
-
-    const memLog = `[${new Date().toISOString()}] 📊 Memory: RSS ${rss}MB | Heap ${heapUsed}MB | External ${external}MB | Elapsed ${elapsed}s\n`;
-    fs.appendFileSync(logPath, memLog);
-
-    // Warn if memory usage is high
-    if (rss > CONSTANTS.MEMORY.WARNING_THRESHOLD_MB) {
-      const warnLog = `[${new Date().toISOString()}] ⚠️  High memory usage detected: ${rss}MB RSS\n`;
-      fs.appendFileSync(logPath, warnLog);
-      console.warn(warnLog.trim());
-    }
-  };
-
-  // Log memory usage at configured interval
-  memoryCheckInterval = setInterval(logMemoryUsage, CONSTANTS.MEMORY.CHECK_INTERVAL_MS);
-  logMemoryUsage(); // Log initial state
-
-  // Stream stdout to log file in real-time
-  dockerProcess.stdout.on('data', (data) => {
-    const text = data.toString();
-    stdoutBuffer += text;
-    fs.appendFileSync(logPath, text);
-    console.log('Docker stdout:', text.trim());
-  });
-
-  // Stream stderr to log file in real-time
-  dockerProcess.stderr.on('data', (data) => {
-    const text = data.toString();
-    stderrBuffer += text;
-    fs.appendFileSync(logPath, text);
-    console.error('Docker stderr:', text.trim());
-  });
-
-  dockerProcess.on('error', (error) => {
-    console.error('Docker spawn error:', error);
-    clearInterval(memoryCheckInterval); // Stop memory monitoring
-    // Clean up uploaded file
-    fs.unlinkSync(gpxFile.path);
-
-    return res.status(500).json({
-      error: 'Failed to start Docker container',
-      details: error.message,
-      outputId,
-      logsUrl: `/logs/${outputId}`,
-      logsTextUrl: `/logs/${outputId}/text`
-    });
-  });
-
-  dockerProcess.on('close', (code) => {
-    clearInterval(memoryCheckInterval); // Stop memory monitoring
-    logMemoryUsage(); // Log final memory state
-
-    // Clean up uploaded file
-    fs.unlinkSync(gpxFile.path);
-
-    if (code !== 0) {
-      console.error(`Docker process exited with code ${code}`);
-
-      // Helper to trim logs to a sensible size for API responses
-      const trim = (s, n = CONSTANTS.API.LOG_TRIM_LENGTH) => {
-        if (!s) return '';
-        return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
-      };
-
-      return res.status(500).json({
-        error: 'Failed to render video',
-        details: `Docker exited with code ${code}`,
-        outputId,
-        stdout: trim(stdoutBuffer),
-        stderr: trim(stderrBuffer),
-        logsUrl: `/logs/${outputId}`,
-        logsTextUrl: `/logs/${outputId}/text`
-      });
-    }
-
-    // Check if video file was created
-    const videoPath = path.join(outputDir, 'route-video.mp4');
-    if (fs.existsSync(videoPath)) {
-      const stats = fs.statSync(videoPath);
-      res.json({
-        success: true,
-        videoUrl: `/output/${outputId}/route-video.mp4`,
-        outputId,
-        fileSize: stats.size,
-        animationSpeed, // Include animation speed for client display
-        videoDurationSeconds, // Include expected video duration
-        routeDurationMinutes, // Include route duration
-        videoWidth: parseInt(dockerRecordWidth, 10), // Include video resolution
-        videoHeight: parseInt(dockerRecordHeight, 10),
-        routePattern: routeProfile.pattern, // Complete pattern info from analyzer
-        overlayHooks: overlayHooks, // Include overlay hooks for UI system
-        routeMetadata: { // Include route metadata for client
-          distance: routeAnalysis.distance,
-          elevation: routeAnalysis.elevation,
-          terrain: routeAnalysis.terrain,
-          routeType: routeAnalysis.routeType,
-          metadata: routeAnalysis.metadata
-        },
-        camera: routeProfile.camera, // Include camera profile
-        analysisTime: routeProfile.metadata.analysisTime, // Include analysis performance
-        logsUrl: `/logs/${outputId}`,
-        logsTextUrl: `/logs/${outputId}/text`
-      });
-    } else {
-      // If no video was created, include trimmed logs for debugging
-      const trim = (s, n = 8000) => {
-        if (!s) return '';
-        return s.length > n ? '...TRUNCATED...\n' + s.slice(-n) : s;
-      };
-
-      console.error('Video file not created. Docker stdout/stderr included in response.');
-      res.status(500).json({
-        error: 'Video file not created',
-        outputId, // Include outputId so logs can be accessed
-        stdout: trim(stdout),
-        stderr: trim(stderr),
-        logsUrl: `/logs/${outputId}`,
-        logsTextUrl: `/logs/${outputId}/text`
-      });
-    }
-  });
+  );
 });
 
 // Get status of a render job
