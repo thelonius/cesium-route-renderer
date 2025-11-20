@@ -14,7 +14,7 @@ function parseRecordingProgress(logs) {
 
   // Get the most recent frame update
   const lastFrameLog = logs.substring(logs.lastIndexOf('📹 Frame'));
-  
+
   // New format with ETA
   const frameMatchWithETA = lastFrameLog.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)[^|]*\| ETA: (\d+)s/);
   if (frameMatchWithETA) {
@@ -84,8 +84,8 @@ function detectCurrentStage(logs) {
   if (logs.includes('Starting video encoding')) {
     const encoding = parseEncodingProgress(logs);
     if (encoding) {
-      return { 
-        stage: 'encoding', 
+      return {
+        stage: 'encoding',
         message: `🎬 Encoding video (frame ${encoding.frame}, ${encoding.fps} fps)`,
         details: encoding
       };
@@ -205,8 +205,8 @@ function isRenderComplete(logs) {
  */
 function isRenderFailed(logs) {
   if (!logs) return false;
-  return logs.includes('Error:') || 
-         logs.includes('Failed to') || 
+  return logs.includes('Error:') ||
+         logs.includes('Failed to') ||
          logs.includes('❌') ||
          logs.includes('FATAL');
 }

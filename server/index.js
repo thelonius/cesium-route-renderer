@@ -10,6 +10,7 @@ const CONSTANTS = require('../config/constants');
 const dockerConfig = require('../config/docker');
 const renderingConfig = require('../config/rendering');
 const settingsService = require('./services/settingsService');
+const gpxService = require('./services/gpxService');
 const geoMath = require('../utils/geoMath');
 const geoMath = require('../utils/geoMath');
 
@@ -76,61 +77,29 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   // Only apply adaptive speed if enabled
   if (ADAPTIVE_SPEED_ENABLED) {
     try {
-      const gpxContent = fs.readFileSync(gpxPath, 'utf8');
-      const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>|<when>([^<]+)<\/when>/g);
-
-      if (timeMatches && timeMatches.length >= 2) {
-        const firstTime = new Date(timeMatches[0].replace(/<\/?(?:time|when)>/g, ''));
-        const lastTime = new Date(timeMatches[timeMatches.length - 1].replace(/<\/?(?:time|when)>/g, ''));
-        const routeDurationMinutes = (lastTime - firstTime) / 1000 / 60;
-        routeDurationSeconds = (lastTime - firstTime) / 1000; // Store for video duration calc
+      // Parse route file
+      const analysis = gpxService.analyzeRoute(gpxPath);
+      
+      if (analysis.success && analysis.duration) {
+        routeDurationSeconds = analysis.duration.seconds;
+        const routeDurationMinutes = analysis.duration.minutes;
 
         console.log(`Route duration: ${routeDurationMinutes.toFixed(1)} minutes`);
 
-        // If duration is invalid (< 1 minute or negative), fall back to distance calculation
-        if (routeDurationMinutes >= 1) {
-          // Calculate required speed to keep video under MAX_VIDEO_MINUTES
-          // Formula: (routeDuration / speed) + buffers <= MAX_VIDEO_MINUTES
-          const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5)); // 0.5 min buffer
+        // Calculate required speed to keep video under MAX_VIDEO_MINUTES
+        const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - CONSTANTS.ANIMATION.ADAPTIVE_BUFFER_MINUTES));
 
-          if (requiredSpeed > animationSpeed) {
-            animationSpeed = requiredSpeed;
-            console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
-            console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
-          } else {
-            console.log(`✓ Using default speed ${animationSpeed}x for ${routeDurationMinutes.toFixed(1)} min route`);
-            console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
-          }
-        } else {
-          console.log('Duration invalid or too small, falling back to distance calculation...');
-        }
-      }
-
-      // No timestamps or invalid duration - estimate from distance
-      if (animationSpeed === settings.animation.defaultSpeed && (!timeMatches || timeMatches.length < 2)) {
-        console.log('Estimating from route distance...');
-        const points = geoMath.parseTrackPoints(gpxContent);
-
-      if (points && points.length > 1) {
-        const totalDistance = geoMath.calculateTotalDistance(points);
-        routeDurationSeconds = geoMath.estimateDurationFromDistance(totalDistance);
-        const routeDurationMinutes = routeDurationSeconds / 60;
-        const distanceKm = totalDistance / 1000;
-
-        console.log(`Estimated route: ${distanceKm.toFixed(1)}km, ~${routeDurationMinutes.toFixed(0)} minutes at ${CONSTANTS.GEO.DEFAULT_WALKING_SPEED_KMH}km/h`);
-
-        const requiredSpeed = Math.ceil(routeDurationMinutes / (MAX_VIDEO_MINUTES - 0.5));
-        console.log(`Calculated required speed: ${requiredSpeed}x for ${MAX_VIDEO_MINUTES} min video`);
-
-        if (requiredSpeed > 25) {
+        if (requiredSpeed > animationSpeed) {
           animationSpeed = requiredSpeed;
           console.log(`⚡ Route is long, increasing animation speed to ${animationSpeed}x`);
+          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
         } else {
-          console.log(`✓ Using default speed 25x`);
+          console.log(`✓ Using default speed ${animationSpeed}x for ${routeDurationMinutes.toFixed(1)} min route`);
+          console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
         }
-        console.log(`Expected video length: ~${((routeDurationMinutes * 60 / animationSpeed) / 60).toFixed(1)} minutes`);
+      } else {
+        console.log('No valid duration found, using default speed');
       }
-    }
     } catch (err) {
       console.warn('Could not parse file for duration, using default speed:', err.message);
     }

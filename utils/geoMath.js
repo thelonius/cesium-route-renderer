@@ -24,7 +24,7 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
             Math.cos(lat1Rad) * Math.cos(lat2Rad) *
             Math.sin(deltaLon/2) * Math.sin(deltaLon/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  
+
   return R * c;
 }
 
@@ -58,7 +58,7 @@ function calculateTotalDistance(points) {
  */
 function parseTrackPoints(gpxContent) {
   const trkptMatches = gpxContent.match(/<trkpt[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g);
-  
+
   if (!trkptMatches) {
     return [];
   }
@@ -108,7 +108,7 @@ function calculateElevationGain(points) {
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1].elevation;
     const curr = points[i].elevation;
-    
+
     if (curr > prev) {
       gain += (curr - prev);
     } else {

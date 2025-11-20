@@ -11,7 +11,7 @@ function formatVideoDuration(durationSeconds) {
   if (!durationSeconds || isNaN(durationSeconds)) {
     return 'N/A';
   }
-  
+
   const minutes = Math.floor(durationSeconds / 60);
   const seconds = Math.floor(durationSeconds % 60);
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -26,11 +26,11 @@ function formatRouteDuration(durationMinutes) {
   if (!durationMinutes || isNaN(durationMinutes)) {
     return 'N/A';
   }
-  
+
   const totalMinutes = Math.round(parseFloat(durationMinutes));
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }
@@ -47,7 +47,7 @@ function formatFileSize(sizeBytes, decimals = 2) {
   if (!sizeBytes || isNaN(sizeBytes)) {
     return 'N/A';
   }
-  
+
   const sizeMB = sizeBytes / 1024 / 1024;
   return `${sizeMB.toFixed(decimals)} MB`;
 }
@@ -61,16 +61,16 @@ function formatFileSizeAuto(sizeBytes) {
   if (!sizeBytes || isNaN(sizeBytes)) {
     return 'N/A';
   }
-  
+
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let size = sizeBytes;
   let unitIndex = 0;
-  
+
   while (size >= 1024 && unitIndex < units.length - 1) {
     size /= 1024;
     unitIndex++;
   }
-  
+
   return `${size.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
 }
 
@@ -84,7 +84,7 @@ function formatBitrate(fileSizeBytes, videoDurationSeconds) {
   if (!fileSizeBytes || !videoDurationSeconds || isNaN(fileSizeBytes) || isNaN(videoDurationSeconds)) {
     return 'N/A';
   }
-  
+
   const bitrateKbps = Math.round((fileSizeBytes * 8) / (videoDurationSeconds * 1000));
   return `${bitrateKbps} kbps`;
 }
@@ -98,7 +98,7 @@ function formatDistance(distanceMeters) {
   if (!distanceMeters || isNaN(distanceMeters)) {
     return 'N/A';
   }
-  
+
   if (distanceMeters >= 1000) {
     return `${(distanceMeters / 1000).toFixed(1)} km`;
   }
@@ -114,7 +114,7 @@ function formatElevation(elevationMeters) {
   if (elevationMeters === null || elevationMeters === undefined || isNaN(elevationMeters)) {
     return 'N/A';
   }
-  
+
   const sign = elevationMeters >= 0 ? '+' : '';
   return `${sign}${Math.round(elevationMeters)} m`;
 }
@@ -128,7 +128,7 @@ function formatSpeed(speedKmh) {
   if (!speedKmh || isNaN(speedKmh)) {
     return 'N/A';
   }
-  
+
   return `${speedKmh.toFixed(1)} km/h`;
 }
 
@@ -142,7 +142,7 @@ function formatTimestamp(timestamp, locale = 'en-US') {
   if (!timestamp) {
     return 'N/A';
   }
-  
+
   const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
   return date.toLocaleDateString(locale, {
     month: 'short',
@@ -162,7 +162,7 @@ function truncateString(str, maxLength) {
   if (!str || str.length <= maxLength) {
     return str;
   }
-  
+
   return str.slice(0, maxLength - 3) + '...';
 }
 
@@ -176,7 +176,7 @@ function formatPercentage(value, decimals = 1) {
   if (value === null || value === undefined || isNaN(value)) {
     return 'N/A';
   }
-  
+
   return `${value.toFixed(decimals)}%`;
 }
 
