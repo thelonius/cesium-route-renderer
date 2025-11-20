@@ -8,8 +8,7 @@ const cors = require('cors');
 const CONSTANTS = require('../config/constants');
 const renderingConfig = require('../config/rendering');
 const settingsService = require('./services/settingsService');
-const routeAnalyzerService = require('./services/routeAnalyzerService');
-const dockerService = require('./services/dockerService');
+const renderOrchestratorService = require('./services/renderOrchestratorService');
 const geoMath = require('../utils/geoMath');
 
 const app = express();
@@ -53,192 +52,28 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const routePath = path.join(outputDir, routeFilename);
   fs.copyFileSync(gpxFile.path, routePath);
 
-  // Keep GPX variables for backwards compatibility with Docker script
-  const gpxFilename = routeFilename;
-  const gpxPath = routePath;
-
-  // Get absolute paths
-  const absGpxPath = path.resolve(gpxPath);
-  const absOutputDir = path.resolve(outputDir);
-
-  // Calculate adaptive animation speed based on route length
-  // Goal: Keep video reasonable length and file size under 50MB
-
-  // Load settings from service
-  const settings = settingsService.load();
-
-  // Perform complete route analysis using orchestrator service
-  const routeProfile = routeAnalyzerService.analyzeComplete(gpxPath, settings);
-
-  if (!routeProfile.success) {
-    return res.status(400).json({
-      error: 'Failed to analyze route',
-      details: routeProfile.error || 'Unknown error',
-      outputId
-    });
-  }
-
-  // Extract analysis results from profile
-  const routeAnalysis = routeProfile.route;
-  const animationSpeed = routeProfile.speed.value;
-  const speedResult = routeProfile.speed;
-  const routePattern = routeProfile.pattern.details;
-  const overlayHooks = routeProfile.overlays;
-
-  // Log analysis results
-  console.log(`🎬 Animation speed: ${animationSpeed}x - ${speedResult.reason}`);
-  if (routeProfile.pattern.type !== 'unknown') {
-    console.log(`🗺️  Route pattern: ${routeProfile.pattern.type} (${(routeProfile.pattern.confidence * 100).toFixed(0)}% confidence)`);
-    console.log(`   ${routeProfile.pattern.description}`);
-  }
-  console.log(`📊 Generated ${overlayHooks.hooks.length} overlay hooks for video`);
-  console.log(`⚡ Analysis completed in ${routeProfile.metadata.analysisTime}ms`);
-
-  // Calculate expected video duration
-  let videoDurationSeconds = null;
-  let routeDurationMinutes = null;
-  let routeDurationSeconds = routeAnalysis.duration?.seconds || null;
-
-  if (routeDurationSeconds) {
-    videoDurationSeconds = renderingConfig.calculateVideoDuration(routeDurationSeconds, animationSpeed);
-    routeDurationMinutes = (routeDurationSeconds / 60).toFixed(1);
-    const videoDurationMinutes = (videoDurationSeconds / 60).toFixed(1);
-    console.log(`📹 Route duration: ${routeDurationMinutes} min | Video duration: ${videoDurationMinutes} min | Speed: ${animationSpeed}x`);
-  }
-
-  // Run Docker container with the GPX file and filename
-  // Don't pass RECORD_DURATION - let the script auto-calculate from GPX
-  // Load recording settings from settings.json
-  const dockerHeadless = '1'; // Force headless-quality defaults inside the container
-  const dockerRecordFps = process.env.RECORD_FPS || String(settings.recording?.fps || 30);
-  const dockerRecordWidth = process.env.RECORD_WIDTH || String(settings.recording?.width || 720);
-  const dockerRecordHeight = process.env.RECORD_HEIGHT || String(settings.recording?.height || 1280);
-
-  // Log to file so Telegram bot can read it
-  const logPath = path.join(outputDir, 'recorder.log');
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] 🐳 Starting Docker container...\n`);
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${animationSpeed}x\n`);
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Route pattern: ${routeProfile.pattern.type} (${(routeProfile.pattern.confidence * 100).toFixed(0)}% confidence)\n`);
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Overlay hooks: ${overlayHooks.hooks.length} generated\n`);
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] Analysis time: ${routeProfile.metadata.analysisTime}ms\n`);
-
-  // Save overlay hooks and route metadata to JSON file for client access
-  const overlayDataPath = path.join(outputDir, 'overlay-data.json');
-  fs.writeFileSync(overlayDataPath, JSON.stringify({
-    overlayHooks: overlayHooks,
-    routePattern: routeProfile.pattern,
-    routeMetadata: {
-      distance: routeAnalysis.distance,
-      elevation: routeAnalysis.elevation,
-      terrain: routeAnalysis.terrain,
-      routeType: routeAnalysis.routeType,
-      metadata: routeAnalysis.metadata
-    },
-    camera: routeProfile.camera,
-    animationSpeed: animationSpeed,
-    videoDuration: videoDurationSeconds,
-    analysisTime: routeProfile.metadata.analysisTime,
-    generatedAt: new Date().toISOString()
-  }, null, 2));
-
-  // Run Docker container using service
-  const containerInfo = dockerService.runContainer(
+  // Use render orchestrator service for complete render pipeline
+  const renderResult = await renderOrchestratorService.startRender(
     {
-      gpxPath: absGpxPath,
-      gpxFilename,
-      outputDir: absOutputDir,
-      animationSpeed,
-      userName,
-      recording: {
-        fps: dockerRecordFps,
-        width: dockerRecordWidth,
-        height: dockerRecordHeight
-      },
-      logPath
+      routeFilePath: routePath,
+      routeFilename: routeFilename,
+      outputDir: outputDir,
+      outputId: outputId,
+      userName: userName
     },
     {
-      onStdout: (text) => {
-        // Real-time stdout logging handled by service
+      onProgress: (progress) => {
+        console.log(`📊 Progress: ${progress.progress}% - ${progress.message}`);
       },
-      onStderr: (text) => {
-        // Real-time stderr logging handled by service
-      },
-      onMemoryWarning: ({ rss }) => {
-        console.warn(`High memory usage: ${rss}MB`);
-      },
-      onError: (error, { stdout, stderr }) => {
-        console.error('Docker spawn error:', error);
+      onComplete: (result) => {
         // Clean up uploaded file
         fs.unlinkSync(gpxFile.path);
-
-        return res.status(500).json({
-          error: 'Failed to start Docker container',
-          details: error.message,
-          outputId,
-          stdout: dockerService.trimOutput(stdout),
-          stderr: dockerService.trimOutput(stderr),
-          logsUrl: `/logs/${outputId}`,
-          logsTextUrl: `/logs/${outputId}/text`
-        });
+        res.json(result);
       },
-      onClose: (code, { stdout, stderr }) => {
+      onError: (error) => {
         // Clean up uploaded file
         fs.unlinkSync(gpxFile.path);
-
-        if (code !== 0) {
-          console.error(`Docker process exited with code ${code}`);
-
-          return res.status(500).json({
-            error: 'Failed to render video',
-            details: `Docker exited with code ${code}`,
-            outputId,
-            stdout: dockerService.trimOutput(stdout),
-            stderr: dockerService.trimOutput(stderr),
-            logsUrl: `/logs/${outputId}`,
-            logsTextUrl: `/logs/${outputId}/text`
-          });
-        }
-
-        // Check if video file was created
-        const videoPath = path.join(outputDir, 'route-video.mp4');
-        if (fs.existsSync(videoPath)) {
-          const stats = fs.statSync(videoPath);
-          res.json({
-            success: true,
-            videoUrl: `/output/${outputId}/route-video.mp4`,
-            outputId,
-            fileSize: stats.size,
-            animationSpeed, // Include animation speed for client display
-            videoDurationSeconds, // Include expected video duration
-            routeDurationMinutes, // Include route duration
-            videoWidth: parseInt(dockerRecordWidth, 10), // Include video resolution
-            videoHeight: parseInt(dockerRecordHeight, 10),
-            routePattern: routeProfile.pattern, // Complete pattern info from analyzer
-            overlayHooks: overlayHooks, // Include overlay hooks for UI system
-            routeMetadata: { // Include route metadata for client
-              distance: routeAnalysis.distance,
-              elevation: routeAnalysis.elevation,
-              terrain: routeAnalysis.terrain,
-              routeType: routeAnalysis.routeType,
-              metadata: routeAnalysis.metadata
-            },
-            camera: routeProfile.camera, // Include camera profile
-            analysisTime: routeProfile.metadata.analysisTime, // Include analysis performance
-            logsUrl: `/logs/${outputId}`,
-            logsTextUrl: `/logs/${outputId}/text`
-          });
-        } else {
-          // If no video was created, include trimmed logs for debugging
-          console.error('Video file not created. Docker stdout/stderr included in response.');
-          res.status(500).json({
-            error: 'Video file not created',
-            outputId, // Include outputId so logs can be accessed
-            stdout: dockerService.trimOutput(stdout),
-            stderr: dockerService.trimOutput(stderr),
-            logsUrl: `/logs/${outputId}`,
-            logsTextUrl: `/logs/${outputId}/text`
-          });
-        }
+        res.status(500).json(error);
       }
     }
   );
