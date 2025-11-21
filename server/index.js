@@ -131,94 +131,113 @@ app.get('/status/:outputId', (req, res) => {
 
 // Get logs for a render job
 app.get('/logs/:outputId', (req, res) => {
-  const outputId = req.params.outputId;
-  const outputDir = path.join(__dirname, '../output', outputId);
-  const logPath = path.join(outputDir, 'recorder.log');
-  const errorLogPath = path.join(outputDir, 'recorder-error.log');
+  try {
+    const outputId = req.params.outputId;
+    const outputDir = path.join(__dirname, '../output', outputId);
+    const logPath = path.join(outputDir, 'recorder.log');
+    const errorLogPath = path.join(outputDir, 'recorder-error.log');
 
-  if (!fs.existsSync(outputDir)) {
-    return res.status(404).json({ error: 'Output directory not found' });
-  }
-
-  const logs = {
-    outputId,
-    standardLog: '',
-    errorLog: '',
-    timestamp: new Date().toISOString()
-  };
-
-  // Read standard log
-  if (fs.existsSync(logPath)) {
-    try {
-      logs.standardLog = fs.readFileSync(logPath, 'utf8');
-    } catch (error) {
-      logs.standardLog = `Error reading log: ${error.message}`;
+    if (!fs.existsSync(outputDir)) {
+      return res.status(404).json({
+        success: false,
+        error: 'Output directory not found',
+        outputId
+      });
     }
-  } else {
-    logs.standardLog = 'Log file not yet created';
-  }
 
-  // Read error log
-  if (fs.existsSync(errorLogPath)) {
-    try {
-      logs.errorLog = fs.readFileSync(errorLogPath, 'utf8');
-    } catch (error) {
-      logs.errorLog = `Error reading error log: ${error.message}`;
+    const logs = {
+      success: true,
+      outputId,
+      standardLog: '',
+      errorLog: '',
+      timestamp: new Date().toISOString()
+    };
+
+    // Read standard log
+    if (fs.existsSync(logPath)) {
+      try {
+        logs.standardLog = fs.readFileSync(logPath, 'utf8');
+      } catch (error) {
+        logs.standardLog = `Error reading log: ${error.message}`;
+      }
+    } else {
+      logs.standardLog = 'Log file not yet created';
     }
-  } else {
-    logs.errorLog = 'No errors logged';
-  }
 
-  res.json(logs);
+    // Read error log
+    if (fs.existsSync(errorLogPath)) {
+      try {
+        logs.errorLog = fs.readFileSync(errorLogPath, 'utf8');
+      } catch (error) {
+        logs.errorLog = `Error reading error log: ${error.message}`;
+      }
+    } else {
+      logs.errorLog = 'No errors logged';
+    }
+
+    res.json(logs);
+  } catch (error) {
+    console.error('Error retrieving logs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to retrieve logs',
+      details: error.message
+    });
+  }
 });
 
 // Get logs for a render job in text format (useful for Telegram)
 app.get('/logs/:outputId/text', (req, res) => {
-  const outputId = req.params.outputId;
-  const outputDir = path.join(__dirname, '../output', outputId);
-  const logPath = path.join(outputDir, 'recorder.log');
-  const errorLogPath = path.join(outputDir, 'recorder-error.log');
+  try {
+    const outputId = req.params.outputId;
+    const outputDir = path.join(__dirname, '../output', outputId);
+    const logPath = path.join(outputDir, 'recorder.log');
+    const errorLogPath = path.join(outputDir, 'recorder-error.log');
 
-  if (!fs.existsSync(outputDir)) {
-    return res.status(404).send('Output directory not found');
-  }
+    if (!fs.existsSync(outputDir)) {
+      return res.status(404).type('text/plain').send('Output directory not found');
+    }
 
-  let output = `=== Logs for ${outputId} ===\n`;
-  output += `Timestamp: ${new Date().toISOString()}\n\n`;
+    let output = `=== Logs for ${outputId} ===\n`;
+    output += `Timestamp: ${new Date().toISOString()}\n\n`;
 
-  // Read standard log
-  output += '=== Standard Log ===\n';
-  if (fs.existsSync(logPath)) {
-    try {
-      const logContent = fs.readFileSync(logPath, 'utf8');
-      // Limit to last N characters for Telegram's message limit
-      if (logContent.length > CONSTANTS.TELEGRAM.LOG_TRUNCATE_LENGTH) {
-        output += '...TRUNCATED...\n';
-        output += logContent.slice(-CONSTANTS.TELEGRAM.LOG_TRUNCATE_LENGTH);
-      } else {
-        output += logContent;
+    // Read standard log
+    output += '=== Standard Log ===\n';
+    if (fs.existsSync(logPath)) {
+      try {
+        const logContent = fs.readFileSync(logPath, 'utf8');
+        // Limit to last N characters for Telegram's message limit
+        if (logContent.length > CONSTANTS.TELEGRAM.LOG_TRUNCATE_LENGTH) {
+          output += '...TRUNCATED...\n';
+          output += logContent.slice(-CONSTANTS.TELEGRAM.LOG_TRUNCATE_LENGTH);
+        } else {
+          output += logContent;
+        }
+      } catch (error) {
+        output += `Error reading log: ${error.message}\n`;
       }
-    } catch (error) {
-      output += `Error reading log: ${error.message}\n`;
+    } else {
+      output += 'Log file not yet created\n';
     }
-  } else {
-    output += 'Log file not yet created\n';
-  }
 
-  output += '\n\n=== Error Log ===\n';
-  // Read error log
-  if (fs.existsSync(errorLogPath)) {
-    try {
-      const errorLogContent = fs.readFileSync(errorLogPath, 'utf8');
-      output += errorLogContent;
-    } catch (error) {
-      output += `Error reading error log: ${error.message}\n`;
+    output += '\n\n=== Error Log ===\n';
+    // Read error log
+    if (fs.existsSync(errorLogPath)) {
+      try {
+        const errorLogContent = fs.readFileSync(errorLogPath, 'utf8');
+        output += errorLogContent;
+      } catch (error) {
+        output += `Error reading error log: ${error.message}\n`;
+      }
+    } else {
+      output += 'No errors logged\n';
     }
-  } else {
-    output += 'No errors logged\n';
-  }
 
-  res.type('text/plain').send(output);
+    res.type('text/plain').send(output);
+  } catch (error) {
+    console.error('Error retrieving text logs:', error);
+    res.status(500).type('text/plain').send(`Error retrieving logs: ${error.message}`);
+  }
 });
 
 // Cleanup old renders
@@ -322,22 +341,29 @@ app.put('/api/settings', (req, res) => {
   }
 });
 
-// Get animation speed specifically (for route analytics integration)
+// Get animation speed specifically (DEPRECATED - use /api/settings instead)
 app.get('/api/animation-speed', (req, res) => {
   try {
     const animSettings = settingsService.getAnimationSettings();
     res.json({
+      success: true,
+      deprecated: true,
+      message: 'This endpoint is deprecated. Use /api/settings instead.',
       speed: animSettings.defaultSpeed,
       adaptiveEnabled: animSettings.adaptiveSpeedEnabled,
       minSpeed: animSettings.minSpeed,
       maxSpeed: animSettings.maxSpeed
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to read animation speed' });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to read animation speed',
+      details: error.message
+    });
   }
 });
 
-// Update animation speed specifically
+// Update animation speed specifically (DEPRECATED - use /api/settings instead)
 app.put('/api/animation-speed', (req, res) => {
   try {
     const { speed, adaptiveEnabled } = req.body;
@@ -346,7 +372,10 @@ app.put('/api/animation-speed', (req, res) => {
     if (speed !== undefined) {
       const validation = settingsService.validateAnimationSpeed(speed);
       if (!validation.valid) {
-        return res.status(400).json({ error: validation.error });
+        return res.status(400).json({
+          success: false,
+          error: validation.error
+        });
       }
       settingsService.update('animation.defaultSpeed', speed);
     }
@@ -359,12 +388,105 @@ app.put('/api/animation-speed', (req, res) => {
     console.log(`Animation speed updated to ${updatedSettings.defaultSpeed}x (adaptive: ${updatedSettings.adaptiveSpeedEnabled})`);
     res.json({
       success: true,
+      deprecated: true,
+      message: 'This endpoint is deprecated. Use /api/settings instead.',
       speed: updatedSettings.defaultSpeed,
       adaptiveEnabled: updatedSettings.adaptiveSpeedEnabled
     });
   } catch (error) {
     console.error('Error updating animation speed:', error);
-    res.status(500).json({ error: 'Failed to update animation speed' });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update animation speed',
+      details: error.message
+    });
+  }
+});
+
+// Render management API
+
+// Get all active renders
+app.get('/api/active-renders', (req, res) => {
+  try {
+    const activeRenders = renderOrchestratorService.getActiveRenders();
+    res.json({
+      success: true,
+      count: activeRenders.length,
+      renders: activeRenders
+    });
+  } catch (error) {
+    console.error('Error getting active renders:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get active renders',
+      details: error.message
+    });
+  }
+});
+
+// Cancel an active render
+app.delete('/render/:outputId', (req, res) => {
+  try {
+    const outputId = req.params.outputId;
+    const success = renderOrchestratorService.cancelRender(outputId);
+
+    if (success) {
+      console.log(`Render cancelled: ${outputId}`);
+      res.json({
+        success: true,
+        message: `Render ${outputId} cancelled successfully`,
+        outputId
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        error: 'Render not found or already completed',
+        outputId
+      });
+    }
+  } catch (error) {
+    console.error('Error cancelling render:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to cancel render',
+      details: error.message
+    });
+  }
+});
+
+// Get comprehensive system statistics
+app.get('/api/stats', (req, res) => {
+  try {
+    const memoryMonitorService = require('./services/memoryMonitorService');
+    const dockerService = require('./services/dockerService');
+
+    const stats = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      system: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        platform: process.platform,
+        nodeVersion: process.version,
+        pid: process.pid
+      },
+      renders: {
+        active: renderOrchestratorService.getActiveRenders(),
+        activeCount: renderOrchestratorService.getActiveRenders().length
+      },
+      memory: memoryMonitorService.getGlobalStats(),
+      docker: dockerService.getStats(),
+      output: getOutputStats()
+    };
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting system stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get system statistics',
+      details: error.message
+    });
   }
 });
 
@@ -495,6 +617,63 @@ app.get('/health', (req, res) => {
 // Helper functions
 
 /**
+ * Get output directory statistics
+ */
+function getOutputStats() {
+  try {
+    const outputBaseDir = path.join(__dirname, '../output');
+    if (!fs.existsSync(outputBaseDir)) {
+      return {
+        totalRenders: 0,
+        totalSize: 0,
+        oldestRender: null,
+        newestRender: null
+      };
+    }
+
+    const entries = fs.readdirSync(outputBaseDir);
+    let totalSize = 0;
+    let oldestTime = Infinity;
+    let newestTime = 0;
+    let totalRenders = 0;
+
+    for (const entry of entries) {
+      if (!entry.startsWith('route_')) continue;
+
+      const dirPath = path.join(outputBaseDir, entry);
+      const stats = fs.statSync(dirPath);
+
+      if (!stats.isDirectory()) continue;
+
+      totalRenders++;
+
+      // Track oldest and newest
+      if (stats.mtimeMs < oldestTime) oldestTime = stats.mtimeMs;
+      if (stats.mtimeMs > newestTime) newestTime = stats.mtimeMs;
+
+      // Calculate size
+      const videoPath = path.join(dirPath, 'route-video.mp4');
+      if (fs.existsSync(videoPath)) {
+        const videoStats = fs.statSync(videoPath);
+        totalSize += videoStats.size;
+      }
+    }
+
+    return {
+      totalRenders,
+      totalSizeMB: (totalSize / 1024 / 1024).toFixed(2),
+      oldestRender: oldestTime !== Infinity ? new Date(oldestTime).toISOString() : null,
+      newestRender: newestTime !== 0 ? new Date(newestTime).toISOString() : null
+    };
+  } catch (error) {
+    console.error('Error calculating output stats:', error);
+    return {
+      error: error.message
+    };
+  }
+}
+
+/**
  * Validate camera settings
  */
 function validateCameraSettings(camera) {
@@ -573,6 +752,57 @@ function getCameraAdjustmentsForPattern(patternType) {
 }
 
 const PORT = process.env.PORT || CONSTANTS.API.DEFAULT_PORT;
+
+// 404 handler for unknown routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: 'Route not found',
+    path: req.path,
+    method: req.method,
+    availableEndpoints: {
+      render: 'POST /render-route',
+      status: 'GET /status/:outputId',
+      logs: 'GET /logs/:outputId',
+      activeRenders: 'GET /api/active-renders',
+      cancelRender: 'DELETE /render/:outputId',
+      stats: 'GET /api/stats',
+      settings: 'GET/PUT /api/settings',
+      cameraSettings: 'GET/PUT /api/camera-settings',
+      health: 'GET /health'
+    }
+  });
+});
+
+// Centralized error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+
+  // Handle multer errors (file upload)
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({
+      success: false,
+      error: 'File too large',
+      details: err.message
+    });
+  }
+
+  // Handle JSON parsing errors
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid JSON',
+      details: err.message
+    });
+  }
+
+  // Generic error handler
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal server error',
+    details: process.env.NODE_ENV === 'development' ? err.stack : undefined
+  });
+});
 
 app.listen(PORT, () => {
   console.log(`API server running on port ${PORT}`);
