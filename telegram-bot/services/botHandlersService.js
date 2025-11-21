@@ -22,7 +22,7 @@ class BotHandlersService {
     this.api = apiService;
     this.state = stateService;
     this.botToken = botToken;
-    
+
     // Track progress monitoring intervals
     this.progressIntervals = new Map(); // outputId -> intervalId
   }

@@ -28,7 +28,7 @@ const handlersService = new BotHandlersService(bot, apiService, stateService, BO
   try {
     await stateService.initialize();
     handlersService.registerHandlers();
-    
+
     console.log('✅ Telegram bot ready!');
     console.log(`📡 API Server: ${API_SERVER}`);
     console.log(`🌐 Public URL: ${PUBLIC_URL}`);
@@ -42,16 +42,16 @@ const handlersService = new BotHandlersService(bot, apiService, stateService, BO
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\n🛑 Shutting down bot...');
-  
+
   // Stop progress monitoring
   handlersService.stopAllMonitoring();
-  
+
   // Save state
   await stateService.saveHistory();
-  
+
   // Stop bot
   await bot.stopPolling();
-  
+
   console.log('✅ Bot stopped gracefully');
   process.exit(0);
 });

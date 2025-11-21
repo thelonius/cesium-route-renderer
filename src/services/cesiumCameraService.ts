@@ -45,6 +45,84 @@ export interface RouteSegment {
 }
 
 /**
+ * Route pattern type from analyzer service
+ */
+export type RoutePatternType =
+  | 'technical_climb'
+  | 'scenic_overlook'
+  | 'alpine_ridge'
+  | 'valley_traverse'
+  | 'switchback_section'
+  | 'flat_approach'
+  | 'unknown';
+
+/**
+ * Camera adjustment based on route pattern
+ */
+export interface PatternCameraAdjustment {
+  distanceMultiplier: number; // multiply base distance
+  heightMultiplier: number; // multiply base height
+  pitchAdjustment: number; // degrees to add/subtract
+  smoothingOverride?: number; // override smoothing factor
+  lookAheadMultiplier?: number; // multiply look-ahead distance
+}
+
+/**
+ * Camera adjustments per route pattern
+ */
+export const PATTERN_CAMERA_ADJUSTMENTS: Record<RoutePatternType, PatternCameraAdjustment> = {
+  technical_climb: {
+    distanceMultiplier: 1.5, // Pull back to show difficulty
+    heightMultiplier: 1.3,
+    pitchAdjustment: -15, // Tilt up to emphasize climb
+    smoothingOverride: 0.75,
+    lookAheadMultiplier: 1.2
+  },
+  scenic_overlook: {
+    distanceMultiplier: 2.0, // Wide view for scenery
+    heightMultiplier: 1.5,
+    pitchAdjustment: -10,
+    smoothingOverride: 0.9,
+    lookAheadMultiplier: 2.0
+  },
+  alpine_ridge: {
+    distanceMultiplier: 1.8,
+    heightMultiplier: 1.4,
+    pitchAdjustment: -5,
+    smoothingOverride: 0.85,
+    lookAheadMultiplier: 1.5
+  },
+  valley_traverse: {
+    distanceMultiplier: 1.2,
+    heightMultiplier: 1.1,
+    pitchAdjustment: 0,
+    smoothingOverride: 0.8,
+    lookAheadMultiplier: 1.1
+  },
+  switchback_section: {
+    distanceMultiplier: 1.3,
+    heightMultiplier: 1.4, // Higher to see switchback pattern
+    pitchAdjustment: -20, // More downward to see turns
+    smoothingOverride: 0.7,
+    lookAheadMultiplier: 0.8
+  },
+  flat_approach: {
+    distanceMultiplier: 0.9,
+    heightMultiplier: 0.9,
+    pitchAdjustment: 0,
+    smoothingOverride: 0.7,
+    lookAheadMultiplier: 1.0
+  },
+  unknown: {
+    distanceMultiplier: 1.0,
+    heightMultiplier: 1.0,
+    pitchAdjustment: 0,
+    smoothingOverride: 0.75,
+    lookAheadMultiplier: 1.0
+  }
+};
+
+/**
  * Default camera settings for each strategy
  */
 export const DEFAULT_CAMERA_SETTINGS: Record<CameraStrategy, CameraSettings> = {
@@ -103,6 +181,7 @@ export class CesiumCameraService {
   private currentStrategy: CameraStrategy;
   private keyframes: CameraKeyframe[] = [];
   private routeSegments: RouteSegment[] = [];
+  private routePattern: RoutePatternType = 'unknown';
 
   constructor(viewer: Cesium.Viewer, strategy: CameraStrategy = 'follow') {
     this.viewer = viewer;
@@ -131,6 +210,21 @@ export class CesiumCameraService {
   setStrategy(strategy: CameraStrategy): void {
     this.currentStrategy = strategy;
     this.settings = { ...DEFAULT_CAMERA_SETTINGS[strategy] };
+  }
+
+  /**
+   * Set route pattern for camera adjustments
+   */
+  setRoutePattern(pattern: RoutePatternType): void {
+    this.routePattern = pattern;
+    console.log(`Camera: Route pattern set to ${pattern}`);
+  }
+
+  /**
+   * Get camera adjustment for current route pattern
+   */
+  getPatternAdjustment(): PatternCameraAdjustment {
+    return PATTERN_CAMERA_ADJUSTMENTS[this.routePattern];
   }
 
   /**
@@ -240,6 +334,7 @@ export class CesiumCameraService {
     times: Cesium.JulianDate[]
   ): CameraKeyframe[] {
     const keyframes: CameraKeyframe[] = [];
+    const patternAdjustment = this.getPatternAdjustment();
 
     for (let i = 0; i < positions.length; i++) {
       const position = positions[i];
@@ -248,25 +343,32 @@ export class CesiumCameraService {
       // Calculate heading (direction of travel)
       const heading = this.calculateHeading(position, nextPosition);
 
+      // Apply pattern adjustments
+      const adjustedDistance = this.settings.followDistance * patternAdjustment.distanceMultiplier;
+      const adjustedHeight = this.settings.followHeight * patternAdjustment.heightMultiplier;
+      const adjustedLookAhead =
+        this.settings.lookAheadDistance * (patternAdjustment.lookAheadMultiplier || 1.0);
+
       // Camera position: behind and above
       const cameraPosition = this.calculateCameraPosition(
         position,
         heading,
-        this.settings.followDistance,
-        this.settings.followHeight
+        adjustedDistance,
+        adjustedHeight
       );
 
       // Look at point: ahead of entity
-      const lookAtPosition = this.calculateLookAtPosition(
-        position,
-        heading,
-        this.settings.lookAheadDistance
-      );
+      const lookAtPosition = this.calculateLookAtPosition(position, heading, adjustedLookAhead);
+
+      const orientation = this.calculateOrientation(cameraPosition, lookAtPosition);
+
+      // Apply pitch adjustment from pattern
+      orientation.pitch += patternAdjustment.pitchAdjustment * (Math.PI / 180);
 
       keyframes.push({
         timestamp: Cesium.JulianDate.secondsDifference(times[i], times[0]),
         position: cameraPosition,
-        orientation: this.calculateOrientation(cameraPosition, lookAtPosition)
+        orientation
       });
     }
 
@@ -283,6 +385,7 @@ export class CesiumCameraService {
     segments: RouteSegment[]
   ): CameraKeyframe[] {
     const keyframes: CameraKeyframe[] = [];
+    const patternAdjustment = this.getPatternAdjustment();
 
     for (let i = 0; i < positions.length; i++) {
       const position = positions[i];
@@ -294,30 +397,30 @@ export class CesiumCameraService {
       );
 
       // Adjust camera based on segment type
-      let distanceMultiplier = 1.0;
-      let heightMultiplier = 1.0;
-      let pitchAdjustment = 0;
+      let distanceMultiplier = patternAdjustment.distanceMultiplier;
+      let heightMultiplier = patternAdjustment.heightMultiplier;
+      let pitchAdjustment = patternAdjustment.pitchAdjustment;
 
       if (activeSegment) {
         switch (activeSegment.type) {
           case 'climb':
             // Pull back and tilt up during climbs
-            distanceMultiplier = 1.3;
-            heightMultiplier = 1.2;
-            pitchAdjustment = -10 * activeSegment.intensity;
+            distanceMultiplier *= 1.3;
+            heightMultiplier *= 1.2;
+            pitchAdjustment -= 10 * activeSegment.intensity;
             break;
 
           case 'descent':
             // Get closer and tilt down during descents
-            distanceMultiplier = 0.8;
-            heightMultiplier = 0.9;
-            pitchAdjustment = 10 * activeSegment.intensity;
+            distanceMultiplier *= 0.8;
+            heightMultiplier *= 0.9;
+            pitchAdjustment += 10 * activeSegment.intensity;
             break;
 
           case 'turn':
             // Swing wide on turns
-            distanceMultiplier = 1.2;
-            heightMultiplier = 1.1;
+            distanceMultiplier *= 1.2;
+            heightMultiplier *= 1.1;
             break;
         }
       }
@@ -325,13 +428,11 @@ export class CesiumCameraService {
       const heading = this.calculateHeading(position, nextPosition);
       const distance = this.settings.followDistance * distanceMultiplier;
       const height = this.settings.followHeight * heightMultiplier;
+      const lookAhead =
+        this.settings.lookAheadDistance * (patternAdjustment.lookAheadMultiplier || 1.0);
 
       const cameraPosition = this.calculateCameraPosition(position, heading, distance, height);
-      const lookAtPosition = this.calculateLookAtPosition(
-        position,
-        heading,
-        this.settings.lookAheadDistance
-      );
+      const lookAtPosition = this.calculateLookAtPosition(position, heading, lookAhead);
 
       const orientation = this.calculateOrientation(cameraPosition, lookAtPosition);
       orientation.pitch += pitchAdjustment * (Math.PI / 180);
@@ -580,6 +681,127 @@ export class CesiumCameraService {
   }
 
   /**
+   * Interpolate between two keyframes
+   */
+  interpolateKeyframes(
+    keyframe1: CameraKeyframe,
+    keyframe2: CameraKeyframe,
+    t: number
+  ): CameraKeyframe {
+    // t is 0-1 between keyframe1 and keyframe2
+    const smoothT = this.applySmoothingCurve(t);
+
+    // Interpolate position
+    const position = Cesium.Cartesian3.lerp(
+      keyframe1.position,
+      keyframe2.position,
+      smoothT,
+      new Cesium.Cartesian3()
+    );
+
+    // Interpolate orientation if both have it
+    let orientation;
+    if (keyframe1.orientation && keyframe2.orientation) {
+      orientation = {
+        heading: this.lerpAngle(keyframe1.orientation.heading, keyframe2.orientation.heading, smoothT),
+        pitch: Cesium.Math.lerp(keyframe1.orientation.pitch, keyframe2.orientation.pitch, smoothT),
+        roll: Cesium.Math.lerp(keyframe1.orientation.roll, keyframe2.orientation.roll, smoothT)
+      };
+    }
+
+    return {
+      timestamp: Cesium.Math.lerp(keyframe1.timestamp, keyframe2.timestamp, t),
+      position,
+      orientation
+    };
+  }
+
+  /**
+   * Apply smoothing curve to interpolation parameter
+   */
+  private applySmoothingCurve(t: number): number {
+    const factor = this.settings.smoothingFactor;
+
+    // Ease-in-out cubic
+    if (factor > 0.8) {
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    // Ease-in-out quadratic
+    if (factor > 0.6) {
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    // Linear
+    return t;
+  }
+
+  /**
+   * Interpolate between two angles, taking shortest path
+   */
+  private lerpAngle(angle1: number, angle2: number, t: number): number {
+    // Normalize angles to [-π, π]
+    const normalize = (angle: number) => {
+      while (angle > Math.PI) angle -= 2 * Math.PI;
+      while (angle < -Math.PI) angle += 2 * Math.PI;
+      return angle;
+    };
+
+    angle1 = normalize(angle1);
+    angle2 = normalize(angle2);
+
+    // Find shortest path
+    let diff = angle2 - angle1;
+    if (diff > Math.PI) diff -= 2 * Math.PI;
+    if (diff < -Math.PI) diff += 2 * Math.PI;
+
+    return angle1 + diff * t;
+  }
+
+  /**
+   * Get keyframe at specific timestamp
+   */
+  getKeyframeAtTime(timestamp: number): CameraKeyframe | null {
+    if (this.keyframes.length === 0) return null;
+
+    // Find surrounding keyframes
+    let prevKeyframe = this.keyframes[0];
+    let nextKeyframe = this.keyframes[this.keyframes.length - 1];
+
+    for (let i = 0; i < this.keyframes.length - 1; i++) {
+      if (
+        this.keyframes[i].timestamp <= timestamp &&
+        this.keyframes[i + 1].timestamp >= timestamp
+      ) {
+        prevKeyframe = this.keyframes[i];
+        nextKeyframe = this.keyframes[i + 1];
+        break;
+      }
+    }
+
+    // If exact match, return it
+    if (prevKeyframe.timestamp === timestamp) return prevKeyframe;
+    if (nextKeyframe.timestamp === timestamp) return nextKeyframe;
+
+    // Interpolate
+    const duration = nextKeyframe.timestamp - prevKeyframe.timestamp;
+    if (duration === 0) return prevKeyframe;
+
+    const t = (timestamp - prevKeyframe.timestamp) / duration;
+    return this.interpolateKeyframes(prevKeyframe, nextKeyframe, t);
+  }
+
+  /**
+   * Apply camera at specific timestamp
+   */
+  applyCameraAtTime(timestamp: number): void {
+    const keyframe = this.getKeyframeAtTime(timestamp);
+    if (keyframe) {
+      this.applyCameraKeyframe(keyframe);
+    }
+  }
+
+  /**
    * Get keyframes
    */
   getKeyframes(): CameraKeyframe[] {
@@ -592,6 +814,13 @@ export class CesiumCameraService {
   clearKeyframes(): void {
     this.keyframes = [];
     this.routeSegments = [];
+  }
+
+  /**
+   * Get route pattern
+   */
+  getRoutePattern(): RoutePatternType {
+    return this.routePattern;
   }
 }
 
