@@ -2,7 +2,7 @@
  * Docker container configuration and helper functions
  */
 
-const CONSTANTS = require('./constants');
+const CONSTANTS = require('./constants.cjs');
 
 class DockerConfig {
   constructor() {

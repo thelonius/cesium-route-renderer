@@ -9,7 +9,7 @@ const CONSTANTS = require('../config/constants.cjs');
 const renderingConfig = require('../config/rendering.cjs');
 const settingsService = require('./services/settingsService');
 const renderOrchestratorService = require('./services/renderOrchestratorService');
-const geoMath = require('../utils/geoMath');
+const geoMath = require('../utils/geoMath.cjs');
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });

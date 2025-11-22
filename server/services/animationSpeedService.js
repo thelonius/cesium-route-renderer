@@ -1,5 +1,5 @@
 const CONSTANTS = require('../../config/constants.cjs');
-const { haversineDistance, calculateTotalDistance, calculateElevationGain } = require('../../utils/geoMath');
+const { haversineDistance, calculateTotalDistance, calculateElevationGain } = require('../../utils/geoMath.cjs');
 
 /**
  * Animation Speed Service

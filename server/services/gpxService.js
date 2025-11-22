@@ -4,7 +4,7 @@
  */
 
 const fs = require('fs');
-const geoMath = require('../../utils/geoMath');
+const geoMath = require('../../utils/geoMath.cjs');
 
 class GpxService {
   /**
