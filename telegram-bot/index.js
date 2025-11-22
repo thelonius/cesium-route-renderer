@@ -7,7 +7,7 @@ const StateService = require('./services/stateService');
 const BotHandlersService = require('./services/botHandlersService');
 
 // Configuration
-const CONSTANTS = require('../config/constants');
+const CONSTANTS = require('../config/constants.cjs');
 
 const BOT_TOKEN = '8418496404:AAGLdVNW_Pla_u1bMVfFia-s9klwRsgYZhs';
 const API_SERVER = process.env.API_SERVER || 'http://localhost:3000';

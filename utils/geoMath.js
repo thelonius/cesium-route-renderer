@@ -3,7 +3,7 @@
  * Calculations for distances, elevation, and route analysis
  */
 
-const CONSTANTS = require('../config/constants');
+const CONSTANTS = require('../config/constants.cjs');
 
 /**
  * Calculate distance between two points using Haversine formula

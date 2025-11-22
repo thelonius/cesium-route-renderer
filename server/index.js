@@ -5,7 +5,7 @@ const fs = require('fs');
 const cors = require('cors');
 
 // Configuration
-const CONSTANTS = require('../config/constants');
+const CONSTANTS = require('../config/constants.cjs');
 const renderingConfig = require('../config/rendering');
 const settingsService = require('./services/settingsService');
 const renderOrchestratorService = require('./services/renderOrchestratorService');
