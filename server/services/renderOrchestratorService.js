@@ -1,23 +1,27 @@
-const fs = require('fs');
-const path = require('path');
 const routeAnalyzerService = require('./routeAnalyzerService');
 const dockerService = require('./dockerService');
 const settingsService = require('./settingsService');
-const renderingConfig = require('../../config/rendering');
+
+// Orchestrator modules
+const metadataBuilder = require('./orchestrator/metadataBuilder');
+const configBuilder = require('./orchestrator/configBuilder');
+const outputValidator = require('./orchestrator/outputValidator');
+const progressTracker = require('./orchestrator/progressTracker');
+const dockerExecutor = require('./orchestrator/dockerExecutor');
+const { STAGES } = require('./orchestrator/pipelineStages');
 
 /**
  * Render Orchestrator Service
  *
- * High-level service that coordinates all aspects of route video rendering:
- * - Route analysis (pattern detection, speed calculation, overlays)
- * - Docker container execution and monitoring
- * - Memory monitoring and resource management
- * - Progress tracking and status updates
- * - Output validation and metadata generation
- * - Error handling and cleanup
+ * High-level coordinator that manages the 5-stage render pipeline:
+ * 1. Route Analysis - Pattern detection, speed calculation, overlays
+ * 2. Preparation - Configuration and metadata preparation
+ * 3. Rendering - Docker container execution with progress tracking
+ * 4. Validation - Output verification
+ * 5. Completion - Final metadata and response generation
  *
  * This service provides a single entry point for the /render-route endpoint,
- * abstracting away the complexity of coordinating multiple lower-level services.
+ * delegating specific concerns to focused orchestrator modules.
  */
 class RenderOrchestratorService {
   constructor() {
@@ -74,8 +78,12 @@ class RenderOrchestratorService {
       console.log(`${'='.repeat(80)}\n`);
 
       renderState.status = 'analyzing';
-      renderState.progress = 10;
-      onProgress({ stage: 'route-analysis', progress: 10, message: 'Analyzing route...' });
+      renderState.progress = STAGES.ROUTE_ANALYSIS.progressStart;
+      onProgress({
+        stage: STAGES.ROUTE_ANALYSIS.name,
+        progress: STAGES.ROUTE_ANALYSIS.progressStart,
+        message: STAGES.ROUTE_ANALYSIS.description
+      });
 
       const settings = settingsService.load();
       const routeProfile = routeAnalyzerService.analyzeComplete(routeFilePath, settings);
@@ -85,43 +93,64 @@ class RenderOrchestratorService {
       }
 
       renderState.routeProfile = routeProfile;
-      renderState.progress = 20;
-      onProgress({ stage: 'route-analysis', progress: 20, message: 'Route analyzed successfully' });
+      renderState.progress = STAGES.ROUTE_ANALYSIS.progressEnd;
+      onProgress({
+        stage: STAGES.ROUTE_ANALYSIS.name,
+        progress: STAGES.ROUTE_ANALYSIS.progressEnd,
+        message: 'Route analyzed successfully'
+      });
 
-      // Log analysis results
-      this._logAnalysisResults(routeProfile, outputDir);
+      // Log analysis results using metadata builder
+      metadataBuilder.logAnalysisResults(routeProfile, outputDir);
 
       // Stage 2: Prepare render configuration
-      renderState.currentStage = 'preparation';
-      renderState.progress = 25;
-      onProgress({ stage: 'preparation', progress: 25, message: 'Preparing render configuration...' });
+      renderState.currentStage = STAGES.PREPARATION.name;
+      renderState.progress = STAGES.PREPARATION.progressStart;
+      onProgress({
+        stage: STAGES.PREPARATION.name,
+        progress: STAGES.PREPARATION.progressStart,
+        message: STAGES.PREPARATION.description
+      });
 
-      const renderConfig = this._prepareRenderConfig(routeProfile, config, settings);
+      const renderConfig = configBuilder.prepareRenderConfig(routeProfile, config, settings);
 
-      // Save metadata files
-      this._saveMetadataFiles(routeProfile, renderConfig, outputDir);
+      // Save metadata files using metadata builder
+      metadataBuilder.saveMetadataFiles(routeProfile, renderConfig, outputDir);
 
-      renderState.progress = 30;
-      onProgress({ stage: 'preparation', progress: 30, message: 'Configuration prepared' });
+      renderState.progress = STAGES.PREPARATION.progressEnd;
+      onProgress({
+        stage: STAGES.PREPARATION.name,
+        progress: STAGES.PREPARATION.progressEnd,
+        message: 'Configuration prepared'
+      });
 
       // Stage 3: Execute Docker render
-      renderState.currentStage = 'rendering';
+      renderState.currentStage = STAGES.RENDERING.name;
       renderState.status = 'rendering';
-      renderState.progress = 35;
-      onProgress({ stage: 'rendering', progress: 35, message: 'Starting Docker container...' });
+      renderState.progress = STAGES.RENDERING.progressStart;
+      onProgress({
+        stage: STAGES.RENDERING.name,
+        progress: STAGES.RENDERING.progressStart,
+        message: 'Starting Docker container...'
+      });
 
-      const dockerResult = await this._executeDockerRender(
+      const dockerResult = await dockerExecutor.executeDockerRender(
         renderConfig,
         renderState,
-        onProgress
+        onProgress,
+        progressTracker.updateProgressFromDockerOutput
       );
 
       // Stage 4: Validate output
-      renderState.currentStage = 'validation';
-      renderState.progress = 90;
-      onProgress({ stage: 'validation', progress: 90, message: 'Validating output...' });
+      renderState.currentStage = STAGES.VALIDATION.name;
+      renderState.progress = STAGES.VALIDATION.progressStart;
+      onProgress({
+        stage: STAGES.VALIDATION.name,
+        progress: STAGES.VALIDATION.progressStart,
+        message: STAGES.VALIDATION.description
+      });
 
-      const validation = this._validateOutput(outputDir, dockerResult);
+      const validation = outputValidator.validateOutput(outputDir, dockerResult);
 
       if (!validation.success) {
         throw new Error(validation.error);
@@ -129,21 +158,17 @@ class RenderOrchestratorService {
 
       // Stage 5: Complete
       renderState.status = 'complete';
-      renderState.progress = 100;
-      renderState.currentStage = 'complete';
+      renderState.progress = STAGES.COMPLETE.progressEnd;
+      renderState.currentStage = STAGES.COMPLETE.name;
 
-      const completionData = this._buildCompletionData(
+      const completionData = metadataBuilder.buildCompletionData(
         renderConfig,
         validation,
         dockerResult,
         startTime
       );
 
-      console.log(`\n${'='.repeat(80)}`);
-      console.log(`✅ Render complete: ${renderId}`);
-      console.log(`   Duration: ${Math.round((Date.now() - startTime) / 1000)}s`);
-      console.log(`   Video size: ${(validation.videoStats.size / 1024 / 1024).toFixed(2)}MB`);
-      console.log(`${'='.repeat(80)}\n`);
+      metadataBuilder.logCompletion(renderId, startTime, validation.videoStats.size);
 
       this.activeRenders.delete(renderId);
       onComplete(completionData);
@@ -230,277 +255,6 @@ class RenderOrchestratorService {
       currentStage: state.currentStage,
       elapsed: Date.now() - state.startTime
     }));
-  }
-
-  /**
-   * Log route analysis results
-   * @private
-   */
-  _logAnalysisResults(routeProfile, outputDir) {
-    const logPath = path.join(outputDir, 'recorder.log');
-
-    console.log(`🎬 Animation speed: ${routeProfile.speed.value}x - ${routeProfile.speed.reason}`);
-
-    if (routeProfile.pattern.type !== 'unknown') {
-      console.log(`🗺️  Route pattern: ${routeProfile.pattern.type} (${(routeProfile.pattern.confidence * 100).toFixed(0)}% confidence)`);
-      console.log(`   ${routeProfile.pattern.description}`);
-    }
-
-    console.log(`📊 Generated ${routeProfile.overlays.hooks.length} overlay hooks for video`);
-    console.log(`⚡ Analysis completed in ${routeProfile.metadata.analysisTime}ms`);
-
-    // Write to log file
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] 🐳 Starting render operation...\n`);
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] Animation speed: ${routeProfile.speed.value}x\n`);
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] Route pattern: ${routeProfile.pattern.type} (${(routeProfile.pattern.confidence * 100).toFixed(0)}% confidence)\n`);
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] Overlay hooks: ${routeProfile.overlays.hooks.length} generated\n`);
-    fs.appendFileSync(logPath, `[${new Date().toISOString()}] Analysis time: ${routeProfile.metadata.analysisTime}ms\n`);
-  }
-
-  /**
-   * Prepare render configuration
-   * @private
-   */
-  _prepareRenderConfig(routeProfile, config, settings) {
-    const routeAnalysis = routeProfile.route;
-    const animationSpeed = routeProfile.speed.value;
-
-    // Calculate video duration
-    let videoDurationSeconds = null;
-    let routeDurationMinutes = null;
-    const routeDurationSeconds = routeAnalysis.duration?.seconds || null;
-
-    if (routeDurationSeconds) {
-      videoDurationSeconds = renderingConfig.calculateVideoDuration(routeDurationSeconds, animationSpeed);
-      routeDurationMinutes = (routeDurationSeconds / 60).toFixed(1);
-      const videoDurationMinutes = (videoDurationSeconds / 60).toFixed(1);
-      console.log(`📹 Route duration: ${routeDurationMinutes} min | Video duration: ${videoDurationMinutes} min | Speed: ${animationSpeed}x`);
-    }
-
-    // Get recording settings
-    const dockerRecordFps = String(settings.recording?.fps || 30);
-    const dockerRecordWidth = String(settings.recording?.width || 720);
-    const dockerRecordHeight = String(settings.recording?.height || 1280);
-
-    return {
-      routeProfile,
-      routeAnalysis,
-      animationSpeed,
-      videoDurationSeconds,
-      routeDurationMinutes,
-      routeDurationSeconds,
-      recording: {
-        fps: dockerRecordFps,
-        width: dockerRecordWidth,
-        height: dockerRecordHeight
-      },
-      paths: {
-        routeFile: config.routeFilePath,
-        routeFilename: config.routeFilename,
-        outputDir: config.outputDir,
-        outputId: config.outputId
-      },
-      userName: config.userName
-    };
-  }
-
-  /**
-   * Save metadata files
-   * @private
-   */
-  _saveMetadataFiles(routeProfile, renderConfig, outputDir) {
-    const overlayDataPath = path.join(outputDir, 'overlay-data.json');
-    const routeAnalysis = routeProfile.route;
-
-    fs.writeFileSync(overlayDataPath, JSON.stringify({
-      overlayHooks: routeProfile.overlays,
-      routePattern: routeProfile.pattern,
-      routeMetadata: {
-        distance: routeAnalysis.distance,
-        elevation: routeAnalysis.elevation,
-        terrain: routeAnalysis.terrain,
-        routeType: routeAnalysis.routeType,
-        metadata: routeAnalysis.metadata
-      },
-      camera: routeProfile.camera,
-      animationSpeed: renderConfig.animationSpeed,
-      videoDuration: renderConfig.videoDurationSeconds,
-      analysisTime: routeProfile.metadata.analysisTime,
-      generatedAt: new Date().toISOString()
-    }, null, 2));
-  }
-
-  /**
-   * Execute Docker render with progress tracking
-   * @private
-   */
-  _executeDockerRender(renderConfig, renderState, onProgress) {
-    return new Promise((resolve, reject) => {
-      const logPath = path.join(renderConfig.paths.outputDir, 'recorder.log');
-
-      let dockerOutputs = {
-        stdout: '',
-        stderr: '',
-        memoryStats: null,
-        duration: 0,
-        exitCode: null
-      };
-
-      const containerInfo = dockerService.runContainer(
-        {
-          gpxPath: path.resolve(renderConfig.paths.routeFile),
-          gpxFilename: renderConfig.paths.routeFilename,
-          outputDir: path.resolve(renderConfig.paths.outputDir),
-          animationSpeed: renderConfig.animationSpeed,
-          userName: renderConfig.userName,
-          recording: renderConfig.recording,
-          logPath
-        },
-        {
-          onStdout: (text) => {
-            dockerOutputs.stdout += text;
-            // Track progress from Docker output (optional enhancement)
-            this._updateProgressFromDockerOutput(text, renderState, onProgress);
-          },
-          onStderr: (text) => {
-            dockerOutputs.stderr += text;
-          },
-          onMemoryWarning: ({ rss }) => {
-            console.warn(`⚠️  High memory usage during render: ${rss}MB`);
-            onProgress({
-              stage: 'rendering',
-              progress: renderState.progress,
-              message: `Rendering... (Memory: ${rss}MB)`,
-              memoryWarning: true
-            });
-          },
-          onError: (error, { stdout, stderr, memoryStats }) => {
-            dockerOutputs.stdout = stdout;
-            dockerOutputs.stderr = stderr;
-            dockerOutputs.memoryStats = memoryStats;
-            reject(new Error(`Docker error: ${error.message}`));
-          },
-          onClose: (code, { stdout, stderr, memoryStats, duration }) => {
-            dockerOutputs.stdout = stdout;
-            dockerOutputs.stderr = stderr;
-            dockerOutputs.memoryStats = memoryStats;
-            dockerOutputs.duration = duration;
-            dockerOutputs.exitCode = code;
-
-            if (code !== 0) {
-              reject(new Error(`Docker exited with code ${code}`));
-            } else {
-              resolve(dockerOutputs);
-            }
-          }
-        }
-      );
-
-      renderState.dockerContainer = containerInfo;
-    });
-  }
-
-  /**
-   * Update progress based on Docker output
-   * @private
-   */
-  _updateProgressFromDockerOutput(text, renderState, onProgress) {
-    // Parse Docker output for progress indicators
-    // Example: "📹 Frame 150/300 (50%)" -> 50% progress
-
-    // Simple heuristic: map Docker progress to overall progress (35-85%)
-    const frameMatch = text.match(/Frame\s+(\d+)\/(\d+)/);
-    if (frameMatch) {
-      const current = parseInt(frameMatch[1], 10);
-      const total = parseInt(frameMatch[2], 10);
-      const dockerProgress = (current / total) * 100;
-
-      // Map 0-100% Docker progress to 35-85% overall progress
-      const overallProgress = 35 + (dockerProgress * 0.5);
-      renderState.progress = Math.round(overallProgress);
-
-      onProgress({
-        stage: 'rendering',
-        progress: renderState.progress,
-        message: `Rendering frame ${current}/${total}...`
-      });
-    }
-  }
-
-  /**
-   * Validate render output
-   * @private
-   */
-  _validateOutput(outputDir, dockerResult) {
-    const videoPath = path.join(outputDir, 'route-video.mp4');
-
-    if (!fs.existsSync(videoPath)) {
-      return {
-        success: false,
-        error: 'Video file not created',
-        dockerOutputs: {
-          stdout: dockerService.trimOutput(dockerResult.stdout),
-          stderr: dockerService.trimOutput(dockerResult.stderr)
-        }
-      };
-    }
-
-    const videoStats = fs.statSync(videoPath);
-
-    // Check if file has content
-    if (videoStats.size === 0) {
-      return {
-        success: false,
-        error: 'Video file is empty',
-        dockerOutputs: {
-          stdout: dockerService.trimOutput(dockerResult.stdout),
-          stderr: dockerService.trimOutput(dockerResult.stderr)
-        }
-      };
-    }
-
-    return {
-      success: true,
-      videoPath,
-      videoStats,
-      dockerOutputs: dockerResult
-    };
-  }
-
-  /**
-   * Build completion data for response
-   * @private
-   */
-  _buildCompletionData(renderConfig, validation, dockerResult, startTime) {
-    const routeProfile = renderConfig.routeProfile;
-    const routeAnalysis = renderConfig.routeAnalysis;
-
-    return {
-      success: true,
-      videoUrl: `/output/${renderConfig.paths.outputId}/route-video.mp4`,
-      outputId: renderConfig.paths.outputId,
-      fileSize: validation.videoStats.size,
-      animationSpeed: renderConfig.animationSpeed,
-      videoDurationSeconds: renderConfig.videoDurationSeconds,
-      routeDurationMinutes: renderConfig.routeDurationMinutes,
-      videoWidth: parseInt(renderConfig.recording.width, 10),
-      videoHeight: parseInt(renderConfig.recording.height, 10),
-      routePattern: routeProfile.pattern,
-      overlayHooks: routeProfile.overlays,
-      routeMetadata: {
-        distance: routeAnalysis.distance,
-        elevation: routeAnalysis.elevation,
-        terrain: routeAnalysis.terrain,
-        routeType: routeAnalysis.routeType,
-        metadata: routeAnalysis.metadata
-      },
-      camera: routeProfile.camera,
-      analysisTime: routeProfile.metadata.analysisTime,
-      renderTime: Date.now() - startTime,
-      memoryStats: dockerResult.memoryStats,
-      logsUrl: `/logs/${renderConfig.paths.outputId}`,
-      logsTextUrl: `/logs/${renderConfig.paths.outputId}/text`
-    };
   }
 
   /**
