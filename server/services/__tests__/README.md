@@ -87,10 +87,10 @@ describe('ServiceName', () => {
     test('should do something specific', () => {
       // Arrange
       const input = {};
-      
+
       // Act
       const result = service.method(input);
-      
+
       // Assert
       expect(result).toBe(expected);
     });

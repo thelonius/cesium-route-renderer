@@ -31,7 +31,7 @@ describe('MemoryMonitorService', () => {
 
     test('starts monitoring immediately', (done) => {
       const onMeasurement = jest.fn();
-      
+
       memoryMonitorService.createMonitor('test-immediate', {
         onMeasurement,
         interval: 100
@@ -55,7 +55,7 @@ describe('MemoryMonitorService', () => {
   describe('stopMonitor', () => {
     test('stops monitoring and returns final statistics', () => {
       memoryMonitorService.createMonitor('test-stop');
-      
+
       const stats = memoryMonitorService.stopMonitor('test-stop');
 
       expect(stats).toMatchObject({
@@ -84,7 +84,7 @@ describe('MemoryMonitorService', () => {
   describe('Memory measurement', () => {
     test('records memory usage over time', (done) => {
       const measurements = [];
-      
+
       memoryMonitorService.createMonitor('test-measurements', {
         interval: 100,
         onMeasurement: (data) => {
@@ -94,7 +94,7 @@ describe('MemoryMonitorService', () => {
 
       setTimeout(() => {
         memoryMonitorService.stopMonitor('test-measurements');
-        
+
         expect(measurements.length).toBeGreaterThan(2);
         expect(measurements[0]).toMatchObject({
           timestamp: expect.any(Number),
@@ -102,14 +102,14 @@ describe('MemoryMonitorService', () => {
           heapTotal: expect.any(Number),
           rss: expect.any(Number)
         });
-        
+
         done();
       }, 350);
     });
 
     test('tracks peak memory correctly', (done) => {
       let peakSeen = 0;
-      
+
       memoryMonitorService.createMonitor('test-peak', {
         interval: 50,
         onMeasurement: (data) => {
@@ -121,7 +121,7 @@ describe('MemoryMonitorService', () => {
 
       setTimeout(() => {
         const stats = memoryMonitorService.stopMonitor('test-peak');
-        
+
         expect(stats.peakMemory).toBeGreaterThanOrEqual(peakSeen);
         done();
       }, 200);
@@ -131,7 +131,7 @@ describe('MemoryMonitorService', () => {
   describe('Threshold detection', () => {
     test('triggers warning callback when exceeding warning threshold', (done) => {
       const onWarning = jest.fn();
-      
+
       memoryMonitorService.createMonitor('test-warning', {
         warningThreshold: 1, // 1MB - will definitely exceed
         criticalThreshold: 10000,
@@ -148,7 +148,7 @@ describe('MemoryMonitorService', () => {
 
     test('triggers critical callback when exceeding critical threshold', (done) => {
       const onCritical = jest.fn();
-      
+
       memoryMonitorService.createMonitor('test-critical', {
         warningThreshold: 1,
         criticalThreshold: 1, // 1MB - will definitely exceed
@@ -166,7 +166,7 @@ describe('MemoryMonitorService', () => {
     test('does not trigger callbacks when below thresholds', (done) => {
       const onWarning = jest.fn();
       const onCritical = jest.fn();
-      
+
       memoryMonitorService.createMonitor('test-no-trigger', {
         warningThreshold: 10000, // 10GB - won't exceed
         criticalThreshold: 20000,
@@ -188,7 +188,7 @@ describe('MemoryMonitorService', () => {
     test('detects increasing memory trend', (done) => {
       const measurements = [];
       let arrayLeak = [];
-      
+
       memoryMonitorService.createMonitor('test-trend-up', {
         interval: 50,
         onMeasurement: (data) => {
@@ -200,14 +200,14 @@ describe('MemoryMonitorService', () => {
 
       setTimeout(() => {
         const stats = memoryMonitorService.stopMonitor('test-trend-up');
-        
+
         // Check that later measurements are generally higher
         const firstHalf = measurements.slice(0, Math.floor(measurements.length / 2));
         const secondHalf = measurements.slice(Math.floor(measurements.length / 2));
-        
+
         const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
         const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
-        
+
         expect(avgSecond).toBeGreaterThan(avgFirst);
         arrayLeak = null; // Clean up
         done();
@@ -216,7 +216,7 @@ describe('MemoryMonitorService', () => {
 
     test('calculates moving average correctly', (done) => {
       const movingAverages = [];
-      
+
       memoryMonitorService.createMonitor('test-moving-avg', {
         interval: 50,
         movingAverageWindow: 3,
@@ -229,13 +229,13 @@ describe('MemoryMonitorService', () => {
 
       setTimeout(() => {
         memoryMonitorService.stopMonitor('test-moving-avg');
-        
+
         expect(movingAverages.length).toBeGreaterThan(0);
         movingAverages.forEach(avg => {
           expect(avg).toBeGreaterThan(0);
           expect(Number.isFinite(avg)).toBe(true);
         });
-        
+
         done();
       }, 250);
     });
@@ -293,7 +293,7 @@ describe('MemoryMonitorService', () => {
       const stats = memoryMonitorService.stopAllMonitors();
 
       expect(stats.length).toBe(3);
-      
+
       const activeMonitors = memoryMonitorService.getActiveMonitors();
       expect(activeMonitors.length).toBe(0);
     });
@@ -316,7 +316,7 @@ describe('MemoryMonitorService', () => {
   describe('Cleanup recommendations', () => {
     test('provides cleanup recommendations when memory is high', (done) => {
       let recommendationGiven = false;
-      
+
       memoryMonitorService.createMonitor('test-recommendations', {
         warningThreshold: 1,
         interval: 100,
@@ -338,7 +338,7 @@ describe('MemoryMonitorService', () => {
   describe('Historical data retention', () => {
     test('limits historical measurements to max window size', (done) => {
       const maxHistory = 10;
-      
+
       memoryMonitorService.createMonitor('test-history', {
         interval: 20,
         maxHistorySize: maxHistory
@@ -346,13 +346,13 @@ describe('MemoryMonitorService', () => {
 
       setTimeout(() => {
         const stats = memoryMonitorService.stopMonitor('test-history');
-        
+
         expect(stats.totalMeasurements).toBeGreaterThan(maxHistory);
         // Historical data should be capped
         if (stats.history) {
           expect(stats.history.length).toBeLessThanOrEqual(maxHistory);
         }
-        
+
         done();
       }, 300);
     });

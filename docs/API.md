@@ -600,11 +600,11 @@ async function renderRoute(gpxPath) {
   const form = new FormData();
   form.append('gpx', fs.createReadStream(gpxPath));
   form.append('userName', 'John');
-  
+
   const response = await axios.post('http://localhost:3000/render-route', form, {
     headers: form.getHeaders()
   });
-  
+
   return response.data.outputId;
 }
 
@@ -623,7 +623,7 @@ def render_route(gpx_path):
     with open(gpx_path, 'rb') as f:
         files = {'gpx': f}
         data = {'userName': 'John'}
-        response = requests.post('http://localhost:3000/render-route', 
+        response = requests.post('http://localhost:3000/render-route',
                                 files=files, data=data)
         return response.json()['outputId']
 

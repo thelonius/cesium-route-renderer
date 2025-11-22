@@ -53,7 +53,7 @@ describe('RenderOrchestratorService', () => {
       await renderOrchestratorService.startRender(config, mockCallbacks);
 
       const progressCalls = mockCallbacks.onProgress.mock.calls.map(call => call[0]);
-      
+
       expect(Math.min(...progressCalls)).toBeGreaterThanOrEqual(0);
       expect(Math.max(...progressCalls)).toBeLessThanOrEqual(100);
       expect(progressCalls[progressCalls.length - 1]).toBe(100);
@@ -92,13 +92,13 @@ describe('RenderOrchestratorService', () => {
       });
 
       const renderPromise = renderOrchestratorService.startRender(config, mockCallbacks);
-      
+
       // Check during execution
       const activeRenders = renderOrchestratorService.getActiveRenders();
       expect(activeRenders.some(r => r.outputId === 'test-789')).toBe(true);
 
       await renderPromise;
-      
+
       // Check after completion
       const activeRendersAfter = renderOrchestratorService.getActiveRenders();
       expect(activeRendersAfter.some(r => r.outputId === 'test-789')).toBe(false);
@@ -108,7 +108,7 @@ describe('RenderOrchestratorService', () => {
   describe('getRenderStatus', () => {
     test('returns null for non-existent render', () => {
       const status = renderOrchestratorService.getRenderStatus('non-existent-id');
-      
+
       expect(status).toBeNull();
     });
 
@@ -125,12 +125,12 @@ describe('RenderOrchestratorService', () => {
       });
 
       renderOrchestratorService.startRender(config, mockCallbacks);
-      
+
       // Wait a bit for render to start
       await new Promise(resolve => setTimeout(resolve, 50));
 
       const status = renderOrchestratorService.getRenderStatus('test-status');
-      
+
       expect(status).toMatchObject({
         outputId: 'test-status',
         stage: expect.any(String),
@@ -166,21 +166,21 @@ describe('RenderOrchestratorService', () => {
       });
 
       renderOrchestratorService.startRender(config, mockCallbacks);
-      
+
       await new Promise(resolve => setTimeout(resolve, 100));
 
       const result = await renderOrchestratorService.cancelRender('test-cancel');
-      
+
       expect(result.success).toBe(true);
       expect(dockerService.stopContainer).toHaveBeenCalled();
-      
+
       const activeRenders = renderOrchestratorService.getActiveRenders();
       expect(activeRenders.some(r => r.outputId === 'test-cancel')).toBe(false);
     });
 
     test('returns false when canceling non-existent render', async () => {
       const result = await renderOrchestratorService.cancelRender('non-existent');
-      
+
       expect(result.success).toBe(false);
     });
   });
@@ -188,7 +188,7 @@ describe('RenderOrchestratorService', () => {
   describe('getActiveRenders', () => {
     test('returns empty array when no renders active', () => {
       const activeRenders = renderOrchestratorService.getActiveRenders();
-      
+
       expect(Array.isArray(activeRenders)).toBe(true);
       expect(activeRenders.length).toBe(0);
     });
@@ -212,11 +212,11 @@ describe('RenderOrchestratorService', () => {
 
       renderOrchestratorService.startRender(config1, mockCallbacks);
       renderOrchestratorService.startRender(config2, mockCallbacks);
-      
+
       await new Promise(resolve => setTimeout(resolve, 100));
 
       const activeRenders = renderOrchestratorService.getActiveRenders();
-      
+
       expect(activeRenders.length).toBe(2);
       expect(activeRenders.some(r => r.outputId === 'test-active-1')).toBe(true);
       expect(activeRenders.some(r => r.outputId === 'test-active-2')).toBe(true);
@@ -267,7 +267,7 @@ describe('RenderOrchestratorService', () => {
       const prepStageCall = mockCallbacks.onStageChange.mock.calls.find(
         call => call[0] === 'preparation'
       );
-      
+
       expect(prepStageCall).toBeDefined();
       expect(prepStageCall[1]).toMatchObject({
         progress: expect.any(Number),
@@ -310,7 +310,7 @@ describe('RenderOrchestratorService', () => {
       const validationCall = mockCallbacks.onStageChange.mock.calls.find(
         call => call[0] === 'validation'
       );
-      
+
       expect(validationCall).toBeDefined();
     });
 

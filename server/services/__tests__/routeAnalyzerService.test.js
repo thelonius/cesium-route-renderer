@@ -6,7 +6,7 @@ describe('RouteAnalyzerService', () => {
       const analysis = {
         statistics: {
           distance: { total: 5000 },
-          elevation: { 
+          elevation: {
             gain: 800,
             loss: 100,
             min: 1000,
@@ -22,7 +22,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const pattern = routeAnalyzerService.analyzeRoutePattern(analysis);
-      
+
       expect(pattern).toBe('technical_climb');
     });
 
@@ -30,7 +30,7 @@ describe('RouteAnalyzerService', () => {
       const analysis = {
         statistics: {
           distance: { total: 8000 },
-          elevation: { 
+          elevation: {
             gain: 400,
             loss: 400,
             min: 2400,
@@ -46,7 +46,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const pattern = routeAnalyzerService.analyzeRoutePattern(analysis);
-      
+
       expect(pattern).toBe('alpine_ridge');
     });
 
@@ -54,7 +54,7 @@ describe('RouteAnalyzerService', () => {
       const analysis = {
         statistics: {
           distance: { total: 3000 },
-          elevation: { 
+          elevation: {
             gain: 400,
             loss: 50,
             min: 1000,
@@ -71,7 +71,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const pattern = routeAnalyzerService.analyzeRoutePattern(analysis);
-      
+
       expect(pattern).toBe('switchback_section');
     });
 
@@ -79,7 +79,7 @@ describe('RouteAnalyzerService', () => {
       const analysis = {
         statistics: {
           distance: { total: 12000 },
-          elevation: { 
+          elevation: {
             gain: 150,
             loss: 150,
             min: 400,
@@ -95,7 +95,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const pattern = routeAnalyzerService.analyzeRoutePattern(analysis);
-      
+
       expect(pattern).toBe('valley_traverse');
     });
 
@@ -103,7 +103,7 @@ describe('RouteAnalyzerService', () => {
       const analysis = {
         statistics: {
           distance: { total: 5000 },
-          elevation: { 
+          elevation: {
             gain: 50,
             loss: 40,
             min: 200,
@@ -119,7 +119,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const pattern = routeAnalyzerService.analyzeRoutePattern(analysis);
-      
+
       expect(pattern).toBe('flat_approach');
     });
 
@@ -134,7 +134,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const pattern = routeAnalyzerService.analyzeRoutePattern(analysis);
-      
+
       expect(pattern).toBe('unknown');
     });
   });
@@ -142,35 +142,35 @@ describe('RouteAnalyzerService', () => {
   describe('calculateAnimationSpeed', () => {
     test('uses default speed for short routes', () => {
       const routeDurationMinutes = 45;
-      
+
       const speed = routeAnalyzerService.calculateAnimationSpeed(routeDurationMinutes);
-      
+
       expect(speed).toBe(2);
     });
 
     test('increases speed for long routes to fit video duration', () => {
       const routeDurationMinutes = 600; // 10 hours
-      
+
       const speed = routeAnalyzerService.calculateAnimationSpeed(routeDurationMinutes);
-      
+
       expect(speed).toBeGreaterThan(2);
       expect(speed).toBeLessThanOrEqual(10);
     });
 
     test('caps speed at maximum', () => {
       const routeDurationMinutes = 2000; // 33+ hours
-      
+
       const speed = routeAnalyzerService.calculateAnimationSpeed(routeDurationMinutes);
-      
+
       expect(speed).toBe(10);
     });
 
     test('calculates video duration correctly with adaptive speed', () => {
       const routeDurationMinutes = 300; // 5 hours
-      
+
       const speed = routeAnalyzerService.calculateAnimationSpeed(routeDurationMinutes);
       const videoDuration = routeDurationMinutes / speed;
-      
+
       expect(videoDuration).toBeLessThanOrEqual(60);
       expect(videoDuration).toBeGreaterThan(0);
     });
@@ -188,7 +188,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const isValid = routeAnalyzerService.validateAnalysis(analysis);
-      
+
       expect(isValid).toBe(true);
     });
 
@@ -198,7 +198,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const isValid = routeAnalyzerService.validateAnalysis(analysis);
-      
+
       expect(isValid).toBe(false);
     });
 
@@ -213,7 +213,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const isValid = routeAnalyzerService.validateAnalysis(analysis);
-      
+
       expect(isValid).toBe(false);
     });
 
@@ -227,7 +227,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const isValid = routeAnalyzerService.validateAnalysis(analysis);
-      
+
       expect(isValid).toBe(false);
     });
   });
@@ -244,7 +244,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const overlay = routeAnalyzerService.generateOverlayData(analysis);
-      
+
       expect(overlay).toHaveProperty('distance');
       expect(overlay).toHaveProperty('elevationGain');
       expect(overlay).toHaveProperty('elevationLoss');
@@ -263,7 +263,7 @@ describe('RouteAnalyzerService', () => {
       };
 
       const overlay = routeAnalyzerService.generateOverlayData(analysis);
-      
+
       expect(overlay.distance).toMatch(/5\.43 km/);
       expect(overlay.elevationGain).toMatch(/567 m/);
       expect(overlay.duration).toMatch(/3h 7m/);
