@@ -22,7 +22,7 @@ module.exports = {
 
   // Video rendering settings
   RENDER: {
-    VIDEO_BUFFER_SECONDS: 19, // Buffer time added to video duration
+    VIDEO_BUFFER_SECONDS: 5, // Buffer time added to video duration (reduced from 19s)
     PROGRESS_CHECK_INTERVAL_MS: 20000, // Progress updates every 20 seconds
     TIMEOUT_MS: 3600000, // 60 minute timeout for renders
     DEFAULT_FPS: 30,

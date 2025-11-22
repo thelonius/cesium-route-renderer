@@ -54,8 +54,8 @@ class AnimationSpeedService {
 
     // Target video duration for optimal playback (excluding buffer)
     const targetVideoSeconds = CONSTANTS.RENDER.TARGET_VIDEO_SECONDS || 37;
-    const videoBufferSeconds = CONSTANTS.RENDER.VIDEO_BUFFER_SECONDS || 19;
-    const targetAnimationSeconds = targetVideoSeconds - videoBufferSeconds; // 18 seconds of actual animation
+    const videoBufferSeconds = CONSTANTS.RENDER.VIDEO_BUFFER_SECONDS || 5; // Reduced to 5s
+    const targetAnimationSeconds = targetVideoSeconds - videoBufferSeconds; // 32 seconds of actual animation
 
     // Calculate speed to achieve target duration
     const targetSpeed = Math.ceil(routeDurationSeconds / targetAnimationSeconds);
