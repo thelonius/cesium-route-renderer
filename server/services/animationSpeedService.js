@@ -1010,6 +1010,11 @@ class AnimationSpeedService {
   generateElevationOverlays(routeAnalysis) {
     const overlays = [];
 
+    // Check if points exist
+    if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
+      return overlays;
+    }
+
     // Find highest point
     const points = routeAnalysis.points;
     let highestPoint = points[0];
