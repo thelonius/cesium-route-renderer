@@ -323,6 +323,12 @@ async function recordRoute() {
     videoCodec: 'libx264',
     videoPreset: 'fast', // Fast preset for good balance of speed and quality
     videoBitrate: '2500k', // Keep under 50MB for Telegram
+    pixelFormat: 'yuv420p', // H.264 HD color profile (bt709 1-1-1)
+    ffmpegOptions: [
+      '-colorspace', 'bt709',
+      '-color_primaries', 'bt709',
+      '-color_trc', 'bt709'
+    ],
     autopad: {
       color: 'black' // Ensure proper padding if aspect ratio doesn't match exactly
     }

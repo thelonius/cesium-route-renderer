@@ -50,6 +50,11 @@ class DockerConfig {
       '-e', `RECORD_HEIGHT=${recording.height || CONSTANTS.RENDER.DEFAULT_HEIGHT}`
     ];
 
+    // Add RECORD_DURATION if provided (ensures full route is recorded)
+    if (recording.durationSeconds) {
+      args.push('-e', `RECORD_DURATION=${recording.durationSeconds}`);
+    }
+
     return args;
   }
 

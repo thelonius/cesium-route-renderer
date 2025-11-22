@@ -48,7 +48,8 @@ function prepareRenderConfig(routeProfile, inputConfig, settings) {
     recording: {
       fps: dockerRecordFps,
       width: dockerRecordWidth,
-      height: dockerRecordHeight
+      height: dockerRecordHeight,
+      durationSeconds: videoDurationSeconds // Pass to Docker
     },
     paths: {
       routeFile: inputConfig.routeFilePath,

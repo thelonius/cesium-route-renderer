@@ -52,15 +52,24 @@ class AnimationSpeedService {
     const routeDurationMinutes = routeAnalysis.duration.minutes;
     const routeDurationSeconds = routeAnalysis.duration.seconds;
 
-    // Calculate required speed to keep video under maxVideoMinutes
+    // Target video duration for optimal playback (excluding buffer)
+    const targetVideoSeconds = CONSTANTS.RENDER.TARGET_VIDEO_SECONDS || 37;
+    const videoBufferSeconds = CONSTANTS.RENDER.VIDEO_BUFFER_SECONDS || 19;
+    const targetAnimationSeconds = targetVideoSeconds - videoBufferSeconds; // 18 seconds of actual animation
+    
+    // Calculate speed to achieve target duration
+    const targetSpeed = Math.ceil(routeDurationSeconds / targetAnimationSeconds);
+    
+    // Fallback: Calculate required speed to keep video under maxVideoMinutes
     const bufferMinutes = CONSTANTS.ANIMATION.ADAPTIVE_BUFFER_MINUTES;
-    const requiredSpeed = Math.ceil(routeDurationMinutes / (maxVideoMinutes - bufferMinutes));
+    const fallbackSpeed = Math.ceil(routeDurationMinutes / (maxVideoMinutes - bufferMinutes));
 
-    let finalSpeed = defaultSpeed;
-    let adjustmentReason = `Using default speed for ${routeDurationMinutes.toFixed(1)} min route`;
+    let finalSpeed = Math.max(targetSpeed, defaultSpeed);
+    let adjustmentReason = `Targeting ${targetVideoSeconds}s video (${targetAnimationSeconds}s animation + ${videoBufferSeconds}s buffer)`;
 
-    if (requiredSpeed > defaultSpeed) {
-      finalSpeed = requiredSpeed;
+    // Use fallback if target would exceed max
+    if (finalSpeed > fallbackSpeed && routeDurationMinutes > maxVideoMinutes) {
+      finalSpeed = fallbackSpeed;
       adjustmentReason = `Route is long, increased speed to keep video under ${maxVideoMinutes} min`;
     }
 
@@ -72,7 +81,7 @@ class AnimationSpeedService {
       speed: finalSpeed,
       videoMinutes: videoMinutes,
       adjustmentReason: adjustmentReason,
-      suggested: requiredSpeed > defaultSpeed
+      suggested: finalSpeed > defaultSpeed
     };
   }
 

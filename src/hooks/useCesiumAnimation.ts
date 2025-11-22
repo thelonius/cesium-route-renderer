@@ -52,8 +52,8 @@ interface UseCesiumAnimationProps {
   animationSpeed?: number; // Optional animation speed multiplier (default 2x)
 }
 
-const CAMERA_BASE_BACK = 6240; // Increased by 2.6x (was 2400)
-const CAMERA_BASE_HEIGHT = 3120; // Increased by 2.6x (was 1200)
+const CAMERA_BASE_BACK = 2000; // Camera distance in meters (~2km)
+const CAMERA_BASE_HEIGHT = 1000; // Camera height proportional to distance
 const CAMERA_SMOOTH_ALPHA = 0.15;
 const ADD_INTERVAL_SECONDS = 2.0; // Increased to reduce trail artifacts at lower animation speeds
 const MAX_TRAIL_POINTS = 100; // Reduced to minimize trail rendering artifacts on CPU

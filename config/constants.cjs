@@ -27,8 +27,9 @@ module.exports = {
     TIMEOUT_MS: 3600000, // 60 minute timeout for renders
     DEFAULT_FPS: 30,
     MAX_VIDEO_MINUTES: 10, // Maximum video length before adaptive speed kicks in
-    DEFAULT_WIDTH: 720,
-    DEFAULT_HEIGHT: 1280
+    TARGET_VIDEO_SECONDS: 37, // Target video duration for optimal playback
+    DEFAULT_WIDTH: 464,
+    DEFAULT_HEIGHT: 848
   },
 
   // Animation speed settings
