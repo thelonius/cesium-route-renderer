@@ -4,7 +4,7 @@ const path = require('path');
 const { analyzeGPX, analyzeKML, formatAnalytics } = require('../gpxAnalyzer');
 const { getUserLanguage, setUserLanguage, t, formatMessage } = require('../i18n');
 const CONSTANTS = require('../../config/constants.cjs');
-const renderingConfig = require('../../config/rendering');
+const renderingConfig = require('../../config/rendering.cjs');
 
 /**
  * Bot Handlers Service

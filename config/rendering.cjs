@@ -2,7 +2,7 @@
  * Video rendering configuration and helper functions
  */
 
-const CONSTANTS = require('./constants');
+const CONSTANTS = require('./constants.cjs');
 
 class RenderingConfig {
   constructor() {

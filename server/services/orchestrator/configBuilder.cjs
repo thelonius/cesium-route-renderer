@@ -1,4 +1,4 @@
-const renderingConfig = require('../../../config/rendering');
+const renderingConfig = require('../../../config/rendering.cjs');
 
 /**
  * Config Builder

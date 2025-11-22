@@ -6,7 +6,7 @@ const cors = require('cors');
 
 // Configuration
 const CONSTANTS = require('../config/constants.cjs');
-const renderingConfig = require('../config/rendering');
+const renderingConfig = require('../config/rendering.cjs');
 const settingsService = require('./services/settingsService');
 const renderOrchestratorService = require('./services/renderOrchestratorService');
 const geoMath = require('../utils/geoMath');
