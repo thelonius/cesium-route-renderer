@@ -3,12 +3,12 @@ const dockerService = require('./dockerService');
 const settingsService = require('./settingsService');
 
 // Orchestrator modules
-const metadataBuilder = require('./orchestrator/metadataBuilder');
-const configBuilder = require('./orchestrator/configBuilder');
-const outputValidator = require('./orchestrator/outputValidator');
-const progressTracker = require('./orchestrator/progressTracker');
-const dockerExecutor = require('./orchestrator/dockerExecutor');
-const { STAGES } = require('./orchestrator/pipelineStages');
+const metadataBuilder = require('./orchestrator/metadataBuilder.cjs');
+const configBuilder = require('./orchestrator/configBuilder.cjs');
+const outputValidator = require('./orchestrator/outputValidator.cjs');
+const progressTracker = require('./orchestrator/progressTracker.cjs');
+const dockerExecutor = require('./orchestrator/dockerExecutor.cjs');
+const { STAGES } = require('./orchestrator/pipelineStages.cjs');
 
 /**
  * Render Orchestrator Service
