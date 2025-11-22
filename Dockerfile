@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY scripts ./scripts
 COPY public ./public
-RUN npm ci
+RUN npm install
 COPY . .
 RUN npm run build
 
