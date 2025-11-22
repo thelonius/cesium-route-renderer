@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
 # Copy built app
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
+COPY --from=build /app/config ./config
 
 # Install minimal HTTP server and recording dependencies
 RUN npm install --no-save puppeteer@19.0.0 serve-handler

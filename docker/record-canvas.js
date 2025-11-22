@@ -4,6 +4,7 @@ const http = require('http');
 const handler = require('serve-handler');
 const path = require('path');
 const fs = require('fs');
+const constants = require('./config/constants.cjs');
 
 const PORT = 8080;
 const OUTPUT_DIR = path.resolve('/output');
@@ -55,11 +56,8 @@ function getRecordingDuration() {
   if (gpxDuration) {
     const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '2');
     const playbackDuration = gpxDuration / speedMultiplier;
-    const totalDuration = Math.ceil(playbackDuration + 19);
-
-    // Store durations for status display (will be updated later when statusInfo is available)
-    global.gpxDurationSeconds = gpxDuration;
-    global.videoDurationSeconds = totalDuration;
+    // Add buffer time from constants
+    const totalDuration = Math.ceil(playbackDuration + constants.RENDER.VIDEO_BUFFER_SECONDS);
 
     console.log(`Animation speed: ${speedMultiplier}x`);
     console.log(`Route duration: ${(gpxDuration / 60).toFixed(1)} minutes`);
@@ -73,9 +71,9 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = 24; // 24 FPS for better CPU performance
-const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || '720', 10);
-const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || '1280', 10);
+const RECORD_FPS = constants.RENDER.DEFAULT_FPS; // Use centralized config
+const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || String(constants.RENDER.DEFAULT_WIDTH), 10);
+const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || String(constants.RENDER.DEFAULT_HEIGHT), 10);
 
 // Status tracking
 let statusInfo = {
@@ -385,11 +383,10 @@ async function recordRoute() {
     const frameStartTime = Date.now();
 
     try {
-      // Check if animation is complete (outro finished)
+      // Check if animation is complete (outro finished) - but don't stop recording
       const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
-      if (isComplete) {
-        console.log('✅ Animation outro complete, stopping recording');
-        break;
+      if (isComplete && frameCount === 1) {
+        console.log('ℹ️ Animation outro complete, but continuing recording for full duration');
       }
 
       const targetTime = startTime + (frameCount * frameInterval);

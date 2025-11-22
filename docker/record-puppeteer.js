@@ -1,9 +1,9 @@
 const puppeteer = require('puppeteer');
-const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
 const http = require('http');
 const handler = require('serve-handler');
 const path = require('path');
 const fs = require('fs');
+const { execSync } = require('child_process');
 
 const PORT = 8080;
 
@@ -297,7 +297,7 @@ async function recordRoute() {
   console.log('Map should be fully loaded now');
 
   // NOW start recording after everything is loaded
-  console.log('Setting up screen recorder...');
+  console.log('Setting up canvas stream recorder...');
 
   // Calculate expected file size based on duration and bitrate
   const recordDurationMinutes = RECORD_DURATION / 1000 / 60;
@@ -311,67 +311,96 @@ async function recordRoute() {
     console.warn('Consider reducing bitrate or using shorter routes.');
   }
 
-  const recorder = new PuppeteerScreenRecorder(page, {
-    followNewTab: false,
-    fps: TARGET_FPS, // configurable target FPS (15 in Docker for terrain rendering)
-    videoFrame: {
-      width: RECORD_WIDTH,
-      height: RECORD_HEIGHT,
-    },
-    aspectRatio: '9:16',
-    videoCrf: 23, // Lower CRF = better quality (18=high, 23=good, 28=medium)
-    videoCodec: 'libx264',
-    videoPreset: 'fast', // Fast preset for good balance of speed and quality
-    videoBitrate: '2500k', // Keep under 50MB for Telegram
-    pixelFormat: 'yuv420p', // H.264 HD color profile (bt709 1-1-1)
-    ffmpegOptions: [
-      '-colorspace', 'bt709',
-      '-color_primaries', 'bt709',
-      '-color_trc', 'bt709'
-    ],
-    autopad: {
-      color: 'black' // Ensure proper padding if aspect ratio doesn't match exactly
-    }
-  });
+  // Use canvas.captureStream() for direct Cesium canvas recording at 30 FPS
+  console.log('Starting canvas stream recording at 30 FPS...');
 
   let recordingStarted = false;
   try {
-    await recorder.start('/output/route-video.mp4');
-    recordingStarted = true;
-    console.log('Recording started');
-
-    // Wait a bit more after recording starts to ensure first frames are stable
-    console.log('Waiting 3 seconds for first frames to stabilize...');
-    await page.waitForTimeout(3000);
-    console.log('Starting animation playback...');
-
-    const recordingSeconds = RECORD_DURATION / 1000;
-    console.log(`Recording animation for ${recordingSeconds} seconds...`);
-
-    // Log progress every 30 seconds during recording
-    const progressInterval = 30000; // 30 seconds
-    const totalIntervals = Math.ceil(RECORD_DURATION / progressInterval);
-
-    for (let i = 0; i < totalIntervals; i++) {
-      const waitTime = Math.min(progressInterval, RECORD_DURATION - (i * progressInterval));
-      await page.waitForTimeout(waitTime);
-
-      const elapsedSeconds = Math.min((i + 1) * (progressInterval / 1000), recordingSeconds);
-      const percentComplete = Math.round((elapsedSeconds / recordingSeconds) * 100);
-
-      if (elapsedSeconds < recordingSeconds) {
-        console.log(`📹 Recording progress: ${elapsedSeconds.toFixed(0)}/${recordingSeconds.toFixed(0)}s (${percentComplete}%)`);
+    // Start recording using canvas.captureStream()
+    await page.evaluate(async (duration) => {
+      const canvas = document.querySelector('.cesium-viewer canvas');
+      if (!canvas) {
+        throw new Error('Cesium canvas not found');
       }
+
+      console.log('Found Cesium canvas, starting captureStream at 30 FPS');
+
+      // Get canvas stream at 30 FPS
+      const stream = canvas.captureStream(30);
+
+      // Create MediaRecorder with VP9 codec for better quality
+      const options = {
+        mimeType: 'video/webm;codecs=vp9',
+        videoBitsPerSecond: 2500000 // 2.5 Mbps
+      };
+
+      // Fallback to VP8 if VP9 not supported
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options.mimeType = 'video/webm;codecs=vp8';
+        options.videoBitsPerSecond = 2000000; // 2 Mbps
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
+      const recordedChunks = [];
+
+      return new Promise((resolve, reject) => {
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+
+          // Convert blob to array buffer and save to file
+          blob.arrayBuffer().then(arrayBuffer => {
+            const buffer = Buffer.from(arrayBuffer);
+            require('fs').writeFileSync('/output/temp-recording.webm', buffer);
+            console.log('Canvas recording saved as WebM to /output/temp-recording.webm');
+            resolve(recordedChunks.length);
+          }).catch(reject);
+        };
+
+        mediaRecorder.onerror = (event) => {
+          console.error('MediaRecorder error:', event);
+          reject(new Error('MediaRecorder failed'));
+        };
+
+        // Start recording
+        mediaRecorder.start(1000); // Collect data every second
+        console.log(`Canvas recording started for ${duration / 1000} seconds at 30 FPS`);
+
+        // Stop recording after the specified duration
+        setTimeout(() => {
+          mediaRecorder.stop();
+        }, duration);
+      });
+    }, RECORD_DURATION);
+
+    recordingStarted = true;
+    console.log('Canvas recording started');
+
+    // Wait for recording to complete
+    console.log(`Recording animation for ${RECORD_DURATION / 1000} seconds...`);
+
+    // Wait for the recording duration plus some buffer
+    await page.waitForTimeout(RECORD_DURATION + 2000);
+
+    console.log('Canvas recording completed, converting to MP4...');
+
+    // Convert WebM to MP4 using FFmpeg
+    try {
+      execSync(`ffmpeg -i /output/temp-recording.webm -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart -colorspace bt709 -color_primaries bt709 -color_trc bt709 /output/route-video.mp4`, {
+        stdio: 'inherit'
+      });
+      console.log('✅ Video conversion to MP4 complete!');
+    } catch (error) {
+      console.error('FFmpeg conversion failed:', error);
+      throw error;
     }
 
-    console.log('📹 Recording frames complete! Stopping recorder...');
-    console.log('🎬 Starting video encoding (this may take several minutes)...');
-    console.log('⏳ Encoding is ~7x slower than real-time recording');
-
-    await recorder.stop();
-
-    console.log('✅ Video encoding complete!');
-    console.log('📦 Video saved to /output/route-video.mp4');
+    console.log('🎬 Video saved to /output/route-video.mp4');
   } catch (err) {
     console.error('Error during recording lifecycle:', err && err.stack ? err.stack : err);
     try { fs.appendFileSync(ERROR_LOG_PATH, `[${new Date().toISOString()}] recording error: ${err && err.stack ? err.stack : err}\n`); } catch (e) {}
