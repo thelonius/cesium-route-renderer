@@ -25,7 +25,8 @@ function getGPXDuration() {
     const gpxFilename = process.env.GPX_FILENAME;
     if (!gpxFilename) return null;
 
-    const gpxPath = path.join(__dirname, 'dist', gpxFilename);
+    // In Docker, GPX files are mounted at /app/public/
+    const gpxPath = path.join('/app', 'public', gpxFilename);
     if (!fs.existsSync(gpxPath)) return null;
 
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');

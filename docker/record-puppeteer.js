@@ -69,7 +69,8 @@ function getGPXDuration() {
     if (!gpxFilename) {
       throw new Error('GPX_FILENAME environment variable is required');
     }
-    const gpxPath = path.join(__dirname, 'dist', gpxFilename);
+    // In Docker, GPX files are mounted at /app/public/
+    const gpxPath = path.join('/app', 'public', gpxFilename);
     console.log(`Reading GPX file: ${gpxPath}`);
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
 
