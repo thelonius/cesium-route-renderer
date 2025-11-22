@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { analyzeGPX, analyzeKML, formatAnalytics } = require('../gpxAnalyzer');
 const { getUserLanguage, setUserLanguage, t, formatMessage } = require('../i18n');
-const CONSTANTS = require('../../config/constants');
+const CONSTANTS = require('../../config/constants.cjs');
 const renderingConfig = require('../../config/rendering');
 
 /**
