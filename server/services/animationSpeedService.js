@@ -574,6 +574,10 @@ class AnimationSpeedService {
    */
   getKeyPointsForPattern(patternResult, routeAnalysis) {
     const keyPoints = [];
+    
+    if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
+      return keyPoints;
+    }
 
     // Handle out-and-back patterns (single or repeated)
     if ((patternResult.pattern === 'out-and-back' || patternResult.pattern === 'repeated-out-and-back')
@@ -863,6 +867,11 @@ class AnimationSpeedService {
    */
   generatePointToPointOverlays(routeAnalysis, patternResult) {
     const overlays = [];
+    
+    if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
+      return overlays;
+    }
+    
     const points = routeAnalysis.points;
 
     // Destination preview at 90% completion
@@ -890,6 +899,10 @@ class AnimationSpeedService {
    */
   generateOutAndBackOverlays(routeAnalysis, patternResult) {
     const overlays = [];
+    
+    if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
+      return overlays;
+    }
 
     if (patternResult.pattern === 'repeated-out-and-back') {
       // Lap counter for repeated out-and-backs
@@ -1055,6 +1068,11 @@ class AnimationSpeedService {
    */
   generateSegmentStatsOverlays(routeAnalysis, patternResult) {
     const overlays = [];
+    
+    if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
+      return overlays;
+    }
+    
     const segments = [25, 50, 75]; // Show stats at 25%, 50%, 75%
 
     segments.forEach(percent => {
