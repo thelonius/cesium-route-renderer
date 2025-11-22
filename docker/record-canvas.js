@@ -45,7 +45,7 @@ function getGPXDuration() {
   return null;
 }
 
-// Calculate recording duration
+// Calculate recording duration and animation speed
 function getRecordingDuration() {
   if (process.env.RECORD_DURATION) {
     const duration = parseInt(process.env.RECORD_DURATION);
@@ -55,26 +55,43 @@ function getRecordingDuration() {
 
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
-    // Calculate speed multiplier for target video duration
-    // Default: 2-minute videos (120 seconds)
-    const targetDuration = parseInt(process.env.TARGET_VIDEO_DURATION || '120');
-    const calculatedSpeed = Math.ceil(gpxDuration / targetDuration);
+    // Animation timing components (all configurable):
+    const SETTLE_TIME = parseInt(process.env.SETTLE_TIME || '5'); // Real-time seconds
+    const INTRO_TIME = parseInt(process.env.INTRO_TIME || '5'); // Real-time seconds for intro
+    const OUTRO_TIME = parseInt(process.env.OUTRO_TIME || '5'); // Real-time seconds for outro
+    const TARGET_ROUTE_TIME = parseInt(process.env.TARGET_ROUTE_TIME || '25'); // Target seconds for route
 
-    // Allow manual override, otherwise use calculated speed
-    const speedMultiplier = process.env.ANIMATION_SPEED
+    // Calculate speed needed for route to fit target time
+    // Route animation speed: gpxDuration / TARGET_ROUTE_TIME
+    const calculatedRouteSpeed = Math.ceil(gpxDuration / TARGET_ROUTE_TIME);
+
+    // Allow manual override of route speed
+    const routeSpeed = process.env.ANIMATION_SPEED
       ? parseInt(process.env.ANIMATION_SPEED)
-      : calculatedSpeed;
+      : calculatedRouteSpeed;
 
-    // Store calculated speed globally so it can be used in URL
-    global.calculatedAnimationSpeed = speedMultiplier;
+    global.calculatedAnimationSpeed = routeSpeed;
 
-    const playbackDuration = gpxDuration / speedMultiplier;
-    // Add buffer time from constants
-    const totalDuration = Math.ceil(playbackDuration + constants.RENDER.VIDEO_BUFFER_SECONDS);
+    // Calculate actual durations
+    const actualRouteTime = gpxDuration / routeSpeed;
+    const totalDuration = Math.ceil(SETTLE_TIME + INTRO_TIME + actualRouteTime + OUTRO_TIME);
 
-    console.log(`Route duration: ${(gpxDuration / 60).toFixed(1)} minutes (${(gpxDuration / 3600).toFixed(1)} hours)`);
-    console.log(`Animation speed: ${speedMultiplier}x ${!process.env.ANIMATION_SPEED ? '(auto-calculated)' : ''}`);
-    console.log(`Video duration (with buffer): ${(totalDuration / 60).toFixed(1)} minutes`);
+    console.log(`\n=== Animation Parameters ===`);
+    console.log(`Route duration: ${(gpxDuration / 60).toFixed(1)} min (${(gpxDuration / 3600).toFixed(1)} hours)`);
+    console.log(`Route speed: ${routeSpeed}x ${process.env.ANIMATION_SPEED ? '(manual)' : '(auto-calculated)'}`);
+    console.log(`\nVideo timing breakdown:`);
+    console.log(`  Settle: ${SETTLE_TIME}s`);
+    console.log(`  Intro:  ${INTRO_TIME}s`);
+    console.log(`  Route:  ${actualRouteTime.toFixed(1)}s`);
+    console.log(`  Outro:  ${OUTRO_TIME}s`);
+    console.log(`  Total:  ${totalDuration}s (${(totalDuration / 60).toFixed(1)} min)`);
+    console.log(`\nTo customize, set:`);
+    console.log(`  SETTLE_TIME=${SETTLE_TIME} (globe loading)`);
+    console.log(`  INTRO_TIME=${INTRO_TIME} (camera animation)`);
+    console.log(`  TARGET_ROUTE_TIME=${TARGET_ROUTE_TIME} (desired route duration)`);
+    console.log(`  OUTRO_TIME=${OUTRO_TIME} (final view)`);
+    console.log(`  ANIMATION_SPEED=${routeSpeed} (or auto-calculate from TARGET_ROUTE_TIME)`);
+    console.log(`===========================\n`);
 
     return totalDuration;
   }

@@ -262,8 +262,7 @@ export default function useCesiumAnimation({
     // Setup camera tracking
     const preRenderListener = () => {
       try {
-        // Stop updating trail during ending animation
-        if (isEndingAnimationRef.current) return;
+        // Keep trail visible during ending animation (removed early return)
 
         if (!hikerEntity || !hikerEntity.position || !lastAddedTimeRef.current) return;
         const currentTime = viewer.clock.currentTime;
@@ -289,7 +288,9 @@ export default function useCesiumAnimation({
 
           // Also check for large time jumps (seeking/pausing)
           const timeJump = Math.abs(dt);
-          const TIME_JUMP_THRESHOLD = 30; // 30 seconds - increased for slow software rendering
+          // Scale threshold based on animation speed to handle high-speed playback
+          const speedMultiplier = animationSpeed || 2;
+          const TIME_JUMP_THRESHOLD = Math.max(30, speedMultiplier / 2); // Adaptive threshold
 
           if (distance > GAP_THRESHOLD || timeJump > TIME_JUMP_THRESHOLD) {
             // Only log in non-Docker mode to avoid log spam during recording
@@ -366,10 +367,12 @@ export default function useCesiumAnimation({
             if (finalPosition && !isEndingAnimationRef.current) {
               isEndingAnimationRef.current = true;
 
-              // Hide trail during outro to prevent artifacts
-              if (entitiesRef.current.trail) {
-                entitiesRef.current.trail.show = false;
-              }
+              // Keep trail visible during outro for better visual continuity
+
+              // Outro runs at FIXED real-time speed (5 seconds) independent of route speed
+              console.log('Starting outro at fixed 1x speed (5 seconds)');
+              const savedMultiplier = viewer.clock.multiplier;
+              viewer.clock.multiplier = 1; // Slow down to real-time for outro
 
               let outroProgress = 0;
               const outroInterval = setInterval(() => {
@@ -386,7 +389,7 @@ export default function useCesiumAnimation({
                   return;
                 }
 
-                outroProgress += 0.02; // 5 seconds
+                outroProgress += 0.02; // 5 seconds at real-time
                 const eased = 1 - Math.pow(1 - outroProgress, 3); // Cubic ease-out
 
                 // Go from -45° to -89° (vertical)
@@ -539,11 +542,14 @@ export default function useCesiumAnimation({
         // Initial status display
         displayStatusBar();
 
-        // Start route movement immediately with very slow speed
-        viewer.clock.shouldAnimate = true;
-        viewer.clock.multiplier = animationSpeed * 0.1; // Start at 10% speed
+        // Intro and outro animations run at FIXED real-time speeds (not affected by route speed)
+        // Only the route movement speed is controlled by animationSpeed parameter
 
-          // Phase 1: Simultaneous azimuth, tilt, and panning with route speed increase (5 seconds)
+        // Start route movement with slow speed (will ramp up)
+        viewer.clock.shouldAnimate = true;
+        viewer.clock.multiplier = 1; // Start at 1x for smooth intro (independent of route speed)
+
+          // Phase 1: Camera intro animation - FIXED 5 seconds real-time
           let cameraProgress = 0;
           const cameraInterval = setInterval(() => {
             if (!viewer || viewer.isDestroyed() || !viewer.clock) {
@@ -556,19 +562,16 @@ export default function useCesiumAnimation({
             // Add subtle side-to-side panning during opening (sine wave: -200 to +200)
             cameraPanOffsetRef.current = Math.sin(cameraProgress * Math.PI * 2) * 200;
 
-            // Gradually increase route speed during camera animation
-            const speedEased = cameraProgress * cameraProgress; // Quadratic ease in
-            const currentSpeed = animationSpeed * (0.1 + 0.4 * speedEased); // From 10% to 50% speed
-            if (isFinite(currentSpeed) && currentSpeed >= 0) {
-              viewer.clock.multiplier = currentSpeed;
-            }
+            // Keep clock at slow speed during intro for smooth camera movement
+            viewer.clock.multiplier = 1; // Fixed 1x speed for intro
+
           if (cameraProgress >= 1) {
             cameraAzimuthProgressRef.current = 1;
             cameraTiltProgressRef.current = 1;
             clearInterval(cameraInterval);
-            console.log('Camera animation complete, route at 50% speed, starting final speed increase');
+            console.log('Camera intro complete, ramping up to route speed:', animationSpeed + 'x');
 
-                  // Phase 2: Continue route speed increase to full speed (2 seconds)
+                  // Phase 2: Ramp up to full route speed - FIXED 2 seconds real-time
                   let speedProgress = 0;
                   const speedInterval = setInterval(() => {
                     if (!viewer || viewer.isDestroyed() || !viewer.clock) {
@@ -643,7 +646,7 @@ export default function useCesiumAnimation({
             cameraTiltProgressRef.current = eased;
           }
         }, 100);
-      }, 3000); // 3 seconds for globe and terrain to fully settle
+      }, 5000); // 5 seconds for globe and terrain to fully settle (increased for high-speed animations)
     } else {
       // Fallback
       setTimeout(() => {
