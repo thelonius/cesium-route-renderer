@@ -803,20 +803,22 @@ class AnimationSpeedService {
     const hooks = [];
 
     // Start location overlay (all routes)
-    hooks.push({
-      type: 'location-title',
-      trigger: 'time',
-      timeSeconds: 2, // Show 2 seconds into video
-      duration: 5,
-      priority: 'high',
-      content: {
-        title: routeAnalysis.metadata?.name || 'Route Start',
-        subtitle: this.formatLocation(routeAnalysis.points[0]),
-        description: routeAnalysis.metadata?.description || null
-      },
-      animation: 'fade-in-out',
-      position: 'top-left'
-    });
+    if (routeAnalysis.points && routeAnalysis.points.length > 0) {
+      hooks.push({
+        type: 'location-title',
+        trigger: 'time',
+        timeSeconds: 2, // Show 2 seconds into video
+        duration: 5,
+        priority: 'high',
+        content: {
+          title: routeAnalysis.metadata?.name || 'Route Start',
+          subtitle: this.formatLocation(routeAnalysis.points[0]),
+          description: routeAnalysis.metadata?.description || null
+        },
+        animation: 'fade-in-out',
+        position: 'top-left'
+      });
+    }
 
     // Pattern-specific overlays
     switch (patternResult.pattern) {
