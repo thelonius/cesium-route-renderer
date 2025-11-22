@@ -56,10 +56,10 @@ class AnimationSpeedService {
     const targetVideoSeconds = CONSTANTS.RENDER.TARGET_VIDEO_SECONDS || 37;
     const videoBufferSeconds = CONSTANTS.RENDER.VIDEO_BUFFER_SECONDS || 19;
     const targetAnimationSeconds = targetVideoSeconds - videoBufferSeconds; // 18 seconds of actual animation
-    
+
     // Calculate speed to achieve target duration
     const targetSpeed = Math.ceil(routeDurationSeconds / targetAnimationSeconds);
-    
+
     // Fallback: Calculate required speed to keep video under maxVideoMinutes
     const bufferMinutes = CONSTANTS.ANIMATION.ADAPTIVE_BUFFER_MINUTES;
     const fallbackSpeed = Math.ceil(routeDurationMinutes / (maxVideoMinutes - bufferMinutes));
@@ -67,8 +67,8 @@ class AnimationSpeedService {
     let finalSpeed = Math.max(targetSpeed, defaultSpeed);
     let adjustmentReason = `Targeting ${targetVideoSeconds}s video (${targetAnimationSeconds}s animation + ${videoBufferSeconds}s buffer)`;
 
-    // Use fallback if target would exceed max
-    if (finalSpeed > fallbackSpeed && routeDurationMinutes > maxVideoMinutes) {
+    // Only use fallback if it requires a HIGHER speed (route is extremely long)
+    if (fallbackSpeed > finalSpeed) {
       finalSpeed = fallbackSpeed;
       adjustmentReason = `Route is long, increased speed to keep video under ${maxVideoMinutes} min`;
     }
@@ -583,7 +583,7 @@ class AnimationSpeedService {
    */
   getKeyPointsForPattern(patternResult, routeAnalysis) {
     const keyPoints = [];
-    
+
     if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
       return keyPoints;
     }
@@ -876,11 +876,11 @@ class AnimationSpeedService {
    */
   generatePointToPointOverlays(routeAnalysis, patternResult) {
     const overlays = [];
-    
+
     if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
       return overlays;
     }
-    
+
     const points = routeAnalysis.points;
 
     // Destination preview at 90% completion
@@ -908,7 +908,7 @@ class AnimationSpeedService {
    */
   generateOutAndBackOverlays(routeAnalysis, patternResult) {
     const overlays = [];
-    
+
     if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
       return overlays;
     }
@@ -1077,11 +1077,11 @@ class AnimationSpeedService {
    */
   generateSegmentStatsOverlays(routeAnalysis, patternResult) {
     const overlays = [];
-    
+
     if (!routeAnalysis.points || routeAnalysis.points.length === 0) {
       return overlays;
     }
-    
+
     const segments = [25, 50, 75]; // Show stats at 25%, 50%, 75%
 
     segments.forEach(percent => {
