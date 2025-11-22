@@ -5,7 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const CONSTANTS = require('../../config/constants');
+const CONSTANTS = require('../../config/constants.cjs');
 
 class SettingsService {
   constructor() {

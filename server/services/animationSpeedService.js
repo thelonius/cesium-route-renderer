@@ -1,4 +1,4 @@
-const CONSTANTS = require('../../config/constants');
+const CONSTANTS = require('../../config/constants.cjs');
 const { haversineDistance, calculateTotalDistance, calculateElevationGain } = require('../../utils/geoMath');
 
 /**

@@ -1,6 +1,6 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
-const CONSTANTS = require('../../config/constants');
+const CONSTANTS = require('../../config/constants.cjs');
 const dockerConfig = require('../../config/docker');
 const memoryMonitorService = require('./memoryMonitorService');
 

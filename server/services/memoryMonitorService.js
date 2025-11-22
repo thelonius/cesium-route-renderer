@@ -1,5 +1,5 @@
 const fs = require('fs');
-const CONSTANTS = require('../../config/constants');
+const CONSTANTS = require('../../config/constants.cjs');
 
 /**
  * Memory Monitor Service
