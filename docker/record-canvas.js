@@ -55,13 +55,25 @@ function getRecordingDuration() {
 
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
-    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '2');
+    // Calculate speed multiplier for target video duration
+    // Default: 2-minute videos (120 seconds)
+    const targetDuration = parseInt(process.env.TARGET_VIDEO_DURATION || '120');
+    const calculatedSpeed = Math.ceil(gpxDuration / targetDuration);
+
+    // Allow manual override, otherwise use calculated speed
+    const speedMultiplier = process.env.ANIMATION_SPEED
+      ? parseInt(process.env.ANIMATION_SPEED)
+      : calculatedSpeed;
+
+    // Store calculated speed globally so it can be used in URL
+    global.calculatedAnimationSpeed = speedMultiplier;
+
     const playbackDuration = gpxDuration / speedMultiplier;
     // Add buffer time from constants
     const totalDuration = Math.ceil(playbackDuration + constants.RENDER.VIDEO_BUFFER_SECONDS);
 
-    console.log(`Animation speed: ${speedMultiplier}x`);
-    console.log(`Route duration: ${(gpxDuration / 60).toFixed(1)} minutes`);
+    console.log(`Route duration: ${(gpxDuration / 60).toFixed(1)} minutes (${(gpxDuration / 3600).toFixed(1)} hours)`);
+    console.log(`Animation speed: ${speedMultiplier}x ${!process.env.ANIMATION_SPEED ? '(auto-calculated)' : ''}`);
     console.log(`Video duration (with buffer): ${(totalDuration / 60).toFixed(1)} minutes`);
 
     return totalDuration;
@@ -188,7 +200,8 @@ async function recordRoute() {
     throw new Error('GPX_FILENAME environment variable is required');
   }
   const userName = process.env.USER_NAME || 'Hiker';
-  const animationSpeed = process.env.ANIMATION_SPEED || '2';
+  // Use calculated speed from getRecordingDuration(), or fallback to env var or default
+  const animationSpeed = global.calculatedAnimationSpeed || process.env.ANIMATION_SPEED || '200';
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   console.log(`Loading Cesium app: ${appUrl}`);
