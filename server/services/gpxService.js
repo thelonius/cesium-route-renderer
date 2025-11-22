@@ -204,6 +204,7 @@ class GpxService {
       success: true,
       fileType: parsed.fileType,
       metadata: parsed.metadata,
+      points: parsed.points,
       pointCount: parsed.points.length,
       distance: {
         meters: distance,
