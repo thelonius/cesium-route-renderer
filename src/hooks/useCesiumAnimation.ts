@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { useEffect, useRef, useState } from 'react';
 import { TrackPoint } from '../types';
+import { detectLoop, getLazyCameraTarget } from '../services/camera/utils/loopDetector';
 
 // Import constants from central config
 import constants from '../../config/constants';
@@ -87,15 +88,34 @@ export default function useCesiumAnimation({
   const preRenderFrameCounter = useRef(0);
   const runtimeLogLastRef = useRef<number>(0);
 
+  // Loop detection and lazy camera refs
+  const loopCentroidRef = useRef<Cesium.Cartesian3 | null>(null);
+  const loopRadiusRef = useRef<number>(0);
+  const isLoopRouteRef = useRef(false);
+  const smoothedCameraTargetRef = useRef<Cesium.Cartesian3 | null>(null);
+
   useEffect(() => {
     if (!viewer || !trackPoints.length || !startTime || !stopTime) return;
+
+    // Runtime toggles: diagnostics and manual stepping (opt-in)
+    const enableDiagnostics = !!(window as any).__ENABLE_DIAGNOSTICS;
+    const forceManualStepping = !!(window as any).__FORCE_MANUAL_STEPPING || !!(window as any).__MANUAL_STEPPING;
+    const isHeadless = (() => {
+      try {
+        const ua = (navigator && navigator.userAgent) || '';
+        return /HeadlessChrome|PhantomJS/.test(ua) || new URLSearchParams(window.location.search).get('docker') === 'true';
+      } catch (e) {
+        return false;
+      }
+    })();
+    const dlog = (...args: any[]) => { if (enableDiagnostics) console.log(...args); };
 
     // Helper to centrally set currentTime with debug logging
     const safeSetCurrentTime = (jd: Cesium.JulianDate | undefined | null, reason?: string) => {
       try {
         if (!jd) return;
         const iso = Cesium.JulianDate.toIso8601(jd);
-        console.log('safeSetCurrentTime:', reason || 'unknown', iso);
+        dlog('safeSetCurrentTime:', reason || 'unknown', iso);
         viewer.clock.currentTime = Cesium.JulianDate.clone(jd);
       } catch (e) {
         console.warn('safeSetCurrentTime failed:', e);
@@ -110,7 +130,7 @@ export default function useCesiumAnimation({
     continuousAzimuthRef.current = 0;
     cameraPanOffsetRef.current = 0;
     trailPositionsRef.current = [];
-    console.log('Animation state reset for new route');
+    dlog('Animation state reset for new route');
 
     const initializeAnimation = () => {
       // Initialize status tracking
@@ -133,7 +153,7 @@ export default function useCesiumAnimation({
       // tick instead of being tied to the host system clock. This prevents sudden
       // jumps when start/stop are in the past relative to system time.
       viewer.clock.clockStep = Cesium.ClockStep.TICK_DEPENDENT; // Use multiplier for speed control
-      console.log('Clock step set to TICK_DEPENDENT to avoid system-time jumps');
+      dlog('Clock step set to TICK_DEPENDENT to avoid system-time jumps');
       // Apply desired multiplier now (unless user requested manual override).
       // Earlier code waited until the intro completed to set multiplier; setting it
       // here makes the requested speed available immediately (the intro will
@@ -381,6 +401,21 @@ export default function useCesiumAnimation({
     });
     entitiesRef.current.trail = trailEntity;
 
+    // Detect if route forms a loop around a focal point
+    try {
+      const loopAnalysis = detectLoop(fullRoutePositions);
+      if (loopAnalysis.isLoop) {
+        isLoopRouteRef.current = true;
+        loopCentroidRef.current = loopAnalysis.centroid;
+        loopRadiusRef.current = loopAnalysis.averageRadius;
+        console.log(`🔄 Loop route detected! Loopness: ${loopAnalysis.loopness.toFixed(2)}, ` +
+          `Radius: ${(loopAnalysis.averageRadius / 1000).toFixed(1)}km`);
+        console.log(`   Camera will use centroid-focused "outside looking in" mode`);
+      }
+    } catch (e) {
+      console.warn('Loop detection failed:', e);
+    }
+
     // Setup camera tracking
     const preRenderListener = () => {
       try {
@@ -508,7 +543,7 @@ export default function useCesiumAnimation({
 
     const postRenderListener = () => {
       try {
-        console.log('postRender called, clock shouldAnimate=', viewer.clock.shouldAnimate, 'multiplier=', viewer.clock.multiplier, 'currentTime=', Cesium.JulianDate.toIso8601(viewer.clock.currentTime));
+      dlog('postRender called, clock shouldAnimate=', viewer.clock.shouldAnimate, 'multiplier=', viewer.clock.multiplier, 'currentTime=', Cesium.JulianDate.toIso8601(viewer.clock.currentTime));
         // Track frame count and timing for FPS calculation
         const frameTimeStamp = performance.now();
         const frameTime = frameTimeStamp - statusInfo.lastFrameTime;
@@ -685,10 +720,43 @@ export default function useCesiumAnimation({
           return;
         }
 
-        const transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
+        // Apply gentle smoothing (less lazy, more responsive)
+        const smoothedPosition = getLazyCameraTarget(
+          position,
+          smoothedCameraTargetRef.current,
+          isLoopRouteRef.current ? 30 : 20, // Lower threshold = more responsive
+          isLoopRouteRef.current ? 0.75 : 0.65 // Less smoothing = follows hiker more closely
+        );
+        smoothedCameraTargetRef.current = smoothedPosition;
 
-        // Use constant camera position (no dynamic altitude adjustment)
-        const cameraOffsetLocal = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT);
+        // For loop routes: camera follows hiker but looks toward centroid
+        // Calculate blend between hiker and centroid for camera look-at target
+        let cameraLookAtTarget = smoothedPosition;
+        
+        if (isLoopRouteRef.current && loopCentroidRef.current) {
+          // Blend: 70% centroid + 30% hiker position for smooth centroid-oriented view
+          cameraLookAtTarget = Cesium.Cartesian3.lerp(
+            smoothedPosition,
+            loopCentroidRef.current,
+            0.7,
+            new Cesium.Cartesian3()
+          );
+        }
+
+        const transform = Cesium.Transforms.eastNorthUpToFixedFrame(smoothedPosition);
+
+        // Calculate camera offset based on route type
+        let cameraOffsetDistance = CAMERA.BASE_BACK;
+        let cameraOffsetHeight = CAMERA.BASE_HEIGHT;
+
+        if (isLoopRouteRef.current && loopCentroidRef.current) {
+          // For loop routes: moderate distance to see loop while following hiker
+          cameraOffsetDistance = Math.min(loopRadiusRef.current * 1.5, CAMERA.BASE_BACK * 2);
+          cameraOffsetHeight = Math.min(loopRadiusRef.current * 1.2, CAMERA.BASE_HEIGHT * 1.5);
+        }
+
+        // Use constant camera position (with route-aware adjustments)
+        const cameraOffsetLocal = new Cesium.Cartesian3(-cameraOffsetDistance, 0, cameraOffsetHeight);
         const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
 
         // Validate camera position
@@ -713,9 +781,9 @@ export default function useCesiumAnimation({
               // Interpolate lookAt offset for tilt with panning
               // Start: looking straight down (0, 0, height)
               // End: looking forward/behind (-BASE_BACK, 0, BASE_HEIGHT)
-              const lookAtOffsetX = -CAMERA.BASE_BACK * tilt;
+              const lookAtOffsetX = -cameraOffsetDistance * tilt;
               const lookAtOffsetY = panOffset; // Side-to-side panning
-              const lookAtOffsetZ = CAMERA.BASE_HEIGHT * 0.48; // scaled forward look-at height
+              const lookAtOffsetZ = cameraOffsetHeight * 0.48; // scaled forward look-at height
 
               // Apply heading rotation to lookAt offset
               const headingRadians = Cesium.Math.toRadians(currentHeading);
@@ -723,21 +791,22 @@ export default function useCesiumAnimation({
               const rotatedY = lookAtOffsetX * Math.sin(headingRadians) + lookAtOffsetY * Math.cos(headingRadians);
 
               const lookAtOffset = new Cesium.Cartesian3(rotatedX, rotatedY, lookAtOffsetZ);
-              viewer.camera.lookAt(position, lookAtOffset);
+              viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
             } else {
               // Normal follow camera with continuous slow azimuth rotation
+              // For loop routes: gentler continuous panning around the centroid
               const baseHeading = 25; // Base heading in degrees
               const continuousRotation = continuousAzimuthRef.current; // Slow continuous rotation
               const totalHeading = baseHeading + continuousRotation;
 
               const headingRadians = Cesium.Math.toRadians(totalHeading);
-              const baseOffsetX = -CAMERA.BASE_BACK;
+              const baseOffsetX = -cameraOffsetDistance;
               const baseOffsetY = 0;
               const rotatedX = baseOffsetX * Math.cos(headingRadians) - baseOffsetY * Math.sin(headingRadians);
               const rotatedY = baseOffsetX * Math.sin(headingRadians) + baseOffsetY * Math.cos(headingRadians);
 
-              const lookAtOffset = new Cesium.Cartesian3(rotatedX, rotatedY, CAMERA.BASE_HEIGHT * 0.48);
-              viewer.camera.lookAt(position, lookAtOffset);
+              const lookAtOffset = new Cesium.Cartesian3(rotatedX, rotatedY, cameraOffsetHeight * 0.48);
+              viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
             }
           }
         } catch (e) {
@@ -896,8 +965,9 @@ export default function useCesiumAnimation({
         viewer.clock.shouldAnimate = false;
 
         const manualSteppingThreshold = 100; // speeds above this use manual stepping
-        manualStepEnabledRef.current = animationSpeed > manualSteppingThreshold || !!(window as any).__MANUAL_STEPPING;
-        console.log('Preparing to start animation (skipIntro=', skipIntro, ', manualStep=', manualStepEnabledRef.current, ')');
+        // Enable manual stepping only when forced or when running in headless/docker mode
+        manualStepEnabledRef.current = forceManualStepping || (isHeadless && animationSpeed > manualSteppingThreshold);
+        dlog('Preparing to start animation (skipIntro=', skipIntro, ', manualStep=', manualStepEnabledRef.current, ')');
 
         // Mark that animation has started to disable preRender early-reset
         animationStartedRef.current = true;

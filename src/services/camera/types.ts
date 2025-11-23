@@ -45,6 +45,7 @@ export type RoutePatternType =
   | 'valley_traverse'
   | 'switchback_section'
   | 'flat_approach'
+  | 'loop_around_point'
   | 'unknown';
 
 export interface PatternCameraAdjustment {

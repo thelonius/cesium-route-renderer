@@ -48,6 +48,13 @@ export const PATTERN_CAMERA_ADJUSTMENTS: Record<RoutePatternType, PatternCameraA
     smoothingOverride: 0.7,
     lookAheadMultiplier: 1.0
   },
+  loop_around_point: {
+    distanceMultiplier: 2.5, // Far out to see whole loop + center
+    heightMultiplier: 1.8, // Higher to see loop pattern
+    pitchAdjustment: -25, // Looking down at loop from outside
+    smoothingOverride: 0.92, // Very smooth lazy camera
+    lookAheadMultiplier: 0.5 // Less look-ahead, focus on current position
+  },
   unknown: {
     distanceMultiplier: 1.0,
     heightMultiplier: 1.0,

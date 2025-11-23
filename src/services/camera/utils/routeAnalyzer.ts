@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
-import { RouteSegment } from '../types';
+import { RouteSegment, RoutePatternType } from '../types';
+import { detectLoop, LoopAnalysis } from './loopDetector';
 
 /**
  * Route Analysis for Camera Planning
@@ -104,4 +105,47 @@ function detectTurn(
   }
 
   return null;
+}
+
+/**
+ * Auto-detect route pattern from positions
+ * Returns the most likely pattern type based on route analysis
+ */
+export function detectRoutePattern(positions: Cesium.Cartesian3[]): {
+  pattern: RoutePatternType;
+  loopAnalysis?: LoopAnalysis;
+} {
+  if (positions.length < 3) {
+    return { pattern: 'unknown' };
+  }
+
+  // First check for loop pattern
+  const loopAnalysis = detectLoop(positions);
+  if (loopAnalysis.isLoop && loopAnalysis.loopness > 0.6) {
+    console.log(`🔄 Loop detected! Loopness: ${loopAnalysis.loopness.toFixed(2)}, Radius: ${(loopAnalysis.averageRadius / 1000).toFixed(1)}km`);
+    return { pattern: 'loop_around_point', loopAnalysis };
+  }
+
+  // Check for elevation changes
+  const elevationChanges = positions.map((pos, i) => {
+    if (i === 0) return 0;
+    const prev = Cesium.Cartographic.fromCartesian(positions[i - 1]);
+    const curr = Cesium.Cartographic.fromCartesian(pos);
+    return curr.height - prev.height;
+  });
+
+  const totalElevationGain = elevationChanges.filter(e => e > 0).reduce((sum, e) => sum + e, 0);
+  const totalElevationLoss = Math.abs(elevationChanges.filter(e => e < 0).reduce((sum, e) => sum + e, 0));
+
+  // Detect pattern based on elevation profile
+  if (totalElevationGain > 500 && totalElevationLoss < 200) {
+    return { pattern: 'technical_climb' };
+  }
+
+  if (totalElevationGain < 200 && totalElevationLoss < 200) {
+    return { pattern: 'flat_approach' };
+  }
+
+  // Default to unknown
+  return { pattern: 'unknown' };
 }
