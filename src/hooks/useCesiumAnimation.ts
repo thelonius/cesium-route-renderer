@@ -806,8 +806,8 @@ export default function useCesiumAnimation({
           if (angleDiff > 180) angleDiff -= 360;
           if (angleDiff < -180) angleDiff += 360;
 
-          // Very heavy smoothing (0.95) for ultra-smooth rotation
-          azimuthRotation = currentRotationAngleRef.current + angleDiff * 0.05;
+          // Moderate smoothing (0.85 previous, 0.15 new) for visible smooth rotation
+          azimuthRotation = currentRotationAngleRef.current + angleDiff * 0.15;
           currentRotationAngleRef.current = azimuthRotation;
         }
 
