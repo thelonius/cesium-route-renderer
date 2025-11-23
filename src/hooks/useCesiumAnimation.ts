@@ -724,8 +724,15 @@ export default function useCesiumAnimation({
           return;
         }
 
+        // Calculate route completion progress for progressive centering
+        const totalDuration = Cesium.JulianDate.secondsDifference(stopTime, startTime);
+        const elapsed = Cesium.JulianDate.secondsDifference(currentTime, startTime);
+        const routeProgress = Math.max(0, Math.min(1, elapsed / totalDuration));
+
         // Calculate look-ahead position (anticipate movement direction)
-        const lookAheadSeconds = isLoopRouteRef.current ? 15 : 10; // More look-ahead for loops
+        // Reduce look-ahead as route nears completion to center hiker perfectly
+        const baseLookAhead = isLoopRouteRef.current ? 15 : 10;
+        const lookAheadSeconds = baseLookAhead * (1 - routeProgress * 0.7); // Reduce to 30% by end
         const lookAheadTime = Cesium.JulianDate.addSeconds(currentTime, lookAheadSeconds, new Cesium.JulianDate());
         const lookAheadStopTime = viewer.clock.stopTime || stopTime;
         const clampedLookAheadTime = Cesium.JulianDate.compare(lookAheadTime, lookAheadStopTime) > 0
@@ -744,11 +751,16 @@ export default function useCesiumAnimation({
         lookAheadTargetRef.current = smoothedLookAhead;
 
         // Camera position follows current position more closely
+        // For vertical/narrow screens: progressively tighten threshold as route nears end
+        const baseThreshold = isLoopRouteRef.current ? 15 : 25;
+        const lateralThreshold = baseThreshold * (1 - routeProgress * 0.6); // Tighten to 40% by end
+        const positionSmoothness = 0.70 + routeProgress * 0.15; // Increase to 0.85 by end
+
         const smoothedPosition = getLazyCameraTarget(
           position,
           smoothedCameraTargetRef.current,
-          25, // Responsive to current position
-          0.70 // Allow lateral movement without immediate camera reaction
+          lateralThreshold,
+          positionSmoothness
         );
         smoothedCameraTargetRef.current = smoothedPosition;
 
@@ -756,43 +768,46 @@ export default function useCesiumAnimation({
         let cameraLookAtTarget = smoothedLookAhead;
 
         if (isLoopRouteRef.current && loopCentroidRef.current) {
-          // Blend: 50% centroid + 50% look-ahead for balanced view
-          // This keeps centroid in view while anticipating movement
+          // Progressive centering: start 30% centroid, end 100% hiker-focused
+          // For narrow vertical screens, this ensures hiker stays centered
+          const centroidWeight = 0.3 * (1 - routeProgress); // Fades to 0 by end
           cameraLookAtTarget = Cesium.Cartesian3.lerp(
             smoothedLookAhead,
             loopCentroidRef.current,
-            0.5,
+            centroidWeight,
             new Cesium.Cartesian3()
           );
         }
 
         const transform = Cesium.Transforms.eastNorthUpToFixedFrame(smoothedPosition);
 
-        // Calculate azimuth rotation around centroid
+        // Calculate azimuth rotation based on hiker's movement direction
         let azimuthRotation = 0;
 
         if (isLoopRouteRef.current && loopCentroidRef.current) {
-          // Calculate angle from centroid to current hiker position
-          const vectorToCentroid = Cesium.Cartesian3.subtract(
-            loopCentroidRef.current,
+          // Calculate angle from current position to centroid (outward direction)
+          const vectorFromCentroid = Cesium.Cartesian3.subtract(
             smoothedPosition,
+            loopCentroidRef.current,
             new Cesium.Cartesian3()
           );
 
-          // Project to 2D for angle calculation
-          const angle = Math.atan2(vectorToCentroid.y, vectorToCentroid.x);
+          // Get angle in degrees (this is the outward radial direction)
+          const targetRotation = Math.atan2(vectorFromCentroid.y, vectorFromCentroid.x) * (180 / Math.PI);
 
-          // Calculate rotation progress based on route completion
-          const totalDuration = Cesium.JulianDate.secondsDifference(stopTime, startTime);
-          const elapsed = Cesium.JulianDate.secondsDifference(currentTime, startTime);
-          const progress = Math.max(0, Math.min(1, elapsed / totalDuration));
+          // Apply heavy smoothing to rotation for very smooth, gradual changes
+          // This prevents sudden rotation speed changes
+          if (currentRotationAngleRef.current === undefined) {
+            currentRotationAngleRef.current = targetRotation;
+          }
 
-          // Gradually rotate up to 360° around centroid as route progresses
-          // This creates a gentle orbital camera movement
-          const maxRotation = 360; // Full circle over the route
-          azimuthRotation = progress * maxRotation;
+          // Handle angle wrapping (e.g., 359° to 1° should interpolate through 360°, not backwards)
+          let angleDiff = targetRotation - currentRotationAngleRef.current;
+          if (angleDiff > 180) angleDiff -= 360;
+          if (angleDiff < -180) angleDiff += 360;
 
-          // Store for smooth transitions
+          // Very heavy smoothing (0.95) for ultra-smooth rotation
+          azimuthRotation = currentRotationAngleRef.current + angleDiff * 0.05;
           currentRotationAngleRef.current = azimuthRotation;
         }
 
