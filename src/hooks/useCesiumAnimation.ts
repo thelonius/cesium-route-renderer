@@ -799,6 +799,7 @@ export default function useCesiumAnimation({
           // This prevents sudden rotation speed changes
           if (currentRotationAngleRef.current === undefined) {
             currentRotationAngleRef.current = targetRotation;
+            console.log('🔄 Initial rotation angle:', targetRotation.toFixed(1), '°');
           }
 
           // Handle angle wrapping (e.g., 359° to 1° should interpolate through 360°, not backwards)
@@ -809,6 +810,16 @@ export default function useCesiumAnimation({
           // Moderate smoothing (0.85 previous, 0.15 new) for visible smooth rotation
           azimuthRotation = currentRotationAngleRef.current + angleDiff * 0.15;
           currentRotationAngleRef.current = azimuthRotation;
+          
+          // Debug log every 60 frames
+          if (Math.random() < 0.016) {
+            console.log('🔄 Rotation:', azimuthRotation.toFixed(1), '° (target:', targetRotation.toFixed(1), '°, diff:', angleDiff.toFixed(1), '°)');
+          }
+        } else {
+          // Debug: check if loop detection failed
+          if (Math.random() < 0.016) {
+            console.log('⚠️ Loop not detected - isLoop:', isLoopRouteRef.current, 'hasCentroid:', !!loopCentroidRef.current);
+          }
         }
 
         // Calculate camera offset based on route type
@@ -828,6 +839,12 @@ export default function useCesiumAnimation({
         const baseAzimuthRadians = Cesium.Math.toRadians(combinedAzimuth);
         const rotatedOffsetX = -cameraOffsetDistance * Math.cos(baseAzimuthRadians);
         const rotatedOffsetY = -cameraOffsetDistance * Math.sin(baseAzimuthRadians);
+        
+        // Debug: log rotation application
+        if (Math.random() < 0.016) {
+          console.log('📐 Combined azimuth:', combinedAzimuth.toFixed(1), '° → offset:', 
+            rotatedOffsetX.toFixed(0), ',', rotatedOffsetY.toFixed(0));
+        }
 
         // Use rotated camera position
         const cameraOffsetLocal = new Cesium.Cartesian3(rotatedOffsetX, rotatedOffsetY, cameraOffsetHeight);
