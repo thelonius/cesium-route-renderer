@@ -15,19 +15,19 @@ module.exports = {
 
   // Memory monitoring
   MEMORY: {
-    CHECK_INTERVAL_MS: 30000, // Check every 30 seconds
-    WARNING_THRESHOLD_MB: 1500, // Warn at 1.5GB
-    CRITICAL_THRESHOLD_MB: 2000 // Critical at 2GB
+    CHECK_INTERVAL_MS: 60000, // Check every 60 seconds
+    WARNING_THRESHOLD_MB: 2000, // Warn at 2GB
+    CRITICAL_THRESHOLD_MB: 2500 // Critical at 2.5GB
   },
 
   // Video rendering settings
   RENDER: {
     VIDEO_BUFFER_SECONDS: 5, // Buffer time added to video duration (reduced from 19s)
     PROGRESS_CHECK_INTERVAL_MS: 20000, // Progress updates every 20 seconds
-    TIMEOUT_MS: 3600000, // 60 minute timeout for renders
+    TIMEOUT_MS: 5400000, // 90 minute timeout for renders
     DEFAULT_FPS: 30,
     MAX_VIDEO_MINUTES: 10, // Maximum video length before adaptive speed kicks in
-    TARGET_VIDEO_SECONDS: 37, // Target video duration for optimal playback
+    TARGET_VIDEO_SECONDS: 40, // Target video duration for optimal playback
     DEFAULT_WIDTH: 464,
     DEFAULT_HEIGHT: 848
   },

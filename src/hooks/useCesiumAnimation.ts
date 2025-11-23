@@ -486,7 +486,9 @@ export default function useCesiumAnimation({
 
     // Start with static camera at working position (looking straight down)
     viewer.clock.shouldAnimate = false;
-    viewer.clock.multiplier = 0; // No animation yet
+    if (!(window as any).__MANUAL_MULTIPLIER) {
+      viewer.clock.multiplier = 0; // No animation yet
+    }
 
     const startingPosition = hikerEntity.position?.getValue(startTime);
 
@@ -545,9 +547,11 @@ export default function useCesiumAnimation({
         // Intro and outro animations run at FIXED real-time speeds (not affected by route speed)
         // Only the route movement speed is controlled by animationSpeed parameter
 
-        // Start route movement with slow speed (will ramp up)
+            // Start route movement with slow speed (will ramp up)
         viewer.clock.shouldAnimate = true;
-        viewer.clock.multiplier = 1; // Start at 1x for smooth intro (independent of route speed)
+        if (!(window as any).__MANUAL_MULTIPLIER) {
+          viewer.clock.multiplier = 1; // Start at 1x for smooth intro (independent of route speed)
+        }
 
           // Phase 1: Camera intro animation - FIXED 5 seconds real-time
           let cameraProgress = 0;
@@ -563,13 +567,24 @@ export default function useCesiumAnimation({
             cameraPanOffsetRef.current = Math.sin(cameraProgress * Math.PI * 2) * 200;
 
             // Keep clock at slow speed during intro for smooth camera movement
-            viewer.clock.multiplier = 1; // Fixed 1x speed for intro
+            if (!(window as any).__MANUAL_MULTIPLIER) {
+              viewer.clock.multiplier = 1; // Fixed 1x speed for intro
+            }
 
           if (cameraProgress >= 1) {
             cameraAzimuthProgressRef.current = 1;
             cameraTiltProgressRef.current = 1;
             clearInterval(cameraInterval);
             console.log('Camera intro complete, ramping up to route speed:', animationSpeed + 'x');
+
+            // Signal that the intro animation completed so external camera logic
+            // (e.g. useCesiumCamera) can enable the tracked-entity mode safely.
+            try {
+              (window as any).CESIUM_INTRO_COMPLETE = true;
+              console.log('✅ CESIUM_INTRO_COMPLETE flag set');
+            } catch (e) {
+              // ignore
+            }
 
                   // Phase 2: Ramp up to full route speed - FIXED 2 seconds real-time
                   let speedProgress = 0;
@@ -581,7 +596,9 @@ export default function useCesiumAnimation({
 
                     speedProgress += 0.05; // 20 steps at 100ms = 2 seconds
                     if (speedProgress >= 1) {
-                      viewer.clock.multiplier = animationSpeed;
+                      if (!(window as any).__MANUAL_MULTIPLIER) {
+                        viewer.clock.multiplier = animationSpeed;
+                      }
                       isInitialAnimationRef.current = false; // Initial animation complete
                       clearInterval(speedInterval);
                       console.log(`Route animation at full speed: ${animationSpeed}x`);
@@ -622,8 +639,10 @@ export default function useCesiumAnimation({
                       // Continue easing speed from 50% to 100%
                       const speedEased = speedProgress * speedProgress; // Quadratic ease in
                       const currentSpeed = animationSpeed * (0.5 + 0.5 * speedEased); // From 50% to 100% speed
-                      if (isFinite(currentSpeed) && currentSpeed >= 0) {
-                        viewer.clock.multiplier = currentSpeed;
+                      if (!(window as any).__MANUAL_MULTIPLIER) {
+                        if (isFinite(currentSpeed) && currentSpeed >= 0) {
+                          viewer.clock.multiplier = currentSpeed;
+                        }
                       }
                     }
                   }, 100);

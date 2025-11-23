@@ -146,60 +146,168 @@ export function calculateElevationStats(trackPoints: TrackPoint[]): {
   };
 }
 
-export function calculateTimestamps(trackPoints: TrackPoint[], normalizeSpeed: boolean = true): {
+export function calculateTimestamps(trackPoints: TrackPoint[]): {
   startTime: Cesium.JulianDate;
   stopTime: Cesium.JulianDate;
   trackPointsWithTime: TrackPoint[];
 } {
-  let startTime: Cesium.JulianDate;
-  let stopTime: Cesium.JulianDate;
   const hasTimestamps = trackPoints[0]?.time && trackPoints[0].time !== '';
 
-  // Always normalize speed for smoother animation by default (normalizeSpeed=true)
-  // This prevents jerky movement from speed variations during actual recording
-  // (e.g., running downhill fast, walking uphill slow, stopping for breaks)
-  if (hasTimestamps && !normalizeSpeed) {
-    startTime = Cesium.JulianDate.fromIso8601(trackPoints[0].time);
-    stopTime = Cesium.JulianDate.fromIso8601(trackPoints[trackPoints.length - 1].time);
+  if (hasTimestamps) {
+    // Use original GPX timestamps - speed control is handled by animation multiplier
+    const startTime = Cesium.JulianDate.fromIso8601(trackPoints[0].time);
+    const stopTime = Cesium.JulianDate.fromIso8601(trackPoints[trackPoints.length - 1].time);
     return { startTime, stopTime, trackPointsWithTime: trackPoints };
   }
 
-  // Recalculate timestamps with constant speed for smooth, consistent animation
-  const WALKING_SPEED_KMH = 5;
-  const WALKING_SPEED_MS = (WALKING_SPEED_KMH * 1000) / 3600;
-  startTime = Cesium.JulianDate.now();
-  let cumulativeTime = 0;
+  // If no timestamps, create evenly distributed timestamps over 1 hour
+  // Actual playback speed is controlled by animation multiplier
+  const startTime = Cesium.JulianDate.now();
+  const totalDurationSeconds = 3600; // 1 hour default
+  const secondsPerPoint = totalDurationSeconds / (trackPoints.length - 1);
 
   const trackPointsWithTime = trackPoints.map((point, i) => {
-    if (i === 0) {
-      point.time = Cesium.JulianDate.toIso8601(startTime);
-      return point;
-    }
-
-    const prevPos = Cesium.Cartographic.fromDegrees(
-      trackPoints[i - 1].lon,
-      trackPoints[i - 1].lat,
-      trackPoints[i - 1].ele
-    );
-    const currPos = Cesium.Cartographic.fromDegrees(
-      point.lon,
-      point.lat,
-      point.ele
-    );
-
-    const distance = Cesium.Cartesian3.distance(
-      Cesium.Cartesian3.fromRadians(prevPos.longitude, prevPos.latitude, prevPos.height),
-      Cesium.Cartesian3.fromRadians(currPos.longitude, currPos.latitude, currPos.height)
-    );
-
-    const timeForSegment = distance / WALKING_SPEED_MS;
-    cumulativeTime += timeForSegment;
-
-    const pointTime = Cesium.JulianDate.addSeconds(startTime, cumulativeTime, new Cesium.JulianDate());
+    const pointTime = Cesium.JulianDate.addSeconds(startTime, i * secondsPerPoint, new Cesium.JulianDate());
     point.time = Cesium.JulianDate.toIso8601(pointTime);
     return point;
   });
 
-  stopTime = Cesium.JulianDate.fromIso8601(trackPointsWithTime[trackPointsWithTime.length - 1].time);
+  const stopTime = Cesium.JulianDate.fromIso8601(trackPointsWithTime[trackPointsWithTime.length - 1].time);
   return { startTime, stopTime, trackPointsWithTime };
+}
+
+// Validate track points for rendering readiness. Returns an object with
+// errors (fatal) and warnings (non-fatal) to help callers decide whether
+// to proceed or surface issues to users.
+export function validateTrackPoints(trackPoints: TrackPoint[]) {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (!trackPoints || trackPoints.length === 0) {
+    errors.push('No track points found');
+    return { errors, warnings };
+  }
+
+  if (trackPoints.length < 2) {
+    errors.push('Too few track points — need at least 2');
+    return { errors, warnings };
+  }
+
+  // Basic numeric checks
+  for (let i = 0; i < trackPoints.length; i++) {
+    const p = trackPoints[i];
+    if (!Number.isFinite(p.lat) || !Number.isFinite(p.lon)) {
+      errors.push(`Invalid lat/lon at index ${i} (${p.lat}, ${p.lon})`);
+      return { errors, warnings };
+    }
+    if (!Number.isFinite(p.ele)) {
+      // Not fatal — set to 0 later if needed
+      warnings.push(`Missing/invalid elevation at index ${i}, defaulting to 0`);
+    }
+  }
+
+  // Time checks: if times exist, ensure monotonic increasing
+  const hasAnyTime = trackPoints.some(p => p.time && p.time.trim() !== '');
+  if (hasAnyTime) {
+    let lastTs: number | null = null;
+    for (let i = 0; i < trackPoints.length; i++) {
+      const t = trackPoints[i].time;
+      if (!t) {
+        warnings.push(`Missing timestamp at index ${i} while other points have times`);
+        continue;
+      }
+      let tsNum = null as number | null;
+      try {
+        tsNum = Cesium.JulianDate.toDate(Cesium.JulianDate.fromIso8601(t)).getTime();
+      } catch (e) {
+        errors.push(`Invalid timestamp format at index ${i}: ${t}`);
+        return { errors, warnings };
+      }
+      if (lastTs !== null && tsNum !== null && tsNum <= lastTs) {
+        errors.push(`Timestamps must be strictly increasing. Non-increasing at index ${i} (${t})`);
+        return { errors, warnings };
+      }
+      lastTs = tsNum as number;
+    }
+  }
+
+  // Distance/time density checks (sample a few points)
+  const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371000; // m
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  let totalDist = 0;
+  for (let i = 1; i < trackPoints.length; i++) {
+    const d = haversine(trackPoints[i-1].lat, trackPoints[i-1].lon, trackPoints[i].lat, trackPoints[i].lon);
+    totalDist += d;
+  }
+  const avgSeg = totalDist / Math.max(1, trackPoints.length - 1);
+  if (avgSeg > 20000) {
+    warnings.push(`Average segment length is large (${(avgSeg/1000).toFixed(1)} km). Visual interpolation may look jumpy.`);
+  }
+  if (avgSeg < 0.5) {
+    warnings.push(`Very dense track points (avg ${(avgSeg).toFixed(2)} m). Consider downsampling for performance.`);
+  }
+
+  // Time span checks
+  const times = trackPoints.map(p => p.time).filter(Boolean) as string[];
+  if (times.length > 1) {
+    try {
+      const jdTimes = times.map(t => Cesium.JulianDate.fromIso8601(t));
+      const earliest = jdTimes[0];
+      const latest = jdTimes[jdTimes.length - 1];
+      const totalDuration = Cesium.JulianDate.secondsDifference(latest, earliest);
+      if (totalDuration <= 0) {
+        errors.push('Non-positive total duration calculated from timestamps');
+        return { errors, warnings };
+      }
+      if (totalDuration > 3600 * 24 * 7) {
+        warnings.push(`Very long route duration (${(totalDuration/3600).toFixed(1)} hours). Consider pre-compressing timestamps for faster rendering.`);
+      }
+
+      // Largest gap
+      let largestGap = 0;
+      for (let i = 1; i < jdTimes.length; i++) {
+        const gap = Cesium.JulianDate.secondsDifference(jdTimes[i], jdTimes[i-1]);
+        if (gap > largestGap) largestGap = gap;
+      }
+      if (largestGap > 3600) {
+        warnings.push(`Large time gap detected between consecutive points (${(largestGap/3600).toFixed(1)} hours). This may produce long jumps.`);
+      }
+    } catch (e) {
+      warnings.push('Could not compute time-span checks due to invalid timestamp parsing');
+    }
+  }
+
+  // Missing timestamps ratio
+  const missingCount = trackPoints.filter(p => !p.time || p.time.trim() === '').length;
+  const missingPct = (missingCount / trackPoints.length) * 100;
+  if (missingPct > 0 && missingPct < 100) {
+    warnings.push(`Mixed timestamps: ${missingCount}/${trackPoints.length} points missing timestamps (${missingPct.toFixed(1)}%).`);
+  }
+  if (missingPct === 100) {
+    warnings.push('No timestamps present — synthetic timestamps will be generated (1 hour default).');
+  }
+
+  // Duplicate coordinates check
+  let dupCount = 0;
+  for (let i = 1; i < trackPoints.length; i++) {
+    const d = haversine(trackPoints[i-1].lat, trackPoints[i-1].lon, trackPoints[i].lat, trackPoints[i].lon);
+    if (d < 0.1) dupCount++;
+  }
+  if (dupCount > Math.max(3, Math.floor(trackPoints.length * 0.05))) {
+    warnings.push(`${dupCount} near-duplicate consecutive points detected. Consider pruning exact repeats.`);
+  }
+
+  // Point count / performance
+  if (trackPoints.length > 5000) {
+    warnings.push(`High point count (${trackPoints.length}) may impact rendering time; consider downsampling.`);
+  }
+
+  return { errors, warnings };
 }

@@ -68,7 +68,14 @@ export default function useViewerInit(
     }
 
     if (viewerRef) {
-      viewerRef.current = viewer;
+      (viewerRef as any).current = viewer;
+    }
+
+    // Expose viewer globally for debug tools and recorder
+    try {
+      (window as any).__CESIUM_VIEWER = viewer;
+    } catch (e) {
+      // ignore
     }
 
     // Verify preserveDrawingBuffer is set correctly (especially important for Docker)
@@ -147,6 +154,7 @@ export default function useViewerInit(
     return () => {
       if (viewer) {
         viewer.destroy();
+        try { (window as any).__CESIUM_VIEWER = null; } catch (e) { }
       }
     };
   }, [ref]);

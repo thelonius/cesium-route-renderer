@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import * as Cesium from 'cesium';
 import { TrackPoint } from '../types';
-import { parseGPX, calculateTimestamps } from '../utils/gpxUtils';
+import { parseGPX, calculateTimestamps, validateTrackPoints } from '../utils/gpxUtils';
 import { parseKML } from '../utils/kmlUtils';
 
 interface UseRouteResult {
@@ -49,6 +49,15 @@ export function useRoute(routeUrl: string | null): UseRouteResult {
 
         if (points.length === 0) {
           throw new Error(`No track points found in ${fileType} file`);
+        }
+
+        // Validate track points before proceeding
+        const validation = validateTrackPoints(points as any);
+        if (validation.errors && validation.errors.length > 0) {
+          throw new Error(`GPX validation failed: ${validation.errors.join('; ')}`);
+        }
+        if (validation.warnings && validation.warnings.length > 0) {
+          console.warn('GPX validation warnings:', validation.warnings.join(' | '));
         }
 
         const { startTime, stopTime, trackPointsWithTime } = calculateTimestamps(points);

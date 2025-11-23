@@ -7,467 +7,226 @@ import useCesiumAnimation from './hooks/useCesiumAnimation';
 import useCesiumCamera from './hooks/useCesiumCamera';
 import FpsCounter from './components/FpsCounter';
 import RecordButton from './components/RecordButton';
+import DebugOverlay from './components/DebugOverlay';
 
-export default function CesiumViewer() {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const viewerRef = useRef<Cesium.Viewer | null>(null);
-  const entityRef = useRef<Cesium.Entity | null>(null);
-  const [menuVisible, setMenuVisible] = useState(true);
-  const [availableRoutes, setAvailableRoutes] = useState<string[]>(['alps-trail.gpx', 'virages.gpx']);
-  const [currentRoute, setCurrentRoute] = useState<string | null>(null);
-  const [showRouteSelector, setShowRouteSelector] = useState(false);
-  const [isIntroComplete, setIsIntroComplete] = useState(false);
-  const [routeValidated, setRouteValidated] = useState(false);
-  const [isDockerMode, setIsDockerMode] = useState(false);
+export default function CesiumViewer(): JSX.Element {
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const viewerRef = useRef<Cesium.Viewer | null>(null);
+	const entityRef = useRef<Cesium.Entity | null>(null);
 
-  // Check if running in Docker mode (URL parameter or environment variable)
-  useEffect(() => {
-    // Check URL parameters first (Docker mode with Puppeteer)
-    const urlParams = new URLSearchParams(window.location.search);
-    const gpxFromUrl = urlParams.get('gpx');
-    const animationSpeedParam = urlParams.get('animationSpeed');
+	const [menuVisible, setMenuVisible] = useState(true);
+	const [currentRoute, setCurrentRoute] = useState<string | null>(null);
+	const [showRouteSelector, setShowRouteSelector] = useState(false);
+	const [isIntroComplete, setIsIntroComplete] = useState(false);
+	const [routeValidated, setRouteValidated] = useState(false);
+	const [isDockerMode, setIsDockerMode] = useState(false);
 
-    // Check environment variable (alternative Docker mode)
-    const gpxFromEnv = import.meta.env.VITE_GPX_ROUTE;
+	// Detect Docker mode / URL-supplied route
+	useEffect(() => {
+		const urlParams = new URLSearchParams(window.location.search);
+		const gpxFromUrl = urlParams.get('gpx');
+		const animationSpeedParam = urlParams.get('animationSpeed');
+		const gpxFromEnv = (import.meta as any).env?.VITE_GPX_ROUTE as string | undefined;
 
-    console.log('Docker mode detection:', {
-      urlParam: gpxFromUrl,
-      animationSpeed: animationSpeedParam,
-      envVar: gpxFromEnv,
-      allEnv: import.meta.env
-    });
+		const dockerRoute = gpxFromUrl || gpxFromEnv;
+		if (dockerRoute && typeof dockerRoute === 'string' && dockerRoute.trim()) {
+			console.log('Running in Docker mode with route:', dockerRoute, 'animation speed:', animationSpeedParam || 'default');
+			setIsDockerMode(true);
+			setCurrentRoute(dockerRoute);
+			setRouteValidated(true);
+		} else {
+			setShowRouteSelector(true);
+		}
+	}, []);
 
-    // URL parameter takes precedence (Puppeteer passes it this way)
-    const dockerRoute = gpxFromUrl || gpxFromEnv;
+	// Initialize Cesium viewer
+	useViewerInit(containerRef, viewerRef);
 
-    if (dockerRoute && typeof dockerRoute === 'string' && dockerRoute.trim()) {
-      console.log('Running in Docker mode with route:', dockerRoute, 'animation speed:', animationSpeedParam || 'default');
-      setIsDockerMode(true);
-      setCurrentRoute(dockerRoute);
-      setRouteValidated(true);
-    } else {
-      console.log('Running in Web mode - waiting for user to select route');
-      // In web mode, show route selector by default
-      setShowRouteSelector(true);
-    }
-  }, []);
+	// Load route when validated
+	const { trackPoints, timeRange, isLoading, error } = useRoute(routeValidated ? currentRoute : null);
 
-  // Initialize viewer
-  useViewerInit(containerRef, viewerRef);
+	// animationSpeed from URL (used only for deciding compression in web/manual modes)
+	const animationSpeed = React.useMemo(() => {
+		const urlParams = new URLSearchParams(window.location.search);
+		const speedParam = urlParams.get('animationSpeed');
+		return speedParam ? Math.max(1, parseInt(speedParam, 10) || 1) : 2;
+	}, []);
 
-  // Load GPX route only if validated
-  const { trackPoints, timeRange, isLoading, error } = useRoute(routeValidated ? currentRoute : null);
+	// Allow disabling frontend compression via global toggle
+	const disableCompression = typeof window !== 'undefined' && !!(window as any).__DISABLE_COMPRESSION;
 
-  // Get animation speed from URL params (for Docker mode)
-  const animationSpeed = React.useMemo(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const speedParam = urlParams.get('animationSpeed');
-    return speedParam ? parseInt(speedParam, 10) : 2; // Default to 2x speed
-  }, []);
+	// Compute compressed time range (if applicable)
+	const compressedTimeRange = React.useMemo(() => {
+		if (!timeRange || !animationSpeed || animationSpeed <= 1 || disableCompression) return timeRange;
+		const originalDuration = Cesium.JulianDate.secondsDifference(timeRange.stopTime, timeRange.startTime);
+		const compressedDuration = originalDuration / animationSpeed;
+		const newStopTime = Cesium.JulianDate.addSeconds(timeRange.startTime, compressedDuration, new Cesium.JulianDate());
+		try { (window as any).__TIMESTAMPS_COMPRESSED = true; } catch (e) { }
+		console.log(`Time compression: ${originalDuration}s → ${compressedDuration}s (${animationSpeed}x)`);
+		return { startTime: timeRange.startTime, stopTime: newStopTime };
+	}, [timeRange, animationSpeed, disableCompression]);
 
-  // Setup animation - called at top level
-  const entity = useCesiumAnimation({
-    viewer: viewerRef.current,
-    trackPoints,
-    startTime: timeRange?.startTime,
-    stopTime: timeRange?.stopTime,
-    animationSpeed
-  });
+	// Compress per-point timestamps if needed
+	const compressedTrackPoints = React.useMemo(() => {
+		if (!timeRange || !animationSpeed || animationSpeed <= 1 || !trackPoints || trackPoints.length === 0 || disableCompression) return trackPoints;
+		return trackPoints.map(point => {
+			try {
+				const originalTime = Cesium.JulianDate.fromIso8601(point.time);
+				const elapsed = Cesium.JulianDate.secondsDifference(originalTime, timeRange.startTime);
+				const compressedElapsed = elapsed / animationSpeed;
+				const newTime = Cesium.JulianDate.addSeconds(timeRange.startTime, compressedElapsed, new Cesium.JulianDate());
+				return { ...point, time: Cesium.JulianDate.toIso8601(newTime) };
+			} catch (e) {
+				return point;
+			}
+		});
+	}, [trackPoints, timeRange, animationSpeed, disableCompression]);
 
-  // Setup camera - called at top level
-  useCesiumCamera({
-    viewer: viewerRef.current,
-    targetEntity: entity,
-    hikerEntity: entity,
-    isIntroComplete: true,
-    enableCollisionDetection: false,
-    smoothFactor: 0.9
-  });
+	// Wire animation and camera
+	const entity = useCesiumAnimation({
+		viewer: viewerRef.current,
+		trackPoints: compressedTrackPoints || [],
+		startTime: compressedTimeRange?.startTime,
+		stopTime: compressedTimeRange?.stopTime,
+		animationSpeed: 1
+	});
 
-  // Track entity reference
-  useEffect(() => {
-    if (entity) {
-      entityRef.current = entity;
-      setIsIntroComplete(true);
-    }
-    return () => {
-      entityRef.current = null;
-    };
-  }, [entity]);
+	useCesiumCamera({
+		viewer: viewerRef.current,
+		targetEntity: entity,
+		hikerEntity: entity,
+		isIntroComplete: isIntroComplete,
+		enableCollisionDetection: false,
+		smoothFactor: 0.9
+	});
 
-  // Toggle menu visibility
-  useEffect(() => {
-    if (viewerRef.current) {
-      const viewer = viewerRef.current;
-      const animationContainer = viewer.animation?.container as HTMLElement;
-      const timelineContainer = viewer.timeline?.container as HTMLElement;
+	// Track entity ref and intro completion
+	useEffect(() => {
+		if (entity) {
+			entityRef.current = entity;
+			const checkIntro = () => {
+				try {
+					if ((window as any).CESIUM_INTRO_COMPLETE === true) {
+						setIsIntroComplete(true);
+						return true;
+					}
+				} catch (e) { }
+				return false;
+			};
+			if (!checkIntro()) {
+				const interval = setInterval(() => { if (checkIntro()) clearInterval(interval); }, 250);
+				return () => clearInterval(interval);
+			}
+		}
+		return () => { entityRef.current = null; };
+	}, [entity]);
 
-      if (animationContainer) {
-        animationContainer.style.display = menuVisible ? 'block' : 'none';
-      }
-      if (timelineContainer) {
-        timelineContainer.style.display = menuVisible ? 'block' : 'none';
-      }
-    }
-  }, [menuVisible]);
+	// Hide/show Cesium UI widgets based on menuVisible
+	useEffect(() => {
+		if (!viewerRef.current) return;
+		const viewer = viewerRef.current;
+		const animationContainer = (viewer.animation?.container) as HTMLElement | undefined;
+		const timelineContainer = (viewer.timeline?.container) as HTMLElement | undefined;
+		if (animationContainer) animationContainer.style.display = menuVisible ? 'block' : 'none';
+		if (timelineContainer) timelineContainer.style.display = menuVisible ? 'block' : 'none';
+	}, [menuVisible]);
 
-  const toggleMenu = () => {
-    setMenuVisible(!menuVisible);
-  };
+	const handleRouteChange = (route: string) => { setCurrentRoute(route); setRouteValidated(true); setShowRouteSelector(false); };
 
-  const handleRouteChange = (route: string) => {
-    setCurrentRoute(route);
-    setRouteValidated(true);
-    setShowRouteSelector(false);
-  };
+	// File upload handler — persist last uploaded content to localStorage
+	const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		if (!file) return;
+		try {
+			const reader = new FileReader();
+			reader.onload = (e) => {
+				const content = e.target?.result;
+				if (typeof content !== 'string') return;
+				const isGPX = content.includes('<?xml') && content.includes('<gpx');
+				const isKML = content.includes('<?xml') && content.includes('<kml');
+				if (!isGPX && !isKML) { alert('Invalid file format. Please upload a GPX or KML file.'); return; }
+				const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
+				const blob = new Blob([content], { type: mimeType });
+				const blobUrl = URL.createObjectURL(blob);
+				try { localStorage.setItem('lastDroppedRouteContent', content); localStorage.setItem('lastDroppedRouteName', file.name); } catch (e) { }
+				setCurrentRoute(blobUrl); setRouteValidated(true); setShowRouteSelector(false);
+			};
+			reader.readAsText(file);
+		} catch (error) { console.error('Error uploading file:', error); alert('Error uploading file'); }
+	};
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+	// Drag-and-drop support
+	useEffect(() => {
+		const onDrop = (ev: DragEvent) => {
+			ev.preventDefault(); ev.stopPropagation();
+			const files = ev.dataTransfer?.files; if (!files || files.length === 0) return;
+			const file = files[0];
+			const reader = new FileReader();
+			reader.onload = () => {
+				const text = String(reader.result || '');
+				const isKML = text.includes('<kml') || text.includes('<kml:');
+				const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
+				const blob = new Blob([text], { type: mimeType });
+				const blobUrl = URL.createObjectURL(blob);
+				try { localStorage.setItem('lastDroppedRouteContent', text); localStorage.setItem('lastDroppedRouteName', file.name); } catch (e) { }
+				setCurrentRoute(blobUrl); setRouteValidated(true); setShowRouteSelector(false);
+			};
+			reader.readAsText(file);
+		};
+		const onDragOver = (ev: DragEvent) => { ev.preventDefault(); if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy'; };
+		window.addEventListener('drop', onDrop);
+		window.addEventListener('dragover', onDragOver);
+		return () => { window.removeEventListener('drop', onDrop); window.removeEventListener('dragover', onDragOver); };
+	}, []);
 
-    try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const content = e.target?.result;
-        if (typeof content !== 'string') return;
+	// Restore last dropped route from localStorage if present
+	useEffect(() => {
+		try {
+			const last = localStorage.getItem('lastDroppedRouteContent');
+			const name = localStorage.getItem('lastDroppedRouteName') || 'route.gpx';
+			if (last && !currentRoute) {
+				const isKML = last.includes('<kml') || last.includes('<kml:');
+				const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
+				const blob = new Blob([last], { type: mimeType });
+				const blobUrl = URL.createObjectURL(blob);
+				console.log('Restored last dropped route from localStorage:', name);
+				setCurrentRoute(blobUrl); setRouteValidated(true); setShowRouteSelector(false);
+			}
+		} catch (e) { }
+	}, []);
 
-        const isGPX = content.includes('<?xml') && content.includes('<gpx');
-        const isKML = content.includes('<?xml') && content.includes('<kml');
+	return (
+		<div style={{ position: 'relative', width: '100%', height: '100%' }}>
+			<div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
 
-        if (!isGPX && !isKML) {
-          alert('Invalid file format. Please upload a GPX or KML file.');
-          return;
-        }
+			<FpsCounter viewer={viewerRef.current} />
+			<DebugOverlay />
 
-        const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
-        const blob = new Blob([content], { type: mimeType });
-        const blobUrl = URL.createObjectURL(blob);
-        setAvailableRoutes(prev => [...prev, file.name]);
-        setCurrentRoute(blobUrl);
-        setRouteValidated(true);
-        setShowRouteSelector(false);
-      };
-      reader.readAsText(file);
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      alert('Error uploading file');
-    }
-  };
+			<RecordButton viewer={viewerRef.current} startTime={timeRange?.startTime} stopTime={timeRange?.stopTime} animationSpeed={animationSpeed} />
 
-  return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
+			{/* Welcome / Load Route */}
+			{!isDockerMode && !routeValidated && (
+				<div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+					<div style={{ textAlign: 'center', color: 'white' }}>
+						<h1 style={{ fontSize: 28, marginBottom: 8 }}>Drop a GPX/KML file</h1>
+						<p style={{ opacity: 0.9, marginBottom: 16 }}>Drag & drop a GPX or KML file anywhere on the page, or upload one below. The last dropped file is remembered.</p>
+						<div>
+							<label htmlFor="gpx-upload" style={{ display: 'inline-block', padding: '12px 16px', backgroundColor: 'rgba(34,139,34,0.4)', borderRadius: 6, cursor: 'pointer', color: 'white' }}>📁 Upload GPX/KML</label>
+							<input id="gpx-upload" type="file" accept=".gpx,.kml" onChange={handleFileUpload} style={{ display: 'none' }} />
+						</div>
+					</div>
+				</div>
+			)}
 
-      {/* FPS Counter for debugging */}
-      <FpsCounter viewer={viewerRef.current} />
+			{error && (
+				<div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: 'rgba(255,0,0,0.8)', color: 'white', padding: 12, borderRadius: 6, zIndex: 1500 }}>{error}</div>
+			)}
 
-      {/* Record Button for web mode */}
-      <RecordButton
-        viewer={viewerRef.current}
-        startTime={timeRange?.startTime}
-        stopTime={timeRange?.stopTime}
-        animationSpeed={animationSpeed}
-      />
-
-      {/* Welcome Screen - Show only in web mode when no route selected */}
-      {!isDockerMode && !routeValidated && (
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          backgroundColor: 'rgba(0, 0, 0, 0.95)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000,
-        }}>
-          <h1 style={{
-            color: 'white',
-            fontSize: '32px',
-            fontFamily: 'sans-serif',
-            marginBottom: '20px',
-          }}>
-            Welcome to Cesium Route Viewer
-          </h1>
-          <p style={{
-            color: 'rgba(255, 255, 255, 0.8)',
-            fontSize: '16px',
-            fontFamily: 'sans-serif',
-            marginBottom: '40px',
-          }}>
-            Please select a route to begin
-          </p>
-
-          {/* Route Selection */}
-          <div style={{
-            padding: '24px',
-            backgroundColor: 'rgba(42, 42, 42, 0.95)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '8px',
-            minWidth: '300px',
-            maxWidth: '500px',
-            maxHeight: '400px',
-            overflowY: 'auto'
-          }}>
-            <h3 style={{
-              margin: '0 0 16px 0',
-              color: 'white',
-              fontSize: '18px',
-              fontFamily: 'sans-serif',
-              fontWeight: 'bold'
-            }}>
-              Available Routes
-            </h3>
-
-            {/* Route List */}
-            <div style={{ marginBottom: '16px' }}>
-              {availableRoutes.map((route) => (
-                <div
-                  key={route}
-                  onClick={() => handleRouteChange(route)}
-                  style={{
-                    padding: '12px',
-                    marginBottom: '8px',
-                    backgroundColor: 'rgba(100, 149, 237, 0.2)',
-                    border: '1px solid rgba(100, 149, 237, 0.4)',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    color: 'white',
-                    fontSize: '14px',
-                    fontFamily: 'sans-serif',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(100, 149, 237, 0.4)';
-                    e.currentTarget.style.borderColor = 'rgba(100, 149, 237, 0.6)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(100, 149, 237, 0.2)';
-                    e.currentTarget.style.borderColor = 'rgba(100, 149, 237, 0.4)';
-                  }}
-                >
-                  📍 {route.replace('.gpx', '')}
-                </div>
-              ))}
-            </div>
-
-            {/* File Upload */}
-            <div>
-              <label
-                htmlFor="gpx-upload-welcome"
-                style={{
-                  display: 'block',
-                  padding: '12px',
-                  backgroundColor: 'rgba(34, 139, 34, 0.3)',
-                  border: '1px solid rgba(34, 139, 34, 0.5)',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  color: 'white',
-                  fontSize: '14px',
-                  fontFamily: 'sans-serif',
-                  textAlign: 'center',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.5)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.3)';
-                }}
-              >
-                📁 Upload GPX or KML File
-              </label>
-              <input
-                id="gpx-upload-welcome"
-                type="file"
-                accept=".gpx,.kml"
-                onChange={handleFileUpload}
-                style={{ display: 'none' }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          backgroundColor: 'rgba(255, 0, 0, 0.8)',
-          color: 'white',
-          padding: '1rem',
-          borderRadius: '4px',
-          zIndex: 1500,
-        }}>
-          {error}
-        </div>
-      )}
-
-      {isLoading && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          color: 'white',
-          padding: '1.5rem',
-          borderRadius: '4px',
-          zIndex: 1500,
-          textAlign: 'center',
-        }}>
-          <div style={{ marginBottom: '10px', fontSize: '16px' }}>Loading and validating route...</div>
-          <div style={{ fontSize: '12px', opacity: 0.7 }}>Please wait</div>
-        </div>
-      )}
-
-      {/* Control Panel - Only show in web mode (not Docker) after route is loaded */}
-      {!isDockerMode && routeValidated && !error && (
-        <div style={{
-          position: 'absolute',
-          top: '10px',
-          right: '10px',
-          zIndex: 1000,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px'
-        }}>
-          <button
-            onClick={toggleMenu}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: 'rgba(42, 42, 42, 0.8)',
-              color: 'white',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontFamily: 'sans-serif'
-            }}
-          >
-            {menuVisible ? 'Hide Controls' : 'Show Controls'}
-          </button>
-
-          {!isDockerMode && (
-            <button
-              onClick={() => setShowRouteSelector(!showRouteSelector)}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: 'rgba(42, 42, 42, 0.8)',
-                color: 'white',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontFamily: 'sans-serif'
-              }}
-            >
-              {showRouteSelector ? 'Hide Routes' : 'Change Route'}
-            </button>
-          )}
-
-          {/* Route Selector Panel */}
-          {showRouteSelector && (
-          <div style={{
-            padding: '12px',
-            backgroundColor: 'rgba(42, 42, 42, 0.95)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '4px',
-            minWidth: '200px',
-            maxHeight: '300px',
-            overflowY: 'auto'
-          }}>
-            <h3 style={{
-              margin: '0 0 12px 0',
-              color: 'white',
-              fontSize: '14px',
-              fontFamily: 'sans-serif',
-              fontWeight: 'bold'
-            }}>
-              Available Routes
-            </h3>
-
-            {/* Route List */}
-            <div style={{ marginBottom: '12px' }}>
-              {availableRoutes.map((route) => (
-                <div
-                  key={route}
-                  onClick={() => handleRouteChange(route)}
-                  style={{
-                    padding: '8px',
-                    marginBottom: '4px',
-                    backgroundColor: currentRoute === route
-                      ? 'rgba(100, 149, 237, 0.3)'
-                      : 'rgba(255, 255, 255, 0.1)',
-                    border: currentRoute === route
-                      ? '1px solid rgba(100, 149, 237, 0.5)'
-                      : '1px solid transparent',
-                    borderRadius: '3px',
-                    cursor: 'pointer',
-                    color: 'white',
-                    fontSize: '13px',
-                    fontFamily: 'sans-serif',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (currentRoute !== route) {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (currentRoute !== route) {
-                      e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
-                    }
-                  }}
-                >
-                  {route.replace('.gpx', '')}
-                </div>
-              ))}
-            </div>
-
-            {/* File Upload */}
-            <div>
-              <label
-                htmlFor="gpx-upload"
-                style={{
-                  display: 'block',
-                  padding: '8px',
-                  backgroundColor: 'rgba(34, 139, 34, 0.3)',
-                  border: '1px solid rgba(34, 139, 34, 0.5)',
-                  borderRadius: '3px',
-                  cursor: 'pointer',
-                  color: 'white',
-                  fontSize: '13px',
-                  fontFamily: 'sans-serif',
-                  textAlign: 'center',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.5)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = 'rgba(34, 139, 34, 0.3)';
-                }}
-              >
-                📁 Upload GPX/KML
-              </label>
-              <input
-                id="gpx-upload"
-                type="file"
-                accept=".gpx,.kml"
-                onChange={handleFileUpload}
-                style={{ display: 'none' }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-      )}
-    </div>
-  );
+			{isLoading && (
+				<div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', backgroundColor: 'rgba(0,0,0,0.8)', color: 'white', padding: 16, borderRadius: 6, zIndex: 1500 }}>
+					<div style={{ marginBottom: 8 }}>Loading and validating route...</div>
+				</div>
+			)}
+		</div>
+	);
 }
