@@ -68,7 +68,7 @@ export default function useCesiumAnimation({
   const trailPositionsRef = useRef<Cesium.Cartesian3[]>([]);
   const lastAddedTimeRef = useRef<Cesium.JulianDate | null>(null);
   const smoothedBackRef = useRef(CAMERA.BASE_BACK);
-  const smoothedHeightRef = useRef(CAMERA.BASE_HEIGHT);
+  const smoothedHeightRef = useRef(CAMERA.BASE_HEIGHT * 3);
   const cameraAzimuthProgressRef = useRef(0); // 0 = no rotation, 1 = full azimuth (for opening)
   const cameraTiltProgressRef = useRef(0); // 0 = looking down, 1 = fully tilted
   const isInitialAnimationRef = useRef(true); // Track if we're still in opening animation
@@ -813,12 +813,12 @@ export default function useCesiumAnimation({
 
         // Calculate camera offset based on route type
         let cameraOffsetDistance = CAMERA.BASE_BACK;
-        let cameraOffsetHeight = CAMERA.BASE_HEIGHT;
+        let cameraOffsetHeight = CAMERA.BASE_HEIGHT * 3;
 
         if (isLoopRouteRef.current && loopCentroidRef.current) {
           // For loop routes: moderate distance to see loop while following hiker
           cameraOffsetDistance = Math.min(loopRadiusRef.current * 1.5, CAMERA.BASE_BACK * 2);
-          cameraOffsetHeight = Math.min(loopRadiusRef.current * 1.2, CAMERA.BASE_HEIGHT * 1.5);
+          cameraOffsetHeight = Math.min(loopRadiusRef.current * 1.8, CAMERA.BASE_HEIGHT * 2.5 * 3); // Triple base height
         }
 
         // Apply azimuth rotation to camera offset
@@ -840,41 +840,26 @@ export default function useCesiumAnimation({
           viewer.camera.position = cameraPosition;
           if (position) {
             if (isInitialAnimationRef.current || isEndingAnimationRef.current) {
-              // During opening/ending animation: interpolate azimuth and tilt smoothly with panning
-              const azimuth = cameraAzimuthProgressRef.current;
+              // During opening/ending animation: keep hiker centered, smoothly animate camera pull-back
               const tilt = cameraTiltProgressRef.current;
-              const panOffset = cameraPanOffsetRef.current;
 
-              // Interpolate heading (azimuth): 0° → 25°
-              const targetHeading = 25; // degrees
-              const currentHeading = targetHeading * azimuth;
+              // Start with camera close to hiker (centered), gradually pull back to normal distance
+              // This ensures hiker is centered throughout the intro animation
+              const startDistance = cameraOffsetDistance * 0.3; // Start closer (30% of normal)
+              const currentDistance = startDistance + (cameraOffsetDistance - startDistance) * tilt;
 
-              // Interpolate lookAt offset for tilt with panning
-              // Start: looking straight down (0, 0, height)
-              // End: looking forward/behind (-BASE_BACK, 0, BASE_HEIGHT)
-              const lookAtOffsetX = -cameraOffsetDistance * tilt;
-              const lookAtOffsetY = panOffset; // Side-to-side panning
-              const lookAtOffsetZ = cameraOffsetHeight * 0.48; // scaled forward look-at height
+              // Look directly at hiker position (centered on screen)
+              // Use actual hiker position, not blended centroid
+              const hikerLookAtTarget = isInitialAnimationRef.current ? smoothedPosition : cameraLookAtTarget;
 
-              // Apply heading rotation to lookAt offset
-              const headingRadians = Cesium.Math.toRadians(currentHeading);
-              const rotatedX = lookAtOffsetX * Math.cos(headingRadians) - lookAtOffsetY * Math.sin(headingRadians);
-              const rotatedY = lookAtOffsetX * Math.sin(headingRadians) + lookAtOffsetY * Math.cos(headingRadians);
-
-              const lookAtOffset = new Cesium.Cartesian3(rotatedX, rotatedY, lookAtOffsetZ);
-              viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
+              // For mobile/vertical screens: look from camera position toward hiker
+              // Lower Z offset creates more tilted (less vertical) view
+              const lookAtOffset = new Cesium.Cartesian3(-currentDistance * 0.3, 0, cameraOffsetHeight * 0.15);
+              viewer.camera.lookAt(hikerLookAtTarget, lookAtOffset);
             } else {
               // Normal follow camera with azimuth rotation around centroid
-              // Calculate look-at offset that accounts for current rotation angle
-              const baseHeading = azimuthRotation; // Use calculated rotation angle
-              const headingRadians = Cesium.Math.toRadians(baseHeading);
-
-              // Offset is already rotated by azimuth, so look-at offset should compensate
-              const lookAtOffsetX = -cameraOffsetDistance * Math.cos(headingRadians);
-              const lookAtOffsetY = -cameraOffsetDistance * Math.sin(headingRadians);
-              const lookAtOffsetZ = cameraOffsetHeight * 0.48;
-
-              const lookAtOffset = new Cesium.Cartesian3(lookAtOffsetX, lookAtOffsetY, lookAtOffsetZ);
+              // Lower Z offset creates more tilted (less vertical) view
+              const lookAtOffset = new Cesium.Cartesian3(-cameraOffsetDistance * 0.3, 0, cameraOffsetHeight * 0.15);
               viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
             }
           }
@@ -946,13 +931,13 @@ export default function useCesiumAnimation({
       // Set initial camera to point at hiker's start position
       try {
         const startTransform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition);
-        const initialCameraOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT);
+        const initialCameraOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT * 3);
         const initialCameraPosition = Cesium.Matrix4.multiplyByPoint(startTransform, initialCameraOffset, new Cesium.Cartesian3());
 
         viewer.camera.position = initialCameraPosition;
 
-        // Point camera at starting position
-        const lookAtOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT * 0.48);
+        // Point camera directly at hiker (centered) with no horizontal offset
+        const lookAtOffset = new Cesium.Cartesian3(0, 0, CAMERA.BASE_HEIGHT * 3 * 0.48);
         viewer.camera.lookAt(startingPosition, lookAtOffset);
 
         // Initialize smoothing refs with start position
