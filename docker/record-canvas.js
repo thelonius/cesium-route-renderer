@@ -7,7 +7,7 @@ const fs = require('fs');
 const constants = require('./config/constants.cjs');
 
 const PORT = 8080;
-const OUTPUT_DIR = path.resolve('/output');
+const OUTPUT_DIR = path.resolve('/app/output');
 const LOG_PATH = path.join(OUTPUT_DIR, 'recorder.log');
 const ERROR_LOG_PATH = path.join(OUTPUT_DIR, 'recorder-error.log');
 const FRAMES_DIR = path.join(OUTPUT_DIR, 'frames');
@@ -31,7 +31,13 @@ function getGPXDuration() {
     if (!fs.existsSync(gpxPath)) return null;
 
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
-    const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
+
+    // Extract only the track segment to avoid metadata times
+    const trkMatch = gpxContent.match(/<trkseg>([\s\S]*)<\/trkseg>/);
+    if (!trkMatch) return null;
+
+    const trackSegment = trkMatch[1];
+    const timeMatches = trackSegment.match(/<time>([^<]+)<\/time>/g);
 
     if (timeMatches && timeMatches.length >= 2) {
       const firstTime = new Date(timeMatches[0].replace(/<\/?time>/g, ''));
@@ -471,7 +477,7 @@ async function recordRoute() {
   server.close();
 
   // Encode with FFmpeg
-  const outputPath = '/output/route-video.mp4';
+  const outputPath = path.join(OUTPUT_DIR, 'route-video.mp4');
   const ffmpegArgs = [
     '-framerate', String(RECORD_FPS),
     '-i', path.join(FRAMES_DIR, 'frame-%06d.jpg'),
