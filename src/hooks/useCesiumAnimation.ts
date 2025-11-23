@@ -95,6 +95,8 @@ export default function useCesiumAnimation({
   const smoothedCameraTargetRef = useRef<Cesium.Cartesian3 | null>(null);
   const lookAheadTargetRef = useRef<Cesium.Cartesian3 | null>(null);
   const initialCameraSetRef = useRef(false);
+  const initialAzimuthRef = useRef<number>(0); // Starting azimuth from hiker's initial position
+  const currentRotationAngleRef = useRef<number>(0); // Current rotation around centroid
 
   useEffect(() => {
     if (!viewer || !trackPoints.length || !startTime || !stopTime) return;
@@ -726,10 +728,10 @@ export default function useCesiumAnimation({
         const lookAheadSeconds = isLoopRouteRef.current ? 15 : 10; // More look-ahead for loops
         const lookAheadTime = Cesium.JulianDate.addSeconds(currentTime, lookAheadSeconds, new Cesium.JulianDate());
         const lookAheadStopTime = viewer.clock.stopTime || stopTime;
-        const clampedLookAheadTime = Cesium.JulianDate.compare(lookAheadTime, lookAheadStopTime) > 0 
-          ? lookAheadStopTime 
+        const clampedLookAheadTime = Cesium.JulianDate.compare(lookAheadTime, lookAheadStopTime) > 0
+          ? lookAheadStopTime
           : lookAheadTime;
-        
+
         const lookAheadPosition = hikerEntity.position.getValue(clampedLookAheadTime) || position;
 
         // Smooth the look-ahead target (camera anticipates but doesn't jump)
@@ -766,6 +768,34 @@ export default function useCesiumAnimation({
 
         const transform = Cesium.Transforms.eastNorthUpToFixedFrame(smoothedPosition);
 
+        // Calculate azimuth rotation around centroid
+        let azimuthRotation = 0;
+
+        if (isLoopRouteRef.current && loopCentroidRef.current) {
+          // Calculate angle from centroid to current hiker position
+          const vectorToCentroid = Cesium.Cartesian3.subtract(
+            loopCentroidRef.current,
+            smoothedPosition,
+            new Cesium.Cartesian3()
+          );
+
+          // Project to 2D for angle calculation
+          const angle = Math.atan2(vectorToCentroid.y, vectorToCentroid.x);
+
+          // Calculate rotation progress based on route completion
+          const totalDuration = Cesium.JulianDate.secondsDifference(stopTime, startTime);
+          const elapsed = Cesium.JulianDate.secondsDifference(currentTime, startTime);
+          const progress = Math.max(0, Math.min(1, elapsed / totalDuration));
+
+          // Gradually rotate up to 360° around centroid as route progresses
+          // This creates a gentle orbital camera movement
+          const maxRotation = 360; // Full circle over the route
+          azimuthRotation = progress * maxRotation;
+
+          // Store for smooth transitions
+          currentRotationAngleRef.current = azimuthRotation;
+        }
+
         // Calculate camera offset based on route type
         let cameraOffsetDistance = CAMERA.BASE_BACK;
         let cameraOffsetHeight = CAMERA.BASE_HEIGHT;
@@ -776,8 +806,13 @@ export default function useCesiumAnimation({
           cameraOffsetHeight = Math.min(loopRadiusRef.current * 1.2, CAMERA.BASE_HEIGHT * 1.5);
         }
 
-        // Use constant camera position (with route-aware adjustments)
-        const cameraOffsetLocal = new Cesium.Cartesian3(-cameraOffsetDistance, 0, cameraOffsetHeight);
+        // Apply azimuth rotation to camera offset
+        const baseAzimuthRadians = Cesium.Math.toRadians(azimuthRotation);
+        const rotatedOffsetX = -cameraOffsetDistance * Math.cos(baseAzimuthRadians);
+        const rotatedOffsetY = -cameraOffsetDistance * Math.sin(baseAzimuthRadians);
+
+        // Use rotated camera position
+        const cameraOffsetLocal = new Cesium.Cartesian3(rotatedOffsetX, rotatedOffsetY, cameraOffsetHeight);
         const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
 
         // Validate camera position
@@ -814,19 +849,17 @@ export default function useCesiumAnimation({
               const lookAtOffset = new Cesium.Cartesian3(rotatedX, rotatedY, lookAtOffsetZ);
               viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
             } else {
-              // Normal follow camera with continuous slow azimuth rotation
-              // For loop routes: gentler continuous panning around the centroid
-              const baseHeading = 25; // Base heading in degrees
-              const continuousRotation = continuousAzimuthRef.current; // Slow continuous rotation
-              const totalHeading = baseHeading + continuousRotation;
+              // Normal follow camera with azimuth rotation around centroid
+              // Calculate look-at offset that accounts for current rotation angle
+              const baseHeading = azimuthRotation; // Use calculated rotation angle
+              const headingRadians = Cesium.Math.toRadians(baseHeading);
 
-              const headingRadians = Cesium.Math.toRadians(totalHeading);
-              const baseOffsetX = -cameraOffsetDistance;
-              const baseOffsetY = 0;
-              const rotatedX = baseOffsetX * Math.cos(headingRadians) - baseOffsetY * Math.sin(headingRadians);
-              const rotatedY = baseOffsetX * Math.sin(headingRadians) + baseOffsetY * Math.cos(headingRadians);
+              // Offset is already rotated by azimuth, so look-at offset should compensate
+              const lookAtOffsetX = -cameraOffsetDistance * Math.cos(headingRadians);
+              const lookAtOffsetY = -cameraOffsetDistance * Math.sin(headingRadians);
+              const lookAtOffsetZ = cameraOffsetHeight * 0.48;
 
-              const lookAtOffset = new Cesium.Cartesian3(rotatedX, rotatedY, cameraOffsetHeight * 0.48);
+              const lookAtOffset = new Cesium.Cartesian3(lookAtOffsetX, lookAtOffsetY, lookAtOffsetZ);
               viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
             }
           }
@@ -900,17 +933,28 @@ export default function useCesiumAnimation({
         const startTransform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition);
         const initialCameraOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT);
         const initialCameraPosition = Cesium.Matrix4.multiplyByPoint(startTransform, initialCameraOffset, new Cesium.Cartesian3());
-        
+
         viewer.camera.position = initialCameraPosition;
-        
+
         // Point camera at starting position
         const lookAtOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT * 0.48);
         viewer.camera.lookAt(startingPosition, lookAtOffset);
-        
+
         // Initialize smoothing refs with start position
         smoothedCameraTargetRef.current = startingPosition.clone();
         lookAheadTargetRef.current = startingPosition.clone();
-        
+
+        // Calculate initial azimuth if loop route
+        if (isLoopRouteRef.current && loopCentroidRef.current) {
+          const vectorToCentroid = Cesium.Cartesian3.subtract(
+            loopCentroidRef.current,
+            startingPosition,
+            new Cesium.Cartesian3()
+          );
+          initialAzimuthRef.current = Math.atan2(vectorToCentroid.y, vectorToCentroid.x) * (180 / Math.PI);
+          console.log('Initial azimuth from start to centroid:', initialAzimuthRef.current.toFixed(1), '°');
+        }
+
         console.log('Camera initialized at hiker start position');
       } catch (e) {
         console.warn('Failed to set initial camera position:', e);
