@@ -9,15 +9,16 @@ export default function DebugOverlay() {
     multiplier: null as number | null,
     shouldAnimate: null as boolean | null,
     compressed: false,
+    cameraHeight: null as number | null,
   });
-  const [multiplierInput, setMultiplierInput] = useState('200');
+  const [multiplierInput, setMultiplierInput] = useState('1200');
 
   useEffect(() => {
     let mounted = true;
     const interval = setInterval(() => {
       try {
         let viewer: Cesium.Viewer | null = null;
-        
+
         // Try multiple ways to find the viewer
         if ((window as any).Cesium?.Viewer?.instances?.[0]) {
           viewer = (window as any).Cesium.Viewer.instances[0];
@@ -40,8 +41,17 @@ export default function DebugOverlay() {
         const multiplier = viewer.clock.multiplier;
         const shouldAnimate = viewer.clock.shouldAnimate;
         const compressed = !!(window as any).__TIMESTAMPS_COMPRESSED;
-        
-        if (mounted) setState({ start, stop, current, multiplier, shouldAnimate, compressed });
+
+        // Get camera height above ground
+        let cameraHeight: number | null = null;
+        try {
+          const cameraPos = viewer.camera.positionCartographic;
+          if (cameraPos) {
+            cameraHeight = Math.round(cameraPos.height);
+          }
+        } catch (e) {}
+
+        if (mounted) setState({ start, stop, current, multiplier, shouldAnimate, compressed, cameraHeight });
       } catch (e) {
         console.error('[DebugOverlay] Error polling viewer:', e);
       }
@@ -58,6 +68,7 @@ export default function DebugOverlay() {
       <div>Current: <code style={{ color: '#9fdf9f' }}>{state.current || 'n/a'}</code></div>
       <div>Multiplier: <code style={{ color: '#9fdf9f' }}>{state.multiplier ?? 'n/a'}</code></div>
       <div>Animating: <code style={{ color: '#9fdf9f' }}>{String(state.shouldAnimate)}</code></div>
+      <div>Camera height: <code style={{ color: '#9fdf9f' }}>{state.cameraHeight ? `${state.cameraHeight}m` : 'n/a'}</code></div>
       <div>Timestamps compressed: <code style={{ color: '#9fdf9f' }}>{String(state.compressed)}</code></div>
       <div style={{ marginTop: 6 }}>
         <label style={{ fontSize: 11 }}>

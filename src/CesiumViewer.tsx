@@ -5,6 +5,7 @@ import useViewerInit from './hooks/useViewerInit';
 import { useRoute } from './hooks/useRoute';
 import useCesiumAnimation from './hooks/useCesiumAnimation';
 import useCesiumCamera from './hooks/useCesiumCamera';
+import constants from '../config/constants';
 import FpsCounter from './components/FpsCounter';
 import RecordButton from './components/RecordButton';
 import DebugOverlay from './components/DebugOverlay';
@@ -49,7 +50,7 @@ export default function CesiumViewer(): JSX.Element {
 	const animationSpeed = React.useMemo(() => {
 		const urlParams = new URLSearchParams(window.location.search);
 		const speedParam = urlParams.get('animationSpeed');
-		return speedParam ? Math.max(1, parseInt(speedParam, 10) || 1) : 2;
+		return speedParam ? Math.max(1, parseInt(speedParam, 10) || 1) : constants.ANIMATION.DEFAULT_SPEED;
 	}, []);
 
 	// Allow disabling frontend compression via global toggle
@@ -88,17 +89,19 @@ export default function CesiumViewer(): JSX.Element {
 		trackPoints: compressedTrackPoints || [],
 		startTime: compressedTimeRange?.startTime,
 		stopTime: compressedTimeRange?.stopTime,
-		animationSpeed: 1
+		animationSpeed: animationSpeed
 	});
 
-	useCesiumCamera({
-		viewer: viewerRef.current,
-		targetEntity: entity,
-		hikerEntity: entity,
-		isIntroComplete: isIntroComplete,
-		enableCollisionDetection: false,
-		smoothFactor: 0.9
-	});
+	// Camera is now fully controlled by useCesiumAnimation's postRender listener
+	// Disabling useCesiumCamera to prevent conflicting camera updates
+	// useCesiumCamera({
+	// 	viewer: viewerRef.current,
+	// 	targetEntity: entity,
+	// 	hikerEntity: entity,
+	// 	isIntroComplete: isIntroComplete,
+	// 	enableCollisionDetection: false,
+	// 	smoothFactor: 0.9
+	// });
 
 	// Track entity ref and intro completion
 	useEffect(() => {
