@@ -822,7 +822,9 @@ export default function useCesiumAnimation({
         }
 
         // Apply azimuth rotation to camera offset
-        const baseAzimuthRadians = Cesium.Math.toRadians(azimuthRotation);
+        // Include continuous slow azimuth as a fallback for non-loop routes
+        const combinedAzimuth = azimuthRotation + (continuousAzimuthRef.current || 0);
+        const baseAzimuthRadians = Cesium.Math.toRadians(combinedAzimuth);
         const rotatedOffsetX = -cameraOffsetDistance * Math.cos(baseAzimuthRadians);
         const rotatedOffsetY = -cameraOffsetDistance * Math.sin(baseAzimuthRadians);
 
