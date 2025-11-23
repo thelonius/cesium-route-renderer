@@ -93,6 +93,8 @@ export default function useCesiumAnimation({
   const loopRadiusRef = useRef<number>(0);
   const isLoopRouteRef = useRef(false);
   const smoothedCameraTargetRef = useRef<Cesium.Cartesian3 | null>(null);
+  const lookAheadTargetRef = useRef<Cesium.Cartesian3 | null>(null);
+  const initialCameraSetRef = useRef(false);
 
   useEffect(() => {
     if (!viewer || !trackPoints.length || !startTime || !stopTime) return;
@@ -720,25 +722,44 @@ export default function useCesiumAnimation({
           return;
         }
 
-        // Apply gentle smoothing (less lazy, more responsive)
+        // Calculate look-ahead position (anticipate movement direction)
+        const lookAheadSeconds = isLoopRouteRef.current ? 15 : 10; // More look-ahead for loops
+        const lookAheadTime = Cesium.JulianDate.addSeconds(currentTime, lookAheadSeconds, new Cesium.JulianDate());
+        const lookAheadStopTime = viewer.clock.stopTime || stopTime;
+        const clampedLookAheadTime = Cesium.JulianDate.compare(lookAheadTime, lookAheadStopTime) > 0 
+          ? lookAheadStopTime 
+          : lookAheadTime;
+        
+        const lookAheadPosition = hikerEntity.position.getValue(clampedLookAheadTime) || position;
+
+        // Smooth the look-ahead target (camera anticipates but doesn't jump)
+        const smoothedLookAhead = getLazyCameraTarget(
+          lookAheadPosition,
+          lookAheadTargetRef.current,
+          40, // Moderate threshold for look-ahead
+          0.80 // Smooth look-ahead changes
+        );
+        lookAheadTargetRef.current = smoothedLookAhead;
+
+        // Camera position follows current position more closely
         const smoothedPosition = getLazyCameraTarget(
           position,
           smoothedCameraTargetRef.current,
-          isLoopRouteRef.current ? 30 : 20, // Lower threshold = more responsive
-          isLoopRouteRef.current ? 0.75 : 0.65 // Less smoothing = follows hiker more closely
+          25, // Responsive to current position
+          0.70 // Allow lateral movement without immediate camera reaction
         );
         smoothedCameraTargetRef.current = smoothedPosition;
 
-        // For loop routes: camera follows hiker but looks toward centroid
-        // Calculate blend between hiker and centroid for camera look-at target
-        let cameraLookAtTarget = smoothedPosition;
-        
+        // For loop routes: blend look-ahead direction with centroid orientation
+        let cameraLookAtTarget = smoothedLookAhead;
+
         if (isLoopRouteRef.current && loopCentroidRef.current) {
-          // Blend: 70% centroid + 30% hiker position for smooth centroid-oriented view
+          // Blend: 50% centroid + 50% look-ahead for balanced view
+          // This keeps centroid in view while anticipating movement
           cameraLookAtTarget = Cesium.Cartesian3.lerp(
-            smoothedPosition,
+            smoothedLookAhead,
             loopCentroidRef.current,
-            0.7,
+            0.5,
             new Cesium.Cartesian3()
           );
         }
@@ -874,6 +895,27 @@ export default function useCesiumAnimation({
     const startingPosition = hikerEntity.position?.getValue(startTime);
 
     if (startingPosition && fullRoutePositions.length > 1) {
+      // Set initial camera to point at hiker's start position
+      try {
+        const startTransform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition);
+        const initialCameraOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT);
+        const initialCameraPosition = Cesium.Matrix4.multiplyByPoint(startTransform, initialCameraOffset, new Cesium.Cartesian3());
+        
+        viewer.camera.position = initialCameraPosition;
+        
+        // Point camera at starting position
+        const lookAtOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT * 0.48);
+        viewer.camera.lookAt(startingPosition, lookAtOffset);
+        
+        // Initialize smoothing refs with start position
+        smoothedCameraTargetRef.current = startingPosition.clone();
+        lookAheadTargetRef.current = startingPosition.clone();
+        
+        console.log('Camera initialized at hiker start position');
+      } catch (e) {
+        console.warn('Failed to set initial camera position:', e);
+      }
+
       console.log('Camera at working start position, waiting for globe to settle...');
 
       // Wait 1 second at starting position for globe to settle and mark ready
