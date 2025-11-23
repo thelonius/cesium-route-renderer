@@ -856,13 +856,13 @@ export default function useCesiumAnimation({
               const hikerLookAtTarget = isInitialAnimationRef.current ? smoothedPosition : cameraLookAtTarget;
 
               // For mobile/vertical screens: look from camera position toward hiker
-              // Lower Z offset creates more tilted (less vertical) view
-              const lookAtOffset = new Cesium.Cartesian3(-currentDistance * 0.3, 0, cameraOffsetHeight * 0.15);
+              // Very low Z offset creates proper tilted (horizontal) view with high camera
+              const lookAtOffset = new Cesium.Cartesian3(-currentDistance * 0.8, 0, cameraOffsetHeight * 0.02);
               viewer.camera.lookAt(hikerLookAtTarget, lookAtOffset);
             } else {
               // Normal follow camera with azimuth rotation around centroid
-              // Lower Z offset creates more tilted (less vertical) view
-              const lookAtOffset = new Cesium.Cartesian3(-cameraOffsetDistance * 0.3, 0, cameraOffsetHeight * 0.15);
+              // Very low Z offset creates proper tilted (horizontal) view with high camera
+              const lookAtOffset = new Cesium.Cartesian3(-cameraOffsetDistance * 0.8, 0, cameraOffsetHeight * 0.02);
               viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
             }
           }
