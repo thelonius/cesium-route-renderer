@@ -68,7 +68,7 @@ export default function useCesiumAnimation({
   const trailPositionsRef = useRef<Cesium.Cartesian3[]>([]);
   const lastAddedTimeRef = useRef<Cesium.JulianDate | null>(null);
   const smoothedBackRef = useRef(CAMERA.BASE_BACK);
-  const smoothedHeightRef = useRef(CAMERA.BASE_HEIGHT * 3);
+  const smoothedHeightRef = useRef(CAMERA.BASE_HEIGHT);
   const cameraAzimuthProgressRef = useRef(0); // 0 = no rotation, 1 = full azimuth (for opening)
   const cameraTiltProgressRef = useRef(0); // 0 = looking down, 1 = fully tilted
   const isInitialAnimationRef = useRef(true); // Track if we're still in opening animation
@@ -810,7 +810,7 @@ export default function useCesiumAnimation({
           // Moderate smoothing (0.85 previous, 0.15 new) for visible smooth rotation
           azimuthRotation = currentRotationAngleRef.current + angleDiff * 0.15;
           currentRotationAngleRef.current = azimuthRotation;
-          
+
           // Debug log every 60 frames
           if (Math.random() < 0.016) {
             console.log('🔄 Rotation:', azimuthRotation.toFixed(1), '° (target:', targetRotation.toFixed(1), '°, diff:', angleDiff.toFixed(1), '°)');
@@ -824,13 +824,13 @@ export default function useCesiumAnimation({
 
         // Calculate camera offset based on route type
         let cameraOffsetDistance = CAMERA.BASE_BACK;
-        let cameraOffsetHeight = CAMERA.BASE_HEIGHT * 3;
+        let cameraOffsetHeight = CAMERA.BASE_HEIGHT;
 
         if (isLoopRouteRef.current && loopCentroidRef.current) {
           // For loop routes: moderate distance to see loop while following hiker
           cameraOffsetDistance = Math.min(loopRadiusRef.current * 1.5, CAMERA.BASE_BACK * 2);
           // Use fixed high camera for mobile vertical screens - don't clamp by loop radius
-          cameraOffsetHeight = CAMERA.BASE_HEIGHT * 3;
+          cameraOffsetHeight = CAMERA.BASE_HEIGHT;
         }
 
         // Apply azimuth rotation to camera offset
@@ -839,10 +839,10 @@ export default function useCesiumAnimation({
         const baseAzimuthRadians = Cesium.Math.toRadians(combinedAzimuth);
         const rotatedOffsetX = -cameraOffsetDistance * Math.cos(baseAzimuthRadians);
         const rotatedOffsetY = -cameraOffsetDistance * Math.sin(baseAzimuthRadians);
-        
+
         // Debug: log rotation application
         if (Math.random() < 0.016) {
-          console.log('📐 Combined azimuth:', combinedAzimuth.toFixed(1), '° → offset:', 
+          console.log('📐 Combined azimuth:', combinedAzimuth.toFixed(1), '° → offset:',
             rotatedOffsetX.toFixed(0), ',', rotatedOffsetY.toFixed(0));
         }
 
@@ -951,13 +951,13 @@ export default function useCesiumAnimation({
       // Set initial camera to point at hiker's start position
       try {
         const startTransform = Cesium.Transforms.eastNorthUpToFixedFrame(startingPosition);
-        const initialCameraOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT * 3);
+        const initialCameraOffset = new Cesium.Cartesian3(-CAMERA.BASE_BACK, 0, CAMERA.BASE_HEIGHT);
         const initialCameraPosition = Cesium.Matrix4.multiplyByPoint(startTransform, initialCameraOffset, new Cesium.Cartesian3());
 
         viewer.camera.position = initialCameraPosition;
 
         // Point camera directly at hiker (centered) with no horizontal offset
-        const lookAtOffset = new Cesium.Cartesian3(0, 0, CAMERA.BASE_HEIGHT * 3 * 0.48);
+        const lookAtOffset = new Cesium.Cartesian3(0, 0, CAMERA.BASE_HEIGHT * 0.48);
         viewer.camera.lookAt(startingPosition, lookAtOffset);
 
         // Initialize smoothing refs with start position
