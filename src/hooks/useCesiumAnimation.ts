@@ -818,7 +818,8 @@ export default function useCesiumAnimation({
         if (isLoopRouteRef.current && loopCentroidRef.current) {
           // For loop routes: moderate distance to see loop while following hiker
           cameraOffsetDistance = Math.min(loopRadiusRef.current * 1.5, CAMERA.BASE_BACK * 2);
-          cameraOffsetHeight = Math.min(loopRadiusRef.current * 1.8, CAMERA.BASE_HEIGHT * 2.5 * 3); // Triple base height
+          // Use fixed high camera for mobile vertical screens - don't clamp by loop radius
+          cameraOffsetHeight = CAMERA.BASE_HEIGHT * 3;
         }
 
         // Apply azimuth rotation to camera offset
