@@ -508,6 +508,7 @@ export default function useCesiumAnimation({
 
     const postRenderListener = () => {
       try {
+        console.log('postRender called, clock shouldAnimate=', viewer.clock.shouldAnimate, 'multiplier=', viewer.clock.multiplier, 'currentTime=', Cesium.JulianDate.toIso8601(viewer.clock.currentTime));
         // Track frame count and timing for FPS calculation
         const frameTimeStamp = performance.now();
         const frameTime = frameTimeStamp - statusInfo.lastFrameTime;
@@ -787,11 +788,19 @@ export default function useCesiumAnimation({
     viewer.scene.screenSpaceCameraController.enableTilt = false;
     viewer.scene.screenSpaceCameraController.enableLook = false;
 
+    // CRITICAL: Set currentTime to startTime before any animation logic
+    // This ensures the hiker starts from the beginning, not the end
+    console.log('Setting initial clock state - currentTime to startTime');
+    viewer.clock.startTime = Cesium.JulianDate.clone(startTime);
+    viewer.clock.stopTime = Cesium.JulianDate.clone(stopTime);
+    viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
+
     // Start with static camera at working position (looking straight down)
     viewer.clock.shouldAnimate = false;
     if (!(window as any).__MANUAL_MULTIPLIER) {
       viewer.clock.multiplier = 0; // No animation yet
     }
+    console.log('Initial clock set: startTime=', Cesium.JulianDate.toIso8601(viewer.clock.startTime), 'stopTime=', Cesium.JulianDate.toIso8601(viewer.clock.stopTime), 'currentTime=', Cesium.JulianDate.toIso8601(viewer.clock.currentTime));
 
     const startingPosition = hikerEntity.position?.getValue(startTime);
 
@@ -876,6 +885,7 @@ export default function useCesiumAnimation({
         // Initial status display
         displayStatusBar();
 
+        console.log('Scheduling RAF for animation start');
         // Intro and outro animations are skipped by default to focus on route animation.
         // Set window.__SKIP_INTRO=false or window.__SKIP_OUTRO=false to enable them.
         const skipIntro = (window as any).__SKIP_INTRO !== false; // default true
@@ -903,27 +913,20 @@ export default function useCesiumAnimation({
           lastManualStepTimeRef.current = performance.now();
           console.log('Manual per-frame stepping enabled; savedMultiplier=', savedMultiplierRef.current, 'starting at', Cesium.JulianDate.toIso8601(viewer.clock.currentTime));
         } else {
-          // Automatic stepping: start at 1x for one frame then switch to requested speed
-          const startMultiplier = 1;
-          viewer.clock.multiplier = startMultiplier;
-          console.log('Starting automatic stepping at 1x to avoid jump; will switch to route speed shortly');
-          // Schedule switching to full speed on next RAF to minimize elapsedTime
-          requestAnimationFrame(() => {
-            try {
-              const m = skipIntro ? animationSpeed : 1;
-              if (manualStepEnabledRef.current) {
-                console.log('RAF multiplier switch skipped because manual stepping is enabled; savedMultiplier=', savedMultiplierRef.current);
-              } else {
-                if (!(window as any).__MANUAL_MULTIPLIER) {
-                  viewer.clock.multiplier = m;
-                }
-                viewer.clock.shouldAnimate = true;
-                console.log('Switched to full route multiplier =', m);
-              }
-            } catch (e) {
-              console.warn('Failed to switch to full multiplier:', e);
+          // Automatic stepping: set multiplier and start immediately
+          console.log('Starting automatic stepping, setting multiplier to', animationSpeed);
+          try {
+            if (!(window as any).__MANUAL_MULTIPLIER) {
+              viewer.clock.multiplier = animationSpeed;
             }
-          });
+            viewer.clock.shouldAnimate = true;
+            console.log('Clock started: shouldAnimate=true, multiplier=', viewer.clock.multiplier);
+            console.log('Clock currentTime:', Cesium.JulianDate.toIso8601(viewer.clock.currentTime));
+            console.log('Clock startTime:', Cesium.JulianDate.toIso8601(viewer.clock.startTime));
+            console.log('Clock stopTime:', Cesium.JulianDate.toIso8601(viewer.clock.stopTime));
+          } catch (e) {
+            console.warn('Failed to start animation:', e);
+          }
         }
 
         if (!skipIntro) {
@@ -1021,8 +1024,13 @@ export default function useCesiumAnimation({
           }, 100);
         } else {
           // If skipping intro, mark intro complete immediately and start main rotation
+          console.log('Skipping intro - setting camera to final positions');
           try { (window as any).CESIUM_INTRO_COMPLETE = true; } catch (e) {}
           isInitialAnimationRef.current = false;
+          // Set camera progress to final positions for immediate main animation view
+          cameraAzimuthProgressRef.current = 1;
+          cameraTiltProgressRef.current = 1;
+          console.log('Camera refs set: azimuth=', cameraAzimuthProgressRef.current, 'tilt=', cameraTiltProgressRef.current, 'isInitial=', isInitialAnimationRef.current);
           azimuthRotationIntervalRef.current = setInterval(() => {
             if (!viewer || viewer.isDestroyed() || isEndingAnimationRef.current || !viewer.clock || !viewer.clock.shouldAnimate) {
               if (azimuthRotationIntervalRef.current) { clearInterval(azimuthRotationIntervalRef.current); azimuthRotationIntervalRef.current = null; }
@@ -1069,8 +1077,23 @@ export default function useCesiumAnimation({
     (window as any).animationCleanup = cleanup;
     }; // End of initializeAnimation
 
+    // Initialize camera refs to skip intro by default
+    const skipIntro = (window as any).__SKIP_INTRO !== false; // default true
+    if (skipIntro) {
+      // Skip intro: set camera to final positions immediately (before settle timeout)
+      isInitialAnimationRef.current = false;
+      cameraAzimuthProgressRef.current = 1;
+      cameraTiltProgressRef.current = 1;
+      console.log('Pre-init camera refs for skipped intro: azimuth=1, tilt=1, isInitial=false');
+    } else {
+      // Do intro: start with camera looking down
+      isInitialAnimationRef.current = true;
+      cameraAzimuthProgressRef.current = 0;
+      cameraTiltProgressRef.current = 0;
+      console.log('Pre-init camera refs for intro animation: azimuth=0, tilt=0, isInitial=true');
+    }
+
     // Start animation immediately - postRenderListener will position camera correctly
-    // It will use cameraTiltProgressRef (starting at 0) to look straight down
     console.log('Starting animation sequence');
     initializeAnimation();
 
