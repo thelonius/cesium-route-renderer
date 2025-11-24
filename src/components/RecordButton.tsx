@@ -52,14 +52,16 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
           console.log(`Conversion progress: ${percent}% (time: ${time}s)`);
         });
 
-        // Load FFmpeg with proper URLs
-        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+        // Load FFmpeg from local node_modules
+        const coreURL = new URL('@ffmpeg/core/dist/umd/ffmpeg-core.js', import.meta.url).href;
+        const wasmURL = new URL('@ffmpeg/core/dist/umd/ffmpeg-core.wasm', import.meta.url).href;
+        
         await ffmpeg.load({
-          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+          coreURL: await toBlobURL(coreURL, 'text/javascript'),
+          wasmURL: await toBlobURL(wasmURL, 'application/wasm'),
         });
 
-        console.log('✅ FFmpeg initialized for MP4 conversion');
+        console.log('✅ FFmpeg initialized from local packages for MP4 conversion');
       } catch (error) {
         console.error('❌ Failed to initialize FFmpeg:', error);
       }
@@ -104,7 +106,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
     const outputData = await ffmpeg.readFile(outputFileName);
     const outputBlob = new Blob([outputData], { type: 'video/mp4' });
     console.log('✅ MP4 conversion complete! Size:', (outputBlob.size / 1024 / 1024).toFixed(2), 'MB');
-    
+
     // Clean up
     await ffmpeg.deleteFile(inputFileName);
     await ffmpeg.deleteFile(outputFileName);
@@ -150,7 +152,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
           setIsConverting(true);
           setConversionProgress(0);
           console.log('Recording finished, converting to MP4...');
-          
+
           // Check if FFmpeg is ready
           if (!ffmpegRef.current || !ffmpegRef.current.loaded) {
             throw new Error('FFmpeg not ready. Please refresh and try again.');
@@ -158,13 +160,13 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
 
           const conversionStartTime = Date.now();
           const webmBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-          
+
           // Add timeout to prevent infinite conversion
           const conversionPromise = convertToMP4(webmBlob);
           const timeoutPromise = new Promise<never>((_, reject) =>
             setTimeout(() => reject(new Error('Conversion timeout (60s)')), 60000)
           );
-          
+
           const mp4Blob = await Promise.race([conversionPromise, timeoutPromise]);
           const conversionTime = ((Date.now() - conversionStartTime) / 1000).toFixed(1);
 
