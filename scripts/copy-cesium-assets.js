@@ -33,16 +33,3 @@ function copyDir(srcDir, destDir) {
 
 copyDir(src, dest)
 console.log('Cesium static assets copied to public/cesium')
-
-// Copy FFmpeg core files
-const ffmpegSrc = path.join(__dirname, '..', 'node_modules', '@ffmpeg', 'core', 'dist', 'umd')
-const ffmpegDest = path.join(__dirname, '..', 'public', 'ffmpeg')
-
-if (fs.existsSync(ffmpegSrc)) {
-  fs.mkdirSync(ffmpegDest, { recursive: true })
-  fs.copyFileSync(path.join(ffmpegSrc, 'ffmpeg-core.js'), path.join(ffmpegDest, 'ffmpeg-core.js'))
-  fs.copyFileSync(path.join(ffmpegSrc, 'ffmpeg-core.wasm'), path.join(ffmpegDest, 'ffmpeg-core.wasm'))
-  console.log('FFmpeg core files copied to public/ffmpeg')
-} else {
-  console.warn('FFmpeg core files not found. MP4 recording may not work.')
-}
