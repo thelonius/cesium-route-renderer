@@ -12,6 +12,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
     OFFSET_LOOKAT_Z_RATIO: CAMERA.CAMERA.OFFSET_LOOKAT_Z_RATIO,
     AZIMUTH_MULTIPLIER: CAMERA.CAMERA.AZIMUTH_MULTIPLIER,
     SMOOTH_ALPHA: CAMERA.CAMERA.SMOOTH_ALPHA,
+    HIKER_POSITION_SMOOTH_ALPHA: CAMERA.CAMERA.HIKER_POSITION_SMOOTH_ALPHA,
     BASE_HEIGHT: CAMERA.CAMERA.BASE_HEIGHT,
     BASE_BACK: CAMERA.CAMERA.BASE_BACK,
   });
@@ -36,6 +37,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
       OFFSET_LOOKAT_Z_RATIO: CAMERA.CAMERA.OFFSET_LOOKAT_Z_RATIO,
       AZIMUTH_MULTIPLIER: CAMERA.CAMERA.AZIMUTH_MULTIPLIER,
       SMOOTH_ALPHA: CAMERA.CAMERA.SMOOTH_ALPHA,
+      HIKER_POSITION_SMOOTH_ALPHA: CAMERA.CAMERA.HIKER_POSITION_SMOOTH_ALPHA,
       BASE_HEIGHT: CAMERA.CAMERA.BASE_HEIGHT,
       BASE_BACK: CAMERA.CAMERA.BASE_BACK,
     };
@@ -194,6 +196,24 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
           step="0.01"
           value={values.SMOOTH_ALPHA}
           onChange={(e) => handleChange('SMOOTH_ALPHA', parseFloat(e.target.value))}
+          style={{ width: '100%' }}
+        />
+      </div>
+
+      <div style={{ marginBottom: '12px' }}>
+        <label style={{ display: 'block', marginBottom: '4px' }}>
+          Hiker Smoothing: {values.HIKER_POSITION_SMOOTH_ALPHA.toFixed(2)}
+          <span style={{ fontSize: '10px', opacity: 0.7, marginLeft: '8px' }}>
+            (movement smoothing)
+          </span>
+        </label>
+        <input
+          type="range"
+          min="0.01"
+          max="1"
+          step="0.01"
+          value={values.HIKER_POSITION_SMOOTH_ALPHA}
+          onChange={(e) => handleChange('HIKER_POSITION_SMOOTH_ALPHA', parseFloat(e.target.value))}
           style={{ width: '100%' }}
         />
       </div>

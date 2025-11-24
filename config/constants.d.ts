@@ -15,6 +15,7 @@ declare const constants: {
     BASE_BACK: number;
     BASE_HEIGHT: number;
     SMOOTH_ALPHA: number;
+    HIKER_POSITION_SMOOTH_ALPHA: number;
     OFFSET_LOOKAT_X_RATIO: number;
     OFFSET_LOOKAT_Z_RATIO: number;
     AZIMUTH_MULTIPLIER: number;

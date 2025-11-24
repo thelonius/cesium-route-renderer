@@ -94,6 +94,7 @@ export default function useCesiumAnimation({
   const loopRadiusRef = useRef<number>(0);
   const isLoopRouteRef = useRef(false);
   const smoothedCameraTargetRef = useRef<Cesium.Cartesian3 | null>(null);
+  const smoothedHikerPositionRef = useRef<Cesium.Cartesian3 | null>(null);
   const lookAheadTargetRef = useRef<Cesium.Cartesian3 | null>(null);
   const initialCameraSetRef = useRef(false);
   const initialAzimuthRef = useRef<number>(0); // Starting azimuth from hiker's initial position
@@ -156,6 +157,7 @@ export default function useCesiumAnimation({
         preRenderFrameCounter.current = 0;
         // Reset camera target refs
         smoothedCameraTargetRef.current = null;
+        smoothedHikerPositionRef.current = null;
         lookAheadTargetRef.current = null;
         // Reset smoothed camera distance
         smoothedBackRef.current = CAMERA.BASE_BACK;
@@ -788,6 +790,21 @@ export default function useCesiumAnimation({
           return;
         }
 
+        // Apply smoothing to hiker position to reduce jittery small movements
+        const hikerSmoothAlpha = getCameraValue('HIKER_POSITION_SMOOTH_ALPHA', CAMERA.HIKER_POSITION_SMOOTH_ALPHA);
+        if (!smoothedHikerPositionRef.current) {
+          smoothedHikerPositionRef.current = Cesium.Cartesian3.clone(position);
+        } else {
+          // Lerp between current smoothed position and new raw position
+          smoothedHikerPositionRef.current = Cesium.Cartesian3.lerp(
+            smoothedHikerPositionRef.current,
+            position,
+            hikerSmoothAlpha,
+            smoothedHikerPositionRef.current
+          );
+        }
+        const smoothedHikerPos = smoothedHikerPositionRef.current;
+
         // Calculate route completion progress for progressive centering
         const totalDuration = Cesium.JulianDate.secondsDifference(stopTime, startTime);
         const elapsed = Cesium.JulianDate.secondsDifference(currentTime, startTime);
@@ -821,7 +838,7 @@ export default function useCesiumAnimation({
         const positionSmoothness = 0.70 + routeProgress * 0.15; // Increase to 0.85 by end
 
         const smoothedPosition = getLazyCameraTarget(
-          position,
+          smoothedHikerPos,
           smoothedCameraTargetRef.current,
           lateralThreshold,
           positionSmoothness
