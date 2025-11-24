@@ -3,6 +3,16 @@ import * as Cesium from 'cesium';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
+// Add keyframes for spinner
+const spinnerStyles = document.createElement('style');
+spinnerStyles.textContent = `
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(spinnerStyles);
+
 interface RecordButtonProps {
   viewer: Cesium.Viewer | null;
   startTime?: Cesium.JulianDate;
@@ -58,23 +68,29 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
         const baseURL = window.location.origin;
         console.log('📦 Loading FFmpeg core from:', `${baseURL}/ffmpeg/`);
 
-        await ffmpeg.load({
+        // Add timeout to FFmpeg loading (30 seconds)
+        const loadPromise = ffmpeg.load({
           coreURL: await toBlobURL(`${baseURL}/ffmpeg/ffmpeg-core.js`, 'text/javascript'),
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg/ffmpeg-core.wasm`, 'application/wasm'),
         });
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('FFmpeg loading timeout (30s)')), 30000)
+        );
+
+        await Promise.race([loadPromise, timeoutPromise]);
 
         setFfmpegReady(true);
         console.log('✅ FFmpeg initialized and ready for MP4 conversion');
       } catch (error) {
         console.error('❌ Failed to initialize FFmpeg:', error);
         setFfmpegReady(false);
+        alert('Failed to load FFmpeg for MP4 conversion. Recording will save as WebM instead.');
       }
     };
 
     initFFmpeg();
-  }, []);
-
-  // Convert WebM to MP4 using FFmpeg
+  }, []);  // Convert WebM to MP4 using FFmpeg
   const convertToMP4 = async (webmBlob: Blob): Promise<Blob> => {
     if (!ffmpegRef.current) {
       throw new Error('FFmpeg not initialized');
@@ -296,7 +312,8 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
               height: '12px',
               backgroundColor: 'white',
               borderRadius: '50%',
-              display: 'inline-block'
+              display: 'inline-block',
+              animation: !ffmpegReady ? 'spin 1s linear infinite' : 'none'
             }} />
             {isPreparing ? 'Preparing...' : !ffmpegReady ? 'Loading FFmpeg...' : 'Record MP4'}
           </div>
@@ -307,7 +324,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
           )}
           {!ffmpegReady && (
             <span style={{ fontSize: '11px', opacity: 0.8 }}>
-              Please wait...
+              Initializing... (~32MB)
             </span>
           )}
         </button>
