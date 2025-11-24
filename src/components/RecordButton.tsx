@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as Cesium from 'cesium';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 interface RecordButtonProps {
   viewer: Cesium.Viewer | null;
@@ -11,6 +13,7 @@ interface RecordButtonProps {
 export default function RecordButton({ viewer, startTime, stopTime, animationSpeed = 30 }: RecordButtonProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
   const [estimatedSeconds, setEstimatedSeconds] = useState<number | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -18,6 +21,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
   const animationCheckIntervalRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const durationIntervalRef = useRef<number | null>(null);
+  const ffmpegRef = useRef<FFmpeg | null>(null);
 
   // Calculate estimated recording duration
   useEffect(() => {
@@ -28,6 +32,59 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
       setEstimatedSeconds(Math.ceil(recordingDurationSeconds + 2));
     }
   }, [startTime, stopTime, animationSpeed]);
+
+  // Initialize FFmpeg
+  useEffect(() => {
+    const initFFmpeg = async () => {
+      try {
+        const ffmpeg = new FFmpeg();
+        ffmpegRef.current = ffmpeg;
+        
+        // Load FFmpeg
+        await ffmpeg.load({
+          coreURL: await toBlobURL('/node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.js', 'text/javascript'),
+          wasmURL: await toBlobURL('/node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+        });
+        
+        console.log('FFmpeg initialized for MP4 conversion');
+      } catch (error) {
+        console.error('Failed to initialize FFmpeg:', error);
+      }
+    };
+    
+    initFFmpeg();
+  }, []);
+
+  // Convert WebM to MP4 using FFmpeg
+  const convertToMP4 = async (webmBlob: Blob): Promise<Blob> => {
+    if (!ffmpegRef.current) {
+      throw new Error('FFmpeg not initialized');
+    }
+
+    const ffmpeg = ffmpegRef.current;
+    
+    // Write input file
+    const inputFileName = 'input.webm';
+    const outputFileName = 'output.mp4';
+    
+    await ffmpeg.writeFile(inputFileName, await fetchFile(webmBlob));
+    
+    // Convert WebM to MP4 with H.264 codec
+    await ffmpeg.exec([
+      '-i', inputFileName,
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '22',
+      '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
+      outputFileName
+    ]);
+    
+    // Read output file
+    const outputData = await ffmpeg.readFile(outputFileName);
+    return new Blob([outputData], { type: 'video/mp4' });
+  };
 
   const startRecording = async () => {
     if (!viewer) return;
@@ -62,21 +119,46 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
         }
       };
 
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-        const url = URL.createObjectURL(blob);
+      mediaRecorder.onstop = async () => {
+        try {
+          setIsConverting(true);
+          console.log('Recording finished, converting to MP4...');
+          
+          const webmBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+          const mp4Blob = await convertToMP4(webmBlob);
+          
+          const url = URL.createObjectURL(mp4Blob);
 
-        // Create download link
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `cesium-route-${Date.now()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+          // Create download link
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `cesium-route-${Date.now()}.mp4`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
 
-        console.log('Recording saved');
-        setRecordedDuration(0);
+          console.log('MP4 recording saved successfully');
+          setRecordedDuration(0);
+          setIsConverting(false);
+        } catch (error) {
+          console.error('Failed to convert to MP4:', error);
+          alert('Recording saved as WebM due to conversion error. Please check console.');
+          
+          // Fallback: save as WebM
+          const webmBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+          const url = URL.createObjectURL(webmBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `cesium-route-${Date.now()}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          setRecordedDuration(0);
+          setIsConverting(false);
+        }
       };
 
       mediaRecorder.start(100); // Collect data every 100ms for better quality
@@ -138,7 +220,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
       transform: 'translateX(-50%)',
       zIndex: 1000
     }}>
-      {!isRecording ? (
+      {!isRecording && !isConverting ? (
         <button
           onClick={startRecording}
           disabled={isPreparing}
@@ -166,13 +248,47 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
               borderRadius: '50%',
               display: 'inline-block'
             }} />
-            {isPreparing ? 'Preparing...' : 'Start Recording'}
+            {isPreparing ? 'Preparing...' : 'Record MP4'}
           </div>
           {estimatedSeconds && (
             <span style={{ fontSize: '11px', opacity: 0.8 }}>
               ~{estimatedSeconds}s @ {animationSpeed}x speed
             </span>
           )}
+        </button>
+      ) : isConverting ? (
+        <button
+          disabled={true}
+          style={{
+            padding: '12px 20px',
+            backgroundColor: '#666',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            cursor: 'not-allowed',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              width: '12px',
+              height: '12px',
+              backgroundColor: '#ffa500',
+              borderRadius: '50%',
+              display: 'inline-block',
+              animation: 'spin 1s linear infinite'
+            }} />
+            Converting to MP4...
+          </div>
+          <span style={{ fontSize: '11px', opacity: 0.8 }}>
+            Telegram compatible
+          </span>
         </button>
       ) : (
         <button
@@ -213,6 +329,10 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.7; }
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
         }
       `}</style>
     </div>
