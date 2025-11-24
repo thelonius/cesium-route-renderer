@@ -57,7 +57,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
         // Load FFmpeg from local files served from public directory
         const baseURL = window.location.origin;
         console.log('📦 Loading FFmpeg core from:', `${baseURL}/ffmpeg/`);
-        
+
         await ffmpeg.load({
           coreURL: await toBlobURL(`${baseURL}/ffmpeg/ffmpeg-core.js`, 'text/javascript'),
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg/ffmpeg-core.wasm`, 'application/wasm'),

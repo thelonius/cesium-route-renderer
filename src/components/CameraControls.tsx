@@ -164,7 +164,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
 
       <div style={{ marginBottom: '12px' }}>
         <label style={{ display: 'block', marginBottom: '4px' }}>
-          Azimuth Multiplier: {values.AZIMUTH_MULTIPLIER.toFixed(1)}
+          Azimuth Multiplier: {values.AZIMUTH_MULTIPLIER.toFixed(2)}
           <span style={{ fontSize: '10px', opacity: 0.7, marginLeft: '8px' }}>
             (rotation speed)
           </span>
@@ -173,7 +173,7 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
           type="range"
           min="0"
           max="10"
-          step="0.5"
+          step="0.1"
           value={values.AZIMUTH_MULTIPLIER}
           onChange={(e) => handleChange('AZIMUTH_MULTIPLIER', parseFloat(e.target.value))}
           style={{ width: '100%' }}
