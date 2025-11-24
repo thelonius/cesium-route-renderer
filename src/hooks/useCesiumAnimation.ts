@@ -164,9 +164,11 @@ export default function useCesiumAnimation({
         viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
         lastAddedTimeRef.current = Cesium.JulianDate.clone(startTime);
         viewer.clock.shouldAnimate = true;
+        // Clear completion flag
+        (window as any).CESIUM_ANIMATION_COMPLETE = false;
         // Log diagnostic info
         console.log('✅ Route restarted - Loop:', isLoopRouteRef.current, 'HasCentroid:', !!loopCentroidRef.current, 'LoopRadius:', loopRadiusRef.current.toFixed(0));
-        console.log('   Camera settings - lookX:', getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO).toFixed(2), 
+        console.log('   Camera settings - lookX:', getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO).toFixed(2),
                     'lookZ:', getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO).toFixed(2),
                     'azimuthMult:', getCameraValue('AZIMUTH_MULTIPLIER', CAMERA.AZIMUTH_MULTIPLIER).toFixed(2));
       } catch (e) {
@@ -601,6 +603,15 @@ export default function useCesiumAnimation({
     const postRenderListener = () => {
       try {
       dlog('postRender called, clock shouldAnimate=', viewer.clock.shouldAnimate, 'multiplier=', viewer.clock.multiplier, 'currentTime=', Cesium.JulianDate.toIso8601(viewer.clock.currentTime));
+      
+      // Check if animation has reached the end - stop it and keep it stopped until manual restart
+      const animationStopTime = viewer.clock.stopTime || stopTime;
+      if (Cesium.JulianDate.compare(viewer.clock.currentTime, animationStopTime) >= 0 && viewer.clock.shouldAnimate) {
+        console.log('🎯 Animation reached end - stopping clock until manual restart');
+        viewer.clock.shouldAnimate = false;
+        (window as any).CESIUM_ANIMATION_COMPLETE = true;
+      }
+      
         // Track frame count and timing for FPS calculation
         const frameTimeStamp = performance.now();
         const frameTime = frameTimeStamp - statusInfo.lastFrameTime;
@@ -916,33 +927,26 @@ export default function useCesiumAnimation({
         try {
           viewer.camera.position = cameraPosition;
           if (position) {
-            if (isInitialAnimationRef.current || isEndingAnimationRef.current) {
-              // During opening/ending animation: keep hiker centered, smoothly animate camera pull-back
-              const tilt = cameraTiltProgressRef.current;
+            // Use lookAt but with offset that respects the rotated camera position
+            // Get configurable look ratios
+            const lookX = getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO || 0.8);
+            const lookZ = getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO || 0.2);
 
-              // Start with camera close to hiker (centered), gradually pull back to normal distance
-              // This ensures hiker is centered throughout the intro animation
-              const startDistance = cameraOffsetDistance * 0.3; // Start closer (30% of normal)
-              const currentDistance = startDistance + (cameraOffsetDistance - startDistance) * tilt;
-
-              // Look directly at hiker position (centered on screen)
-              // Use actual hiker position, not blended centroid
-              const hikerLookAtTarget = isInitialAnimationRef.current ? smoothedPosition : cameraLookAtTarget;
-
-              // For mobile/vertical screens: look from camera position toward hiker
-              // Use configurable ratios for X/Z lookAt offsets
-              const lookX = getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO || 0.8);
-              const lookZ = getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO || 0.2);
-              const lookAtOffset = new Cesium.Cartesian3(-currentDistance * lookX, 0, cameraOffsetHeight * lookZ);
-              viewer.camera.lookAt(hikerLookAtTarget, lookAtOffset);
-            } else {
-              // Normal follow camera with azimuth rotation around centroid
-              // Very low Z offset creates proper tilted (horizontal) view with high camera
-              const lookX = getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO || 0.8);
-              const lookZ = getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO || 0.2);
-              const lookAtOffset = new Cesium.Cartesian3(-cameraOffsetDistance * lookX, 0, cameraOffsetHeight * lookZ);
-              viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
+            // Calculate the target point
+            let lookAtTarget = cameraLookAtTarget;
+            if (isInitialAnimationRef.current) {
+              lookAtTarget = smoothedPosition; // During intro, look at hiker directly
             }
+
+            // The lookAt offset needs to be in the rotated frame
+            // Apply the same azimuth rotation to the offset
+            const offsetDistance = cameraOffsetDistance;
+            const offsetX = -offsetDistance * lookX * Math.cos(baseAzimuthRadians);
+            const offsetY = -offsetDistance * lookX * Math.sin(baseAzimuthRadians);
+            const offsetZ = cameraOffsetHeight * lookZ;
+            
+            const lookAtOffset = new Cesium.Cartesian3(offsetX, offsetY, offsetZ);
+            viewer.camera.lookAt(lookAtTarget, lookAtOffset);
           }
         } catch (e) {
           console.warn('Camera update failed:', e);
