@@ -44,7 +44,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
         ffmpeg.on('log', ({ message }) => {
           console.log('FFmpeg:', message);
         });
-        
+
         // Track progress
         ffmpeg.on('progress', ({ progress, time }) => {
           const percent = Math.round(progress * 100);
@@ -77,6 +77,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
     const ffmpeg = ffmpegRef.current;
 
     console.log('📹 Starting WebM to MP4 conversion...');
+    console.log('FFmpeg loaded:', ffmpeg.loaded);
 
     // Write input file
     const inputFileName = 'input.webm';
@@ -86,21 +87,27 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
     console.log('✅ Input file written:', inputFileName, 'size:', (webmBlob.size / 1024 / 1024).toFixed(2), 'MB');
 
     // Convert WebM to MP4 with H.264 codec (Telegram compatible)
+    console.log('🔄 Running FFmpeg conversion...');
     await ffmpeg.exec([
       '-i', inputFileName,
       '-c:v', 'libx264',
-      '-preset', 'medium',
-      '-crf', '23',
+      '-preset', 'ultrafast',
+      '-crf', '28',
       '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
       '-y',
       outputFileName
     ]);
 
+    console.log('📦 Reading output file...');
     // Read output file
     const outputData = await ffmpeg.readFile(outputFileName);
     const outputBlob = new Blob([outputData], { type: 'video/mp4' });
     console.log('✅ MP4 conversion complete! Size:', (outputBlob.size / 1024 / 1024).toFixed(2), 'MB');
+    
+    // Clean up
+    await ffmpeg.deleteFile(inputFileName);
+    await ffmpeg.deleteFile(outputFileName);
 
     return outputBlob;
   };
@@ -144,9 +151,21 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
           setConversionProgress(0);
           console.log('Recording finished, converting to MP4...');
           
+          // Check if FFmpeg is ready
+          if (!ffmpegRef.current || !ffmpegRef.current.loaded) {
+            throw new Error('FFmpeg not ready. Please refresh and try again.');
+          }
+
           const conversionStartTime = Date.now();
           const webmBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-          const mp4Blob = await convertToMP4(webmBlob);
+          
+          // Add timeout to prevent infinite conversion
+          const conversionPromise = convertToMP4(webmBlob);
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Conversion timeout (60s)')), 60000)
+          );
+          
+          const mp4Blob = await Promise.race([conversionPromise, timeoutPromise]);
           const conversionTime = ((Date.now() - conversionStartTime) / 1000).toFixed(1);
 
           const url = URL.createObjectURL(mp4Blob);
@@ -166,7 +185,8 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
           setConversionProgress(0);
         } catch (error) {
           console.error('Failed to convert to MP4:', error);
-          alert('Recording saved as WebM due to conversion error. Please check console.');
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          alert(`MP4 conversion failed: ${errorMsg}\nSaving as WebM instead.`);
 
           // Fallback: save as WebM
           const webmBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
