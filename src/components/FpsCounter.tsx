@@ -149,7 +149,7 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
     // Update debug state periodically
     const debugInterval = setInterval(() => {
       if (!viewer || !viewer.clock) return;
-      
+
       let cameraHeight: number | null = null;
       try {
         const cameraPos = viewer.camera.positionCartographic;

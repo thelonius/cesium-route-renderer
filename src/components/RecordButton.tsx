@@ -17,6 +17,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
   const [conversionProgress, setConversionProgress] = useState(0);
   const [estimatedSeconds, setEstimatedSeconds] = useState<number | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
+  const [ffmpegReady, setFfmpegReady] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const animationCheckIntervalRef = useRef<number | null>(null);
@@ -38,6 +39,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
   useEffect(() => {
     const initFFmpeg = async () => {
       try {
+        console.log('🔄 Initializing FFmpeg...');
         const ffmpeg = new FFmpeg();
         ffmpegRef.current = ffmpeg;
 
@@ -54,14 +56,18 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
 
         // Load FFmpeg from local files served from public directory
         const baseURL = window.location.origin;
+        console.log('📦 Loading FFmpeg core from:', `${baseURL}/ffmpeg/`);
+        
         await ffmpeg.load({
           coreURL: await toBlobURL(`${baseURL}/ffmpeg/ffmpeg-core.js`, 'text/javascript'),
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg/ffmpeg-core.wasm`, 'application/wasm'),
         });
 
-        console.log('✅ FFmpeg initialized from local files for MP4 conversion');
+        setFfmpegReady(true);
+        console.log('✅ FFmpeg initialized and ready for MP4 conversion');
       } catch (error) {
         console.error('❌ Failed to initialize FFmpeg:', error);
+        setFfmpegReady(false);
       }
     };
 
@@ -267,16 +273,16 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
       {!isRecording && !isConverting ? (
         <button
           onClick={startRecording}
-          disabled={isPreparing}
+          disabled={isPreparing || !ffmpegReady}
           style={{
             padding: '12px 20px',
-            backgroundColor: isPreparing ? '#666' : '#ff4444',
+            backgroundColor: (isPreparing || !ffmpegReady) ? '#666' : '#ff4444',
             color: 'white',
             border: 'none',
             borderRadius: '8px',
             fontSize: '14px',
             fontWeight: 'bold',
-            cursor: isPreparing ? 'not-allowed' : 'pointer',
+            cursor: (isPreparing || !ffmpegReady) ? 'not-allowed' : 'pointer',
             boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
             display: 'flex',
             flexDirection: 'column',
@@ -292,11 +298,16 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
               borderRadius: '50%',
               display: 'inline-block'
             }} />
-            {isPreparing ? 'Preparing...' : 'Record MP4'}
+            {isPreparing ? 'Preparing...' : !ffmpegReady ? 'Loading FFmpeg...' : 'Record MP4'}
           </div>
-          {estimatedSeconds && (
+          {estimatedSeconds && ffmpegReady && (
             <span style={{ fontSize: '11px', opacity: 0.8 }}>
               ~{estimatedSeconds}s @ {animationSpeed}x speed
+            </span>
+          )}
+          {!ffmpegReady && (
+            <span style={{ fontSize: '11px', opacity: 0.8 }}>
+              Please wait...
             </span>
           )}
         </button>
