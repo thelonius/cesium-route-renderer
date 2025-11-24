@@ -52,16 +52,14 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
           console.log(`Conversion progress: ${percent}% (time: ${time}s)`);
         });
 
-        // Load FFmpeg from local node_modules
-        const coreURL = new URL('@ffmpeg/core/dist/umd/ffmpeg-core.js', import.meta.url).href;
-        const wasmURL = new URL('@ffmpeg/core/dist/umd/ffmpeg-core.wasm', import.meta.url).href;
-        
+        // Load FFmpeg from local files served from public directory
+        const baseURL = window.location.origin;
         await ffmpeg.load({
-          coreURL: await toBlobURL(coreURL, 'text/javascript'),
-          wasmURL: await toBlobURL(wasmURL, 'application/wasm'),
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg/ffmpeg-core.wasm`, 'application/wasm'),
         });
 
-        console.log('✅ FFmpeg initialized from local packages for MP4 conversion');
+        console.log('✅ FFmpeg initialized from local files for MP4 conversion');
       } catch (error) {
         console.error('❌ Failed to initialize FFmpeg:', error);
       }
