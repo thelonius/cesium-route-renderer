@@ -10,6 +10,7 @@ export default function DebugOverlay() {
     shouldAnimate: null as boolean | null,
     compressed: false,
     cameraHeight: null as number | null,
+    routeType: null as string | null,
   });
   const [multiplierInput, setMultiplierInput] = useState('1200');
 
@@ -51,7 +52,8 @@ export default function DebugOverlay() {
           }
         } catch (e) {}
 
-        if (mounted) setState({ start, stop, current, multiplier, shouldAnimate, compressed, cameraHeight });
+        const routeType = (window as any).__ROUTE_TYPE || 'linear';
+        if (mounted) setState({ start, stop, current, multiplier, shouldAnimate, compressed, cameraHeight, routeType });
       } catch (e) {
         console.error('[DebugOverlay] Error polling viewer:', e);
       }
@@ -70,6 +72,7 @@ export default function DebugOverlay() {
       <div>Animating: <code style={{ color: '#9fdf9f' }}>{String(state.shouldAnimate)}</code></div>
       <div>Camera height: <code style={{ color: '#9fdf9f' }}>{state.cameraHeight ? `${state.cameraHeight}m` : 'n/a'}</code></div>
       <div>Timestamps compressed: <code style={{ color: '#9fdf9f' }}>{String(state.compressed)}</code></div>
+      <div>Route type: <code style={{ color: '#9fdf9f' }}>{state.routeType || 'linear'}</code></div>
       <div style={{ marginTop: 6 }}>
         <label style={{ fontSize: 11 }}>
           <input type="checkbox" onChange={(e) => {

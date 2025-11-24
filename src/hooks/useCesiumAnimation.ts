@@ -5,6 +5,7 @@ import { detectLoop, getLazyCameraTarget } from '../services/camera/utils/loopDe
 
 // Import constants from central config
 import constants from '../../config/constants';
+import { getCameraValue } from '../services/camera/runtimeConstants';
 const { CAMERA, ANIMATION } = constants;
 
 // Status tracking for local development
@@ -135,6 +136,43 @@ export default function useCesiumAnimation({
     cameraPanOffsetRef.current = 0;
     trailPositionsRef.current = [];
     dlog('Animation state reset for new route');
+
+    // Expose global restart function
+    (window as any).__restartRoute = () => {
+      try {
+        console.log('🔄 Restarting route animation');
+        // Clear trail
+        trailPositionsRef.current = [];
+        // Reset camera animation state
+        cameraAzimuthProgressRef.current = 0;
+        cameraTiltProgressRef.current = 0;
+        isInitialAnimationRef.current = true;
+        isEndingAnimationRef.current = false;
+        continuousAzimuthRef.current = 0;
+        cameraPanOffsetRef.current = 0;
+        initialCameraSetRef.current = false;
+        currentRotationAngleRef.current = undefined as any;
+        animationStartedRef.current = false;
+        preRenderFrameCounter.current = 0;
+        // Reset camera target refs
+        smoothedCameraTargetRef.current = null;
+        lookAheadTargetRef.current = null;
+        // Reset smoothed camera distance
+        smoothedBackRef.current = CAMERA.BASE_BACK;
+        smoothedHeightRef.current = CAMERA.BASE_HEIGHT;
+        // Reset clock
+        viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
+        lastAddedTimeRef.current = Cesium.JulianDate.clone(startTime);
+        viewer.clock.shouldAnimate = true;
+        // Log diagnostic info
+        console.log('✅ Route restarted - Loop:', isLoopRouteRef.current, 'HasCentroid:', !!loopCentroidRef.current, 'LoopRadius:', loopRadiusRef.current.toFixed(0));
+        console.log('   Camera settings - lookX:', getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO).toFixed(2), 
+                    'lookZ:', getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO).toFixed(2),
+                    'azimuthMult:', getCameraValue('AZIMUTH_MULTIPLIER', CAMERA.AZIMUTH_MULTIPLIER).toFixed(2));
+      } catch (e) {
+        console.error('Error restarting route:', e);
+      }
+    };
 
     const initializeAnimation = () => {
       // Initialize status tracking
@@ -415,10 +453,25 @@ export default function useCesiumAnimation({
         console.log(`🔄 Loop route detected! Loopness: ${loopAnalysis.loopness.toFixed(2)}, ` +
           `Radius: ${(loopAnalysis.averageRadius / 1000).toFixed(1)}km`);
         console.log(`   Camera will use centroid-focused "outside looking in" mode`);
+        try { (window as any).__ROUTE_TYPE = 'loop'; } catch (e) {}
       }
     } catch (e) {
       console.warn('Loop detection failed:', e);
+      try { (window as any).__ROUTE_TYPE = 'linear'; } catch (err) {}
     }
+    // Default to linear if not explicitly set
+    try { (window as any).__ROUTE_TYPE = (window as any).__ROUTE_TYPE || 'linear'; } catch (e) {}
+
+    // Expose helper to check loop state
+    (window as any).__checkLoopState = () => {
+      console.log('Loop State:', {
+        isLoop: isLoopRouteRef.current,
+        hasCentroid: !!loopCentroidRef.current,
+        radius: loopRadiusRef.current,
+        currentRotation: currentRotationAngleRef.current,
+        isInitialAnimation: isInitialAnimationRef.current
+      });
+    };
 
     // Setup camera tracking
     const preRenderListener = () => {
@@ -799,7 +852,8 @@ export default function useCesiumAnimation({
           // This prevents sudden rotation speed changes
           if (currentRotationAngleRef.current === undefined) {
             currentRotationAngleRef.current = targetRotation;
-            console.log('🔄 Initial rotation angle:', targetRotation.toFixed(1), '°');
+            const azimuthMult = getCameraValue('AZIMUTH_MULTIPLIER', CAMERA.AZIMUTH_MULTIPLIER || 1.0);
+            console.log('🔄 Initial rotation angle:', targetRotation.toFixed(1), '°, azimuth multiplier:', azimuthMult.toFixed(2));
           }
 
           // Handle angle wrapping (e.g., 359° to 1° should interpolate through 360°, not backwards)
@@ -807,13 +861,16 @@ export default function useCesiumAnimation({
           if (angleDiff > 180) angleDiff -= 360;
           if (angleDiff < -180) angleDiff += 360;
 
-          // Moderate smoothing (0.85 previous, 0.15 new) for visible smooth rotation
-          azimuthRotation = currentRotationAngleRef.current + angleDiff * 0.15;
+          // Moderate smoothing for visible smooth rotation; allow runtime tuning via runtime overrides
+          const azimuthSmoothing = getCameraValue('SMOOTH_ALPHA', CAMERA.SMOOTH_ALPHA || 0.15);
+          const azimuthMultiplier = getCameraValue('AZIMUTH_MULTIPLIER', CAMERA.AZIMUTH_MULTIPLIER || 1.0);
+          // Multiply angle difference by multiplier BEFORE applying smoothing
+          azimuthRotation = currentRotationAngleRef.current + (angleDiff * azimuthMultiplier) * azimuthSmoothing;
           currentRotationAngleRef.current = azimuthRotation;
 
-          // Debug log every 60 frames
+          // Debug log every 60 frames with multiplier info
           if (Math.random() < 0.016) {
-            console.log('🔄 Rotation:', azimuthRotation.toFixed(1), '° (target:', targetRotation.toFixed(1), '°, diff:', angleDiff.toFixed(1), '°)');
+            console.log('🔄 Rotation:', azimuthRotation.toFixed(1), '° (target:', targetRotation.toFixed(1), '°, diff:', angleDiff.toFixed(1), '°, multiplier:', azimuthMultiplier.toFixed(2), ', smoothing:', azimuthSmoothing.toFixed(2), ')');
           }
         } else {
           // Debug: check if loop detection failed
@@ -873,13 +930,17 @@ export default function useCesiumAnimation({
               const hikerLookAtTarget = isInitialAnimationRef.current ? smoothedPosition : cameraLookAtTarget;
 
               // For mobile/vertical screens: look from camera position toward hiker
-              // Very low Z offset creates proper tilted (horizontal) view with high camera
-              const lookAtOffset = new Cesium.Cartesian3(-currentDistance * 0.8, 0, cameraOffsetHeight * 0.02);
+              // Use configurable ratios for X/Z lookAt offsets
+              const lookX = getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO || 0.8);
+              const lookZ = getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO || 0.2);
+              const lookAtOffset = new Cesium.Cartesian3(-currentDistance * lookX, 0, cameraOffsetHeight * lookZ);
               viewer.camera.lookAt(hikerLookAtTarget, lookAtOffset);
             } else {
               // Normal follow camera with azimuth rotation around centroid
               // Very low Z offset creates proper tilted (horizontal) view with high camera
-              const lookAtOffset = new Cesium.Cartesian3(-cameraOffsetDistance * 0.8, 0, cameraOffsetHeight * 0.02);
+              const lookX = getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO || 0.8);
+              const lookZ = getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO || 0.2);
+              const lookAtOffset = new Cesium.Cartesian3(-cameraOffsetDistance * lookX, 0, cameraOffsetHeight * lookZ);
               viewer.camera.lookAt(cameraLookAtTarget, lookAtOffset);
             }
           }
