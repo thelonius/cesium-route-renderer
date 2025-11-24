@@ -20,11 +20,24 @@ interface RenderInfo {
   terrainQuality: string;
 }
 
+interface DebugState {
+  cameraHeight: number | null;
+  currentTime: string | null;
+  multiplier: number | null;
+  shouldAnimate: boolean | null;
+}
+
 export default function FpsCounter({ viewer }: FpsCounterProps) {
   const [fps, setFps] = useState<number>(0);
   const [avgFps, setAvgFps] = useState<number>(0);
   const [animationSpeed, setAnimationSpeed] = useState<number>(0);
   const [avgFrameTime, setAvgFrameTime] = useState<number>(0);
+  const [debugState, setDebugState] = useState<DebugState>({
+    cameraHeight: null,
+    currentTime: null,
+    multiplier: null,
+    shouldAnimate: null
+  });
   const [systemInfo, setSystemInfo] = useState<SystemInfo>({
     browser: 'unknown',
     os: 'unknown',
@@ -133,6 +146,25 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
     setSystemInfo(getSystemInfo());
     setRenderInfo(getRenderInfo(viewer));
 
+    // Update debug state periodically
+    const debugInterval = setInterval(() => {
+      if (!viewer || !viewer.clock) return;
+      
+      let cameraHeight: number | null = null;
+      try {
+        const cameraPos = viewer.camera.positionCartographic;
+        if (cameraPos) {
+          cameraHeight = Math.round(cameraPos.height);
+        }
+      } catch (e) {}
+
+      const currentTime = viewer.clock.currentTime ? Cesium.JulianDate.toIso8601(viewer.clock.currentTime) : null;
+      const multiplier = viewer.clock.multiplier;
+      const shouldAnimate = viewer.clock.shouldAnimate;
+
+      setDebugState({ cameraHeight, currentTime, multiplier, shouldAnimate });
+    }, 500);
+
     const updateFps = () => {
       const now = performance.now();
       const delta = now - lastFrameTimeRef.current;
@@ -164,6 +196,7 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
 
     return () => {
       removeListener();
+      clearInterval(debugInterval);
     };
   }, [viewer]);
 
@@ -174,7 +207,7 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
       position: 'absolute',
       top: '10px',
       left: '10px',
-      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
       color: '#00ff00',
       padding: '16px 20px',
       borderRadius: '8px',
@@ -185,8 +218,9 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
       pointerEvents: 'none',
       lineHeight: '1.5',
       maxWidth: '350px',
-      border: '1px solid #333',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
+      border: '1px solid rgba(51, 51, 51, 0.5)',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+      backdropFilter: 'blur(4px)'
     }}>
       {/* Performance Section */}
       <div style={{ marginBottom: '12px' }}>
@@ -219,8 +253,21 @@ export default function FpsCounter({ viewer }: FpsCounterProps) {
         <div style={{ fontSize: '12px', color: '#ff88ff', marginBottom: '6px' }}>
           🏔️  Terrain: {renderInfo.terrainQuality}
         </div>
-        <div style={{ fontSize: '12px', color: '#ffffff' }}>
+        <div style={{ fontSize: '12px', color: '#ffffff', marginBottom: '6px' }}>
           ⚡ Speed: {animationSpeed.toFixed(1)}x
+        </div>
+        <div style={{ fontSize: '12px', color: '#ffaa00' }}>
+          📍 Height: {debugState.cameraHeight ? `${debugState.cameraHeight}m` : 'n/a'}
+        </div>
+      </div>
+
+      {/* Time Info */}
+      <div style={{ borderTop: '1px solid #444', paddingTop: '12px', marginTop: '12px' }}>
+        <div style={{ fontSize: '11px', color: '#999', wordBreak: 'break-all' }}>
+          {debugState.currentTime ? new Date(debugState.currentTime).toLocaleTimeString() : 'n/a'}
+        </div>
+        <div style={{ fontSize: '11px', color: '#999', marginTop: '4px' }}>
+          ▶️ {debugState.shouldAnimate ? 'Playing' : 'Paused'} @ {debugState.multiplier?.toFixed(1) || 'n/a'}x
         </div>
       </div>
     </div>
