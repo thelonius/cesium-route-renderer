@@ -14,6 +14,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
   const [isRecording, setIsRecording] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  const [conversionProgress, setConversionProgress] = useState(0);
   const [estimatedSeconds, setEstimatedSeconds] = useState<number | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -39,11 +40,18 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
       try {
         const ffmpeg = new FFmpeg();
         ffmpegRef.current = ffmpeg;
-        
+
         ffmpeg.on('log', ({ message }) => {
           console.log('FFmpeg:', message);
         });
         
+        // Track progress
+        ffmpeg.on('progress', ({ progress, time }) => {
+          const percent = Math.round(progress * 100);
+          setConversionProgress(percent);
+          console.log(`Conversion progress: ${percent}% (time: ${time}s)`);
+        });
+
         // Load FFmpeg with proper URLs
         const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
         await ffmpeg.load({
@@ -69,7 +77,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
     const ffmpeg = ffmpegRef.current;
 
     console.log('📹 Starting WebM to MP4 conversion...');
-    
+
     // Write input file
     const inputFileName = 'input.webm';
     const outputFileName = 'output.mp4';
@@ -93,7 +101,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
     const outputData = await ffmpeg.readFile(outputFileName);
     const outputBlob = new Blob([outputData], { type: 'video/mp4' });
     console.log('✅ MP4 conversion complete! Size:', (outputBlob.size / 1024 / 1024).toFixed(2), 'MB');
-    
+
     return outputBlob;
   };
 
@@ -133,10 +141,13 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
       mediaRecorder.onstop = async () => {
         try {
           setIsConverting(true);
+          setConversionProgress(0);
           console.log('Recording finished, converting to MP4...');
-
+          
+          const conversionStartTime = Date.now();
           const webmBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
           const mp4Blob = await convertToMP4(webmBlob);
+          const conversionTime = ((Date.now() - conversionStartTime) / 1000).toFixed(1);
 
           const url = URL.createObjectURL(mp4Blob);
 
@@ -149,9 +160,10 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
 
-          console.log('MP4 recording saved successfully');
+          console.log(`✅ MP4 saved! Conversion took ${conversionTime}s`);
           setRecordedDuration(0);
           setIsConverting(false);
+          setConversionProgress(0);
         } catch (error) {
           console.error('Failed to convert to MP4:', error);
           alert('Recording saved as WebM due to conversion error. Please check console.');
@@ -169,6 +181,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
 
           setRecordedDuration(0);
           setIsConverting(false);
+          setConversionProgress(0);
         }
       };
 
@@ -298,7 +311,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
             Converting to MP4...
           </div>
           <span style={{ fontSize: '11px', opacity: 0.8 }}>
-            Telegram compatible
+            {conversionProgress > 0 ? `${conversionProgress}%` : 'Processing...'}
           </span>
         </button>
       ) : (
