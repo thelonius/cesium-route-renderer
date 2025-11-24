@@ -40,18 +40,23 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
         const ffmpeg = new FFmpeg();
         ffmpegRef.current = ffmpeg;
         
-        // Load FFmpeg
-        await ffmpeg.load({
-          coreURL: await toBlobURL('/node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.js', 'text/javascript'),
-          wasmURL: await toBlobURL('/node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.wasm', 'application/wasm'),
+        ffmpeg.on('log', ({ message }) => {
+          console.log('FFmpeg:', message);
         });
         
-        console.log('FFmpeg initialized for MP4 conversion');
+        // Load FFmpeg with proper URLs
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+        await ffmpeg.load({
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        });
+
+        console.log('✅ FFmpeg initialized for MP4 conversion');
       } catch (error) {
-        console.error('Failed to initialize FFmpeg:', error);
+        console.error('❌ Failed to initialize FFmpeg:', error);
       }
     };
-    
+
     initFFmpeg();
   }, []);
 
@@ -62,28 +67,34 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
     }
 
     const ffmpeg = ffmpegRef.current;
+
+    console.log('📹 Starting WebM to MP4 conversion...');
     
     // Write input file
     const inputFileName = 'input.webm';
     const outputFileName = 'output.mp4';
-    
+
     await ffmpeg.writeFile(inputFileName, await fetchFile(webmBlob));
-    
-    // Convert WebM to MP4 with H.264 codec
+    console.log('✅ Input file written:', inputFileName, 'size:', (webmBlob.size / 1024 / 1024).toFixed(2), 'MB');
+
+    // Convert WebM to MP4 with H.264 codec (Telegram compatible)
     await ffmpeg.exec([
       '-i', inputFileName,
       '-c:v', 'libx264',
-      '-preset', 'fast',
-      '-crf', '22',
-      '-c:a', 'aac',
-      '-b:a', '128k',
+      '-preset', 'medium',
+      '-crf', '23',
+      '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
+      '-y',
       outputFileName
     ]);
-    
+
     // Read output file
     const outputData = await ffmpeg.readFile(outputFileName);
-    return new Blob([outputData], { type: 'video/mp4' });
+    const outputBlob = new Blob([outputData], { type: 'video/mp4' });
+    console.log('✅ MP4 conversion complete! Size:', (outputBlob.size / 1024 / 1024).toFixed(2), 'MB');
+    
+    return outputBlob;
   };
 
   const startRecording = async () => {
@@ -123,10 +134,10 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
         try {
           setIsConverting(true);
           console.log('Recording finished, converting to MP4...');
-          
+
           const webmBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
           const mp4Blob = await convertToMP4(webmBlob);
-          
+
           const url = URL.createObjectURL(mp4Blob);
 
           // Create download link
@@ -144,7 +155,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
         } catch (error) {
           console.error('Failed to convert to MP4:', error);
           alert('Recording saved as WebM due to conversion error. Please check console.');
-          
+
           // Fallback: save as WebM
           const webmBlob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
           const url = URL.createObjectURL(webmBlob);
@@ -155,7 +166,7 @@ export default function RecordButton({ viewer, startTime, stopTime, animationSpe
           a.click();
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
-          
+
           setRecordedDuration(0);
           setIsConverting(false);
         }

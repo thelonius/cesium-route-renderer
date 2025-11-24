@@ -603,7 +603,7 @@ export default function useCesiumAnimation({
     const postRenderListener = () => {
       try {
       dlog('postRender called, clock shouldAnimate=', viewer.clock.shouldAnimate, 'multiplier=', viewer.clock.multiplier, 'currentTime=', Cesium.JulianDate.toIso8601(viewer.clock.currentTime));
-      
+
       // Check if animation has reached the end - stop it and keep it stopped until manual restart
       const animationStopTime = viewer.clock.stopTime || stopTime;
       if (Cesium.JulianDate.compare(viewer.clock.currentTime, animationStopTime) >= 0 && viewer.clock.shouldAnimate) {
@@ -611,7 +611,7 @@ export default function useCesiumAnimation({
         viewer.clock.shouldAnimate = false;
         (window as any).CESIUM_ANIMATION_COMPLETE = true;
       }
-      
+
         // Track frame count and timing for FPS calculation
         const frameTimeStamp = performance.now();
         const frameTime = frameTimeStamp - statusInfo.lastFrameTime;
@@ -944,7 +944,7 @@ export default function useCesiumAnimation({
             const offsetX = -offsetDistance * lookX * Math.cos(baseAzimuthRadians);
             const offsetY = -offsetDistance * lookX * Math.sin(baseAzimuthRadians);
             const offsetZ = cameraOffsetHeight * lookZ;
-            
+
             const lookAtOffset = new Cesium.Cartesian3(offsetX, offsetY, offsetZ);
             viewer.camera.lookAt(lookAtTarget, lookAtOffset);
           }
