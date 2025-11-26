@@ -19,7 +19,8 @@ RUN apk add --no-cache \
     xauth \
     mesa-dri-gallium \
     mesa-gl \
-    glu
+    glu \
+    bash
 
 # Copy built app
 COPY --from=build /app/dist ./dist
@@ -40,4 +41,4 @@ RUN chmod +x run-with-xvfb.sh
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-CMD ["./run-with-xvfb.sh"]
+CMD ["sh", "-c", "./run-with-xvfb.sh"]
