@@ -13,13 +13,20 @@ WORKDIR /app
 
 # Install Chromium, FFmpeg, and Xvfb for virtual display
 RUN apt-get update && apt-get install -y \
-    chromium \
     ffmpeg \
     xvfb \
     xauth \
-    && rm -rf /var/lib/apt/lists/* \
-    # Remove crashpad handler to prevent Chromium startup errors (affects both Alpine and Debian)
-    && rm -f /usr/lib/chromium/chrome_crashpad_handler
+    wget \
+    gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Google Chrome (stable, official build) instead of Chromium
+# Chrome handles crashpad better and works more reliably with Puppeteer
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy built app
 COPY --from=build /app/dist ./dist
