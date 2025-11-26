@@ -200,7 +200,7 @@ export default function CesiumViewer(): JSX.Element {
 		<div style={{ position: 'relative', width: '100%', height: '100%' }}>
 		<div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
 
-		<FpsCounter viewer={viewerRef.current} />
+		{!isDockerMode && <FpsCounter viewer={viewerRef.current} />}
 			{!isDockerMode && !routeValidated && (
 				<div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
 					<div style={{ textAlign: 'center', color: 'white' }}>

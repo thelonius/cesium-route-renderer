@@ -15,7 +15,7 @@ export LIBGL_ALWAYS_SOFTWARE=0
 export GALLIUM_DRIVER=llvmpipe
 
 echo "Running recording script..."
-node record-puppeteer.js
+node record-canvas.js
 
 # Cleanup
 kill $XVFB_PID 2>/dev/null || true
