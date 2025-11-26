@@ -177,7 +177,7 @@ class RenderOrchestratorService {
 
     } catch (error) {
       console.error(`❌ Render failed: ${renderId}`, error);
-      
+
       // Log stderr if available for Docker failures
       if (error.stderr) {
         console.error('Docker stderr:', error.stderr);

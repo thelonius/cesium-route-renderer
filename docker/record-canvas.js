@@ -62,13 +62,10 @@ function getRecordingDuration() {
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
     // Animation timing components (all configurable):
-    const SETTLE_TIME = parseInt(process.env.SETTLE_TIME || '5'); // Real-time seconds
-    const INTRO_TIME = parseInt(process.env.INTRO_TIME || '5'); // Real-time seconds for intro
-    const OUTRO_TIME = parseInt(process.env.OUTRO_TIME || '5'); // Real-time seconds for outro
+    const SETTLE_TIME = parseInt(process.env.SETTLE_TIME || '1'); // Real-time seconds for terrain loading
     const TARGET_ROUTE_TIME = parseInt(process.env.TARGET_ROUTE_TIME || '25'); // Target seconds for route
 
     // Calculate speed needed for route to fit target time
-    // Route animation speed: gpxDuration / TARGET_ROUTE_TIME
     const calculatedRouteSpeed = Math.ceil(gpxDuration / TARGET_ROUTE_TIME);
 
     // Allow manual override of route speed
@@ -78,29 +75,20 @@ function getRecordingDuration() {
 
     global.calculatedAnimationSpeed = routeSpeed;
 
-    // Calculate actual durations
+    // Calculate actual durations (intro/outro removed, so just route + buffer)
     const actualRouteTime = gpxDuration / routeSpeed;
-    // Recording duration: we skip intro in recording, so just route + outro + small buffer
-    const totalDuration = Math.ceil(actualRouteTime + OUTRO_TIME + 10);
+    const totalDuration = Math.ceil(actualRouteTime + 5); // Route + 5s buffer
 
     console.log(`\n=== Animation Parameters ===`);
     console.log(`Route duration: ${(gpxDuration / 60).toFixed(1)} min (${(gpxDuration / 3600).toFixed(1)} hours)`);
     console.log(`Route speed: ${routeSpeed}x ${process.env.ANIMATION_SPEED ? '(manual)' : '(auto-calculated)'}`);
     console.log(`\nVideo timing breakdown:`);
-    console.log(`  Settle: ${SETTLE_TIME}s (not recorded - pre-animation)`);
-    console.log(`  Intro:  ${INTRO_TIME}s (not recorded - runs before capture starts)`);
+    console.log(`  Settle: ${SETTLE_TIME}s (terrain loading, not recorded)`);
     console.log(`  Route:  ${actualRouteTime.toFixed(1)}s (RECORDED at ${routeSpeed}x speed)`);
-    console.log(`  Outro:  ${OUTRO_TIME}s (RECORDED at 1x speed)`);
     console.log(`  Total Recording:  ${totalDuration}s (${(totalDuration / 60).toFixed(1)} min)`);
     console.log(`\nTo customize, set:`);
-    console.log(`  Route:  ${actualRouteTime.toFixed(1)}s`);
-    console.log(`  Outro:  ${OUTRO_TIME}s`);
-    console.log(`  Total:  ${totalDuration}s (${(totalDuration / 60).toFixed(1)} min)`);
-    console.log(`\nTo customize, set:`);
     console.log(`  SETTLE_TIME=${SETTLE_TIME} (globe loading, not recorded)`);
-    console.log(`  INTRO_TIME=${INTRO_TIME} (camera animation, not recorded)`);
     console.log(`  TARGET_ROUTE_TIME=${TARGET_ROUTE_TIME} (desired route duration in video)`);
-    console.log(`  OUTRO_TIME=${OUTRO_TIME} (final view, recorded)`);
     console.log(`  ANIMATION_SPEED=${routeSpeed} (or auto-calculate from TARGET_ROUTE_TIME)`);
     console.log(`===========================\n`);
 
@@ -317,11 +305,11 @@ async function recordRoute() {
 
   await waitForAnimationReady();
 
-  // Enable intro and outro animations
-  console.log('Enabling intro and outro animations...');
+  // Skip intro and outro animations (removed from useCesiumAnimation.ts)
+  console.log('Skipping intro and outro animations (animations removed from codebase)...');
   await page.evaluate(() => {
-    window.__SKIP_INTRO = false;  // Enable 3-second intro
-    window.__SKIP_OUTRO = false;  // Enable 7-second outro
+    window.__SKIP_INTRO = true;  // Skip intro (removed)
+    window.__SKIP_OUTRO = true;  // Skip outro (removed)
   });
 
   // Get rendering info from browser
@@ -376,22 +364,9 @@ async function recordRoute() {
   console.log(`🎨 Map Provider: ${statusInfo.mapProvider}`);
   console.log(`🏔️  Terrain Quality: ${statusInfo.terrainQuality}`);
 
-  // Wait for intro animation to complete (runs at 1x speed for 3 seconds)
-  // This prevents capturing blue screens and intro in the final video
-  const introTime = parseInt(process.env.INTRO_TIME || '3');
-  console.log(`Waiting for intro animation to complete (${introTime} seconds)...`);
-  await page.waitForTimeout((introTime + 1) * 1000); // intro time + 1s buffer
-
-  // Reset clock to start of route for recording (intro used up simulation time)
-  await page.evaluate(() => {
-    if (window.Cesium && window.Cesium.Viewer && window.Cesium.Viewer.instances[0]) {
-      const viewer = window.Cesium.Viewer.instances[0];
-      if (viewer.clock && viewer.clock.startTime) {
-        viewer.clock.currentTime = window.Cesium.JulianDate.clone(viewer.clock.startTime);
-        console.log('Clock reset to start time for recording');
-      }
-    }
-  });
+  // No intro animation - start recording immediately after small buffer
+  console.log('Waiting 2 seconds before starting capture...');
+  await page.waitForTimeout(2000);
 
   // Force a render cycle before capturing
   console.log('Forcing render cycle...');
