@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 
 const PORT = 8080;
-const OUTPUT_DIR = path.resolve('/output');
+const OUTPUT_DIR = path.resolve('/app/output');
 const LOG_PATH = path.join(OUTPUT_DIR, 'recorder.log');
 const ERROR_LOG_PATH = path.join(OUTPUT_DIR, 'recorder-error.log');
 const FRAMES_DIR = path.join(OUTPUT_DIR, 'frames');
