@@ -204,8 +204,7 @@ async function recordRoute() {
       '--disable-web-security',
       '--disable-features=IsolateOrigins,site-per-process',
       '--enable-webgl',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
+      '--use-gl=swiftshader',
       '--ignore-gpu-blacklist',
       '--disable-gpu-vsync',
       '--disable-frame-rate-limit',
@@ -217,12 +216,13 @@ async function recordRoute() {
       '--force-device-scale-factor=1',
       // Alpine Linux Chromium specific flags
       '--disable-crashpad',
-      '--disable-crash-reporter',
-      '--disable-breakpad',
-      '--disable-software-rasterizer',
-      '--disable-extensions'
+      '--user-data-dir=/tmp/chrome-user-data',
+      '--single-process',
+      '--disable-extensions',
+      '--disable-software-rasterizer'
     ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
+    dumpio: true
   });
 
   const page = await browser.newPage();
