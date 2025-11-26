@@ -214,9 +214,15 @@ async function recordRoute() {
       '--disable-renderer-backgrounding',
       '--js-flags=--max-old-space-size=4096',
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
-      '--force-device-scale-factor=1'
+      '--force-device-scale-factor=1',
+      // Alpine Linux Chromium specific flags
+      '--disable-crashpad',
+      '--disable-crash-reporter',
+      '--disable-breakpad',
+      '--disable-software-rasterizer',
+      '--disable-extensions'
     ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
   });
 
   const page = await browser.newPage();
