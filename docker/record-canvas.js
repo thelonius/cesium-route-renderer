@@ -487,7 +487,7 @@ async function recordRoute() {
     ffmpeg.on('close', (code) => {
       if (code === 0) {
         console.log('✅ Video encoding complete!');
-        console.log(`📦 Video saved to ${outputPath}`);
+        console.log(`Recording complete! Video saved to ${outputPath}`);
 
         // Cleanup frames
         try {
