@@ -11,9 +11,9 @@ FROM node:20
 
 WORKDIR /app
 
-# Install Firefox ESR, FFmpeg, and Xvfb for virtual display
+# Install Chromium, FFmpeg, and Xvfb for virtual display
 RUN apt-get update && apt-get install -y \
-    firefox-esr \
+    chromium \
     ffmpeg \
     xvfb \
     xauth \
@@ -29,17 +29,13 @@ COPY --from=build /app/config ./config
 
 # Set Puppeteer environment variables before installing
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/firefox-esr
-ENV PUPPETEER_PRODUCT=firefox
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Install minimal HTTP server and recording dependencies
-RUN npm install --no-save puppeteer@19.0.0 serve-handler
+RUN npm install --no-save puppeteer@19.0.0 puppeteer-screen-recorder@3.0.6 serve-handler
 
 # Copy recording scripts
 COPY docker/record-puppeteer.js ./
-COPY docker/record-ffmpeg.js ./
-COPY docker/record-cdp.js ./
-COPY docker/record-canvas.js ./
 COPY docker/run-with-xvfb.sh ./
 RUN chmod +x run-with-xvfb.sh
 
