@@ -417,14 +417,18 @@ class BotHandlersService {
       // View logs
       if (data.startsWith('logs_')) {
         const outputId = data.substring(5);
+        console.log(`📋 Fetching logs for outputId: ${outputId}`);
         const result = await this.api.getLogsText(outputId);
 
         if (result.success) {
+          console.log(`✅ Logs retrieved, length: ${result.text.length} chars`);
           const chunks = this.splitMessage(result.text, 4000);
+          console.log(`📤 Sending ${chunks.length} message chunks`);
           for (const chunk of chunks) {
             await this.bot.sendMessage(chatId, `\`\`\`\n${chunk}\n\`\`\``, { parse_mode: 'Markdown' });
           }
         } else {
+          console.error(`❌ Failed to retrieve logs: ${result.error}`);
           await this.bot.sendMessage(chatId, userLang === 'ru' ? '❌ Логи не найдены' : '❌ Logs not found');
         }
 

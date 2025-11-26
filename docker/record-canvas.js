@@ -1,9 +1,9 @@
 /**
  * Canvas Frame Capture Recorder
- * 
+ *
  * ⚠️ IMPORTANT: This uses canvas.toDataURL() method for frame capture.
  * DO NOT replace with puppeteer-screen-recorder - it performs poorly!
- * 
+ *
  * This approach:
  * - Captures frames directly from Cesium canvas using toDataURL()
  * - Pipes frames to FFmpeg for encoding
