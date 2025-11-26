@@ -48,6 +48,6 @@ RUN chmod +x run-with-xvfb.sh
 RUN mkdir -p /app/output && chmod 777 /app/output
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
 
 CMD ["./run-with-xvfb.sh"]
