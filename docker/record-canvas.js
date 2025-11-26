@@ -186,13 +186,15 @@ async function recordRoute() {
   // Detect browser type from executable path
   const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
   const isFirefox = executablePath.includes('firefox');
-  
+
   const browserArgs = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
     '--disable-web-security',
     '--disable-features=IsolateOrigins,site-per-process',
+    '--disable-crash-reporter',
+    '--disable-breakpad',
     '--enable-webgl',
     '--use-gl=angle',
     '--use-angle=swiftshader',
