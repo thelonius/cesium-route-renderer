@@ -13,7 +13,7 @@ WORKDIR /app
 
 # Install Google Chrome (stable), FFmpeg, and Xvfb
 # Note: Using Google Chrome instead of Debian Chromium package due to crash handler issues
-# Debian Chromium 142+ has crashpad compatibility problems on ARM64
+# Debian Chromium 142+ has crashpad compatibility problems
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -51,6 +51,11 @@ RUN apt-get update && apt-get install -y \
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 
+# Set Puppeteer environment variables BEFORE npm install
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+ENV HOME=/tmp
+
 # Install minimal HTTP server and recording dependencies
 RUN npm install --no-save puppeteer@19.0.0 serve-handler
 
@@ -64,9 +69,5 @@ RUN chmod +x run-with-xvfb.sh
 
 # Create output directory
 RUN mkdir -p /app/output && chmod 777 /app/output
-
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
-ENV HOME=/tmp
 
 CMD ["./run-with-xvfb.sh"]
