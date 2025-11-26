@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:20 AS build
 WORKDIR /app
 COPY package*.json ./
 COPY scripts ./scripts
@@ -7,23 +7,17 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:20
 
 WORKDIR /app
 
-# Install Chromium, FFmpeg, and Xvfb for virtual display (alpine)
-RUN apk add --no-cache \
+# Install Chromium, FFmpeg, and Xvfb for virtual display
+RUN apt-get update && apt-get install -y \
     chromium \
     ffmpeg \
-    xvfb-run \
+    xvfb \
     xauth \
-    mesa-dri-gallium \
-    mesa-gl \
-    glu \
-    bash
-
-# Disable crashpad handler for Alpine Chromium (prevents --database error)
-RUN rm -f /usr/lib/chromium/chrome_crashpad_handler || true
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy built app
 COPY --from=build /app/dist ./dist
@@ -44,10 +38,7 @@ RUN chmod +x run-with-xvfb.sh
 # Create output directory with proper permissions for any user
 RUN mkdir -p /app/output && chmod 777 /app/output
 
-# Create crashpad database directory for Alpine Chromium
-RUN mkdir -p /tmp/crashpad && chmod 777 /tmp/crashpad
-
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
-CMD ["sh", "-c", "./run-with-xvfb.sh"]
+CMD ["./run-with-xvfb.sh"]

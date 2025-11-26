@@ -1,8 +1,8 @@
-FROM node:20-alpine
+FROM node:20
 
 WORKDIR /app
 
-RUN apk add --no-cache docker-cli
+RUN apt-get update && apt-get install -y docker.io && rm -rf /var/lib/apt/lists/*
 
 # Copy package files and required scripts for postinstall
 COPY package*.json ./
