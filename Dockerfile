@@ -41,9 +41,10 @@ RUN chmod +x run-with-xvfb.sh
 # Create output directory with proper permissions for any user
 RUN mkdir -p /app/output && chmod 777 /app/output
 
+# Create crashpad database directory for Alpine Chromium
+RUN mkdir -p /tmp/crashpad && chmod 777 /tmp/crashpad
+
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-# Disable Chromium crashpad handler for Alpine Linux
-ENV CHROME_CRASHPAD_HANDLER_PATH=/dev/null
 
 CMD ["sh", "-c", "./run-with-xvfb.sh"]
