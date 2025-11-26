@@ -121,10 +121,7 @@ export default function CesiumViewer() {
     setShowRouteSelector(false);
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  const processFile = async (file: File) => {
     try {
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -149,13 +146,43 @@ export default function CesiumViewer() {
       };
       reader.readAsText(file);
     } catch (error) {
-      console.error('Error uploading file:', error);
-      alert('Error uploading file');
+      console.error('Error processing file:', error);
+      alert('Error processing file');
     }
   };
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await processFile(file);
+  };
+
+  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    
+    if (!file.name.endsWith('.gpx') && !file.name.endsWith('.kml')) {
+      alert('Please drop a GPX or KML file');
+      return;
+    }
+    
+    await processFile(file);
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div 
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+    >
       <div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
 
       {/* FPS Counter for debugging */}
