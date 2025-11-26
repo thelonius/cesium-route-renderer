@@ -6,13 +6,11 @@ import { useRoute } from './hooks/useRoute';
 import useCesiumAnimation from './hooks/useCesiumAnimation';
 import useCesiumCamera from './hooks/useCesiumCamera';
 import FpsCounter from './components/FpsCounter';
-import RecordButton from './components/RecordButton';
 
 export default function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
   const entityRef = useRef<Cesium.Entity | null>(null);
-  const [menuVisible, setMenuVisible] = useState(true);
   const [availableRoutes, setAvailableRoutes] = useState<string[]>(['alps-trail.gpx', 'virages.gpx']);
   const [currentRoute, setCurrentRoute] = useState<string | null>(null);
   const [showRouteSelector, setShowRouteSelector] = useState(false);
@@ -95,25 +93,7 @@ export default function CesiumViewer() {
     };
   }, [entity]);
 
-  // Toggle menu visibility
-  useEffect(() => {
-    if (viewerRef.current) {
-      const viewer = viewerRef.current;
-      const animationContainer = viewer.animation?.container as HTMLElement;
-      const timelineContainer = viewer.timeline?.container as HTMLElement;
 
-      if (animationContainer) {
-        animationContainer.style.display = menuVisible ? 'block' : 'none';
-      }
-      if (timelineContainer) {
-        timelineContainer.style.display = menuVisible ? 'block' : 'none';
-      }
-    }
-  }, [menuVisible]);
-
-  const toggleMenu = () => {
-    setMenuVisible(!menuVisible);
-  };
 
   const handleRouteChange = (route: string) => {
     setCurrentRoute(route);
@@ -142,12 +122,12 @@ export default function CesiumViewer() {
         const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
         const blob = new Blob([content], { type: mimeType });
         const blobUrl = URL.createObjectURL(blob);
-        
+
         try {
           localStorage.setItem('lastDroppedRouteContent', content);
           localStorage.setItem('lastDroppedRouteName', file.name);
         } catch (e) {}
-        
+
         setAvailableRoutes(prev => [...prev, file.name]);
         setCurrentRoute(blobUrl);
         setRouteValidated(true);
@@ -221,14 +201,6 @@ export default function CesiumViewer() {
 
       {/* FPS Counter for debugging */}
       <FpsCounter viewer={viewerRef.current} />
-
-      {/* Record Button for web mode */}
-      <RecordButton
-        viewer={viewerRef.current}
-        startTime={timeRange?.startTime}
-        stopTime={timeRange?.stopTime}
-        animationSpeed={animationSpeed}
-      />
 
       {/* Welcome Screen - Show only in web mode when no route selected */}
       {!isDockerMode && !routeValidated && (
@@ -398,22 +370,6 @@ export default function CesiumViewer() {
           flexDirection: 'column',
           gap: '8px'
         }}>
-          <button
-            onClick={toggleMenu}
-            style={{
-              padding: '8px 16px',
-              backgroundColor: 'rgba(42, 42, 42, 0.8)',
-              color: 'white',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontFamily: 'sans-serif'
-            }}
-          >
-            {menuVisible ? 'Hide Controls' : 'Show Controls'}
-          </button>
-
           {!isDockerMode && (
             <button
               onClick={() => setShowRouteSelector(!showRouteSelector)}
