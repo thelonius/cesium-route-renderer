@@ -53,6 +53,7 @@ COPY --from=build /app/config ./config
 # Set Puppeteer environment variables before installing
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+ENV HOME=/tmp
 
 # Install minimal HTTP server and recording dependencies
 RUN npm install --no-save puppeteer@19.0.0 puppeteer-screen-recorder@3.0.6 serve-handler
