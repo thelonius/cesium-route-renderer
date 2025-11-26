@@ -1,4 +1,4 @@
-FROM node:20 AS build
+FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 COPY scripts ./scripts
@@ -7,20 +7,19 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-FROM node:20
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Install Chromium, FFmpeg, and Xvfb for virtual display
-RUN apt-get update && apt-get install -y \
+# Install Chromium, FFmpeg, and Xvfb for virtual display (alpine)
+RUN apk add --no-cache \
     chromium \
     ffmpeg \
-    xvfb \
+    xvfb-run \
     xauth \
-    libgl1-mesa-dri \
-    libgl1-mesa-glx \
-    libglu1-mesa \
-    && rm -rf /var/lib/apt/lists/*
+    mesa-dri-gallium \
+    mesa-gl \
+    glu
 
 # Copy built app
 COPY --from=build /app/dist ./dist

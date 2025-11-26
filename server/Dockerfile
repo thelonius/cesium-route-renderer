@@ -1,18 +1,19 @@
-FROM node:20
+FROM node:20-alpine
 
 WORKDIR /app
 
-# Install Docker CLI to run containers
-RUN apt-get update && apt-get install -y \
-    docker.io \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache docker-cli
 
-# Copy package files
+# Copy package files and required scripts for postinstall
 COPY package*.json ./
+COPY ../scripts ./scripts
 RUN npm ci --production
 
 # Copy server code
-COPY index.js ./
+COPY server/index.js ./
+COPY server/services ./services
+COPY server/cleanup-old-renders.js ./cleanup-old-renders.js
+COPY config ./config
 
 # Create directories
 RUN mkdir -p output uploads
