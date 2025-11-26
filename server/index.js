@@ -52,31 +52,42 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const routePath = path.join(outputDir, routeFilename);
   fs.copyFileSync(gpxFile.path, routePath);
 
-  // Use render orchestrator service for complete render pipeline
-  const renderResult = await renderOrchestratorService.startRender(
-    {
-      routeFilePath: routePath,
-      routeFilename: routeFilename,
-      outputDir: outputDir,
-      outputId: outputId,
-      userName: userName
-    },
-    {
-      onProgress: (progress) => {
-        console.log(`📊 Progress: ${progress.progress}% - ${progress.message}`);
+  try {
+    // Use render orchestrator service for complete render pipeline
+    const renderResult = await renderOrchestratorService.startRender(
+      {
+        routeFilePath: routePath,
+        routeFilename: routeFilename,
+        outputDir: outputDir,
+        outputId: outputId,
+        userName: userName
       },
-      onComplete: (result) => {
-        // Clean up uploaded file
-        fs.unlinkSync(gpxFile.path);
-        res.json(result);
-      },
-      onError: (error) => {
-        // Clean up uploaded file
-        fs.unlinkSync(gpxFile.path);
-        res.status(500).json(error);
+      {
+        onProgress: (progress) => {
+          console.log(`📊 Progress: ${progress.progress}% - ${progress.message}`);
+        },
+        onComplete: (result) => {
+          // Clean up uploaded file
+          fs.unlinkSync(gpxFile.path);
+          res.json(result);
+        },
+        onError: (error) => {
+          // Clean up uploaded file
+          fs.unlinkSync(gpxFile.path);
+          res.status(500).json(error);
+        }
       }
-    }
-  );
+    );
+  } catch (error) {
+    // Handle any synchronous errors or unhandled promise rejections
+    console.error('Render endpoint error:', error);
+    fs.unlinkSync(gpxFile.path);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Render failed',
+      outputId: outputId
+    });
+  }
 });
 
 // Get status of a render job
