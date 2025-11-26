@@ -16,8 +16,8 @@ export default function useViewerInit(
 
     const isDocker = navigator.userAgent.includes('HeadlessChrome');
     const viewer = new Cesium.Viewer(ref.current, {
-      timeline: !isDocker,  // Enable timeline except in Docker
-      animation: !isDocker, // Enable animation widget except in Docker
+      timeline: false,  // Disable timeline
+      animation: false, // Disable animation widget
       baseLayerPicker: false,
       geocoder: false,
       homeButton: false,

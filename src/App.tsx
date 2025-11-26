@@ -3,7 +3,7 @@ import CesiumViewer from './CesiumViewer'
 import { CameraControls } from './components/CameraControls'
 
 export default function App() {
-  const [showControls, setShowControls] = useState(true);
+  const [showControls, setShowControls] = useState(false);
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
