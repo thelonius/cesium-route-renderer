@@ -195,35 +195,36 @@ async function recordRoute() {
 
   const server = await startServer();
 
+  // Detect browser type from executable path
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+  const isFirefox = executablePath.includes('firefox');
+  
+  const browserArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-web-security',
+    '--disable-features=IsolateOrigins,site-per-process',
+    '--enable-webgl',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--enable-unsafe-swiftshader',
+    '--ignore-gpu-blacklist',
+    '--disable-gpu-vsync',
+    '--disable-frame-rate-limit',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--js-flags=--max-old-space-size=4096',
+    `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
+    '--force-device-scale-factor=1'
+  ];
+
   const browser = await puppeteer.launch({
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-web-security',
-      '--disable-features=IsolateOrigins,site-per-process',
-      '--enable-webgl',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
-      '--enable-unsafe-swiftshader',
-      '--ignore-gpu-blacklist',
-      '--disable-gpu-vsync',
-      '--disable-frame-rate-limit',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
-      '--js-flags=--max-old-space-size=4096',
-      `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
-      '--force-device-scale-factor=1',
-      '--disable-crash-reporter',
-      '--crash-dumps-dir=/tmp',
-      '--breakpad-dump-location=/tmp'
-    ],
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome'
-  });
-
-  const page = await browser.newPage();
+    args: browserArgs,
+    executablePath: executablePath
+  });  const page = await browser.newPage();
   await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 });
 
   // Load the app
@@ -316,6 +317,13 @@ async function recordRoute() {
 
   await waitForAnimationReady();
 
+  // Enable intro and outro animations
+  console.log('Enabling intro and outro animations...');
+  await page.evaluate(() => {
+    window.__SKIP_INTRO = false;  // Enable 3-second intro
+    window.__SKIP_OUTRO = false;  // Enable 7-second outro
+  });
+
   // Get rendering info from browser
   const renderInfo = await page.evaluate(() => {
     try {
@@ -368,10 +376,11 @@ async function recordRoute() {
   console.log(`🎨 Map Provider: ${statusInfo.mapProvider}`);
   console.log(`🏔️  Terrain Quality: ${statusInfo.terrainQuality}`);
 
-  // Wait for intro animation to complete (runs at 1x speed for 5 seconds)
+  // Wait for intro animation to complete (runs at 1x speed for 3 seconds)
   // This prevents capturing blue screens and intro in the final video
-  console.log('Waiting for intro animation to complete (5 seconds)...');
-  await page.waitForTimeout(6000); // 5s intro + 1s buffer
+  const introTime = parseInt(process.env.INTRO_TIME || '3');
+  console.log(`Waiting for intro animation to complete (${introTime} seconds)...`);
+  await page.waitForTimeout((introTime + 1) * 1000); // intro time + 1s buffer
 
   // Reset clock to start of route for recording (intro used up simulation time)
   await page.evaluate(() => {

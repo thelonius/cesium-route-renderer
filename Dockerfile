@@ -11,7 +11,7 @@ FROM node:20
 
 WORKDIR /app
 
-# Install Chromium, FFmpeg, and Xvfb for virtual display
+# Install FFmpeg, Xvfb for virtual display, and browser dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     xvfb \
@@ -20,12 +20,9 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Google Chrome (stable, official build) instead of Chromium
-# Chrome handles crashpad better and works more reliably with Puppeteer
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
+# Install Chromium (ARM64 compatible, simpler than Firefox integration)
+RUN apt-get update && apt-get install -y \
+    chromium \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built app
@@ -33,8 +30,12 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
 COPY --from=build /app/config ./config
 
+# Set Puppeteer environment variables before installing
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
 # Install minimal HTTP server and recording dependencies
-RUN npm install --no-save puppeteer@19.0.0 serve-handler
+RUN npm install --no-save puppeteer@21.0.0 serve-handler
 
 # Copy recording scripts
 COPY docker/record-puppeteer.js ./
@@ -46,8 +47,5 @@ RUN chmod +x run-with-xvfb.sh
 
 # Create output directory with proper permissions for any user
 RUN mkdir -p /app/output && chmod 777 /app/output
-
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
 
 CMD ["./run-with-xvfb.sh"]

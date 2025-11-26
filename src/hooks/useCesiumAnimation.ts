@@ -703,10 +703,13 @@ export default function useCesiumAnimation({
             console.log('Route end detected. currentTime:', Cesium.JulianDate.toIso8601(currentTime), 'canonicalStop:', Cesium.JulianDate.toIso8601(canonicalStop));
             viewer.clock.currentTime = Cesium.JulianDate.clone(canonicalStop);
 
-            // Get final position
-            const finalPosition = hikerEntity.position!.getValue(stopTime);
-            if (finalPosition && !isEndingAnimationRef.current) {
+            // Get final position and clone it to ensure it's immutable during outro
+            const finalPositionTemp = hikerEntity.position!.getValue(stopTime);
+            if (finalPositionTemp && !isEndingAnimationRef.current) {
               isEndingAnimationRef.current = true;
+
+              // Clone final position to prevent it from being modified during outro
+              const finalPosition = Cesium.Cartesian3.clone(finalPositionTemp);
 
               // Check if outro should be skipped (default: true)
               const skipOutro = (window as any).__SKIP_OUTRO !== false;
@@ -730,9 +733,11 @@ export default function useCesiumAnimation({
                 let outroProgress = 0;
                 const outroSteps = ANIMATION.OUTRO_DURATION_SECONDS * 10; // 10 steps per second at 100ms interval
 
-                // Capture initial camera state to maintain view angle
+                // Capture initial camera state to maintain view angle (clone offset for safety)
                 const initialDistance = Cesium.Cartesian3.distance(viewer.camera.position, finalPosition);
-                const initialOffset = Cesium.Cartesian3.subtract(viewer.camera.position, finalPosition, new Cesium.Cartesian3());
+                const initialOffset = Cesium.Cartesian3.clone(
+                  Cesium.Cartesian3.subtract(viewer.camera.position, finalPosition, new Cesium.Cartesian3())
+                );
 
                 const outroInterval = setInterval(() => {
                   if (!viewer || viewer.isDestroyed() || outroProgress >= 1) {
@@ -767,6 +772,15 @@ export default function useCesiumAnimation({
                   // Move camera outward only, keeping view angle constant
                   // Scale distance by factor of 3 (1x to 3x) with easing
                   const distanceScale = 1 + (2 * eased);
+
+                  // Validate finalPosition is still valid before using it
+                  if (!finalPosition || !Cesium.Cartesian3.equals(finalPosition, finalPosition)) {
+                    console.warn('Invalid finalPosition during outro, stopping outro animation');
+                    clearInterval(outroInterval);
+                    (window as any).CESIUM_ANIMATION_COMPLETE = true;
+                    return;
+                  }
+
                   const newOffset = Cesium.Cartesian3.multiplyByScalar(initialOffset, distanceScale, new Cesium.Cartesian3());
                   const newPosition = Cesium.Cartesian3.add(finalPosition, newOffset, new Cesium.Cartesian3());
 
@@ -776,6 +790,8 @@ export default function useCesiumAnimation({
                     viewer.camera.lookAt(finalPosition, newOffset);
                   } catch (e) {
                     console.warn('Outro camera update failed:', e);
+                    clearInterval(outroInterval);
+                    (window as any).CESIUM_ANIMATION_COMPLETE = true;
                   }
                 }, 100);
               }
