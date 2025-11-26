@@ -117,6 +117,7 @@ export default function useCesiumAnimation({
 
       console.log(`Animation configured: ${Cesium.JulianDate.toIso8601(startTime)} to ${Cesium.JulianDate.toIso8601(stopTime)}`);
       console.log(`Animation will start with speed easing`);
+      console.log(`[DEBUG] Track points count: ${trackPoints.length}`);
 
     // TEMPORARILY DISABLED: Filtering was causing "cartesian is required" errors
     // TODO: Re-enable with better filtering logic that ensures enough points remain
@@ -491,6 +492,8 @@ export default function useCesiumAnimation({
     viewer.clock.multiplier = 0; // No animation yet
 
     const startingPosition = hikerEntity.position?.getValue(startTime);
+    
+    console.log(`[DEBUG] Starting position: ${startingPosition ? 'defined' : 'undefined'}, Route positions: ${fullRoutePositions.length}, hikerEntity: ${hikerEntity ? 'defined' : 'undefined'}`);
 
     if (startingPosition && fullRoutePositions.length > 1) {
       console.log('Camera at working start position, waiting for globe to settle...');
