@@ -38,6 +38,9 @@ COPY docker/record-canvas.js ./
 COPY docker/run-with-xvfb.sh ./
 RUN chmod +x run-with-xvfb.sh
 
+# Create output directory with proper permissions for any user
+RUN mkdir -p /app/output && chmod 777 /app/output
+
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
