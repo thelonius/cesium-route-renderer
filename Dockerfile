@@ -17,7 +17,9 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     xvfb \
     xauth \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Remove crashpad handler to prevent Chromium startup errors (affects both Alpine and Debian)
+    && rm -f /usr/lib/chromium/chrome_crashpad_handler
 
 # Copy built app
 COPY --from=build /app/dist ./dist
