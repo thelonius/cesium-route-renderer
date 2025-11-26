@@ -43,5 +43,7 @@ RUN mkdir -p /app/output && chmod 777 /app/output
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+# Disable Chromium crashpad handler for Alpine Linux
+ENV CHROME_CRASHPAD_HANDLER_PATH=/dev/null
 
 CMD ["sh", "-c", "./run-with-xvfb.sh"]
