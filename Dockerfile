@@ -22,6 +22,9 @@ RUN apk add --no-cache \
     glu \
     bash
 
+# Disable crashpad handler for Alpine Chromium (prevents --database error)
+RUN rm -f /usr/lib/chromium/chrome_crashpad_handler || true
+
 # Copy built app
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/public ./public
