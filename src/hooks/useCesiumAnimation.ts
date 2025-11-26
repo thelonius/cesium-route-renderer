@@ -128,6 +128,8 @@ export default function useCesiumAnimation({
       }
     };
 
+
+
     // Reset animation state for new route
     cameraAzimuthProgressRef.current = 0;
     cameraTiltProgressRef.current = 0;
@@ -175,6 +177,51 @@ export default function useCesiumAnimation({
                     'azimuthMult:', getCameraValue('AZIMUTH_MULTIPLIER', CAMERA.AZIMUTH_MULTIPLIER).toFixed(2));
       } catch (e) {
         console.error('Error restarting route:', e);
+      }
+    };
+
+    // Expose global start full animation function
+    (window as any).__startFullAnimation = () => {
+      try {
+        console.log('🎬 Starting full animation from beginning (including intro)');
+        // Reset everything to initial state
+        trailPositionsRef.current = [];
+        cameraAzimuthProgressRef.current = 0;
+        cameraTiltProgressRef.current = 0;
+        isInitialAnimationRef.current = true;
+        isEndingAnimationRef.current = false;
+        continuousAzimuthRef.current = 0;
+        cameraPanOffsetRef.current = 0;
+        initialCameraSetRef.current = false;
+        currentRotationAngleRef.current = undefined as any;
+        animationStartedRef.current = false;
+        preRenderFrameCounter.current = 0;
+        smoothedCameraTargetRef.current = null;
+        smoothedHikerPositionRef.current = null;
+        lookAheadTargetRef.current = null;
+        smoothedBackRef.current = CAMERA.BASE_BACK;
+        smoothedHeightRef.current = CAMERA.BASE_HEIGHT;
+
+        // Reset global flags
+        (window as any).CESIUM_ANIMATION_COMPLETE = false;
+        (window as any).CESIUM_INTRO_COMPLETE = false;
+        (window as any).CESIUM_ANIMATION_READY = false;
+
+        // Reset clock to start
+        viewer.clock.startTime = Cesium.JulianDate.clone(startTime);
+        viewer.clock.stopTime = Cesium.JulianDate.clone(stopTime);
+        viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
+        viewer.clock.shouldAnimate = false;
+        viewer.clock.multiplier = 0;
+
+        // Re-initialize animation
+        setTimeout(() => {
+          initializeAnimation();
+        }, 100);
+
+        console.log('✅ Full animation reset and starting from beginning');
+      } catch (e) {
+        console.error('Error starting full animation:', e);
       }
     };
 
@@ -437,7 +484,12 @@ export default function useCesiumAnimation({
     // Create dynamic trail with reduced artifacts
     const trailEntity = viewer.entities.add({
       polyline: {
-        positions: new Cesium.CallbackProperty(() => trailPositionsRef.current, false),
+        positions: new Cesium.CallbackProperty(() => {
+          // Filter out any invalid positions before returning to Cesium
+          return trailPositionsRef.current.filter(pos =>
+            pos && Cesium.Cartesian3.equals(pos, pos)
+          );
+        }, false),
         width: 4, // Reduced from 5 to minimize rendering artifacts
         material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.9)), // Slight transparency to reduce artifacts
         depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.5)),
@@ -522,7 +574,9 @@ export default function useCesiumAnimation({
         }
 
         const currentPosition = hikerEntity.position.getValue(currentTime);
-        if (!currentPosition) return;
+        if (!currentPosition || !Cesium.Cartesian3.equals(currentPosition, currentPosition)) {
+          return; // Invalid position, skip
+        }
 
         const dt = Cesium.JulianDate.secondsDifference(currentTime, lastAddedTimeRef.current);
         if (dt < CAMERA.TRAIL_ADD_INTERVAL_SECONDS && trailPositionsRef.current.length > 0) return;
@@ -586,7 +640,12 @@ export default function useCesiumAnimation({
         }
 
         try {
-          trailPositionsRef.current.push(currentPosition.clone());
+          // Validate position before cloning
+          if (currentPosition && Cesium.Cartesian3.equals(currentPosition, currentPosition)) {
+            trailPositionsRef.current.push(currentPosition.clone());
+          } else {
+            console.warn('Skipping invalid trail position');
+          }
         } catch (e) {
           console.warn('Failed to clone currentPosition for trail, skipping point:', e);
         }
@@ -601,6 +660,7 @@ export default function useCesiumAnimation({
         console.error('Error in preRender handler:', err);
       }
     };
+
 
     const postRenderListener = () => {
       try {
@@ -708,93 +768,11 @@ export default function useCesiumAnimation({
             if (finalPositionTemp && !isEndingAnimationRef.current) {
               isEndingAnimationRef.current = true;
 
-              // Clone final position to prevent it from being modified during outro
-              const finalPosition = Cesium.Cartesian3.clone(finalPositionTemp);
-
-              // Check if outro should be skipped (default: true)
-              const skipOutro = (window as any).__SKIP_OUTRO !== false;
-              if (skipOutro) {
-                // Fast-path: skip outro animation and mark complete
-                // Keep animation running so recorder can capture final frames
-                viewer.clock.shouldAnimate = false; // Stop clock since route is complete
-                (window as any).CESIUM_ANIMATION_COMPLETE = true;
-                console.log('✅ Route ended - CESIUM_ANIMATION_COMPLETE flag set (outro skipped)');
-                displayStatusBar();
-              } else {
-                // Outro animation enabled - capture multiplier and start camera animation
-                const savedMultiplier = viewer.clock.multiplier;
-                viewer.clock.shouldAnimate = false; // stop automatic advancement; outro will animate camera manually
-                console.log('✅ Route ended - starting outro');
-                // Outro runs at FIXED real-time speed (duration from config)
-                console.log(`Starting outro at fixed 1x speed (${ANIMATION.OUTRO_DURATION_SECONDS} seconds)`);
-                // Ensure outro runs at real-time speed on the clock while we animate camera
-                try { viewer.clock.multiplier = 1; } catch (e) {}
-
-                let outroProgress = 0;
-                const outroSteps = ANIMATION.OUTRO_DURATION_SECONDS * 10; // 10 steps per second at 100ms interval
-
-                // Capture initial camera state to maintain view angle (clone offset for safety)
-                const initialDistance = Cesium.Cartesian3.distance(viewer.camera.position, finalPosition);
-                const initialOffset = Cesium.Cartesian3.clone(
-                  Cesium.Cartesian3.subtract(viewer.camera.position, finalPosition, new Cesium.Cartesian3())
-                );
-
-                const outroInterval = setInterval(() => {
-                  if (!viewer || viewer.isDestroyed() || outroProgress >= 1) {
-                    clearInterval(outroInterval);
-                    if (outroProgress >= 1) {
-                      console.log('🎬 Outro complete');
-                      // Restore previous multiplier and stop animation
-                      try {
-                        if (typeof savedMultiplier !== 'undefined' && viewer && viewer.clock) {
-                          viewer.clock.multiplier = savedMultiplier;
-                        }
-                        viewer.clock.shouldAnimate = false;
-                      } catch (e) {}
-
-                      (window as any).CESIUM_ANIMATION_COMPLETE = true;
-                      console.log('✅ CESIUM_ANIMATION_COMPLETE flag set');
-
-                      // Reset camera lookAt transform so we don't leave the camera locked
-                      try {
-                        viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-                      } catch (e) {}
-
-                      // Final status display
-                      displayStatusBar();
-                    }
-                    return;
-                  }
-
-                  outroProgress += 1 / outroSteps;
-                  const eased = 1 - Math.pow(1 - outroProgress, 3); // Cubic ease-out
-
-                  // Move camera outward only, keeping view angle constant
-                  // Scale distance by factor of 3 (1x to 3x) with easing
-                  const distanceScale = 1 + (2 * eased);
-
-                  // Validate finalPosition is still valid before using it
-                  if (!finalPosition || !Cesium.Cartesian3.equals(finalPosition, finalPosition)) {
-                    console.warn('Invalid finalPosition during outro, stopping outro animation');
-                    clearInterval(outroInterval);
-                    (window as any).CESIUM_ANIMATION_COMPLETE = true;
-                    return;
-                  }
-
-                  const newOffset = Cesium.Cartesian3.multiplyByScalar(initialOffset, distanceScale, new Cesium.Cartesian3());
-                  const newPosition = Cesium.Cartesian3.add(finalPosition, newOffset, new Cesium.Cartesian3());
-
-                  // Position camera explicitly and use the computed offset for lookAt
-                  try {
-                    viewer.camera.position = newPosition;
-                    viewer.camera.lookAt(finalPosition, newOffset);
-                  } catch (e) {
-                    console.warn('Outro camera update failed:', e);
-                    clearInterval(outroInterval);
-                    (window as any).CESIUM_ANIMATION_COMPLETE = true;
-                  }
-                }, 100);
-              }
+              // Stop animation immediately (no outro)
+              viewer.clock.shouldAnimate = false;
+              (window as any).CESIUM_ANIMATION_COMPLETE = true;
+              console.log('✅ Route ended - CESIUM_ANIMATION_COMPLETE flag set');
+              displayStatusBar();
             }
           }
           return;
@@ -1171,7 +1149,7 @@ export default function useCesiumAnimation({
         const manualSteppingThreshold = 100; // speeds above this use manual stepping
         // Enable manual stepping only when forced or when running in headless/docker mode
         manualStepEnabledRef.current = forceManualStepping || (isHeadless && animationSpeed > manualSteppingThreshold);
-        dlog('Preparing to start animation (skipIntro=', skipIntro, ', manualStep=', manualStepEnabledRef.current, ')');
+        dlog('Preparing to start animation (skipIntro=false, manualStep=', manualStepEnabledRef.current, ')');
 
         // Mark that animation has started to disable preRender early-reset
         animationStartedRef.current = true;
@@ -1203,116 +1181,53 @@ export default function useCesiumAnimation({
           }
         }
 
-        if (!skipIntro) {
-          // Phase 1: Camera intro animation - duration from config
-          let cameraProgress = 0;
-          const introSteps = ANIMATION.INTRO_DURATION_SECONDS * 10; // 10 steps per second at 100ms interval
-          const cameraInterval = setInterval(() => {
-            if (!viewer || viewer.isDestroyed() || !viewer.clock) {
-              clearInterval(cameraInterval);
-              return;
-            }
+        // Start animation immediately at full speed (no intro)
+        console.log('Starting route animation at full speed:', animationSpeed + 'x');
 
-            cameraProgress += 1 / introSteps;
-
-            // Add subtle side-to-side panning during opening (sine wave: -200 to +200)
-            cameraPanOffsetRef.current = Math.sin(cameraProgress * Math.PI * 2) * 200;
-
-            // Keep clock at slow speed during intro for smooth camera movement
-            if (!(window as any).__MANUAL_MULTIPLIER) {
-              viewer.clock.multiplier = 1; // Fixed 1x speed for intro
-            }
-
-            if (cameraProgress >= 1) {
-              cameraAzimuthProgressRef.current = 1;
-              cameraTiltProgressRef.current = 1;
-              clearInterval(cameraInterval);
-              console.log('Camera intro complete, ramping up to route speed:', animationSpeed + 'x');
-
-              // Signal that the intro animation completed so external camera logic
-              // (e.g. useCesiumCamera) can enable the tracked-entity mode safely.
-              try {
-                (window as any).CESIUM_INTRO_COMPLETE = true;
-                console.log('✅ CESIUM_INTRO_COMPLETE flag set');
-              } catch (e) {
-                // ignore
-              }
-
-              // Phase 2: Set full route speed immediately (skip ramping for constant speed)
-              if (!(window as any).__MANUAL_MULTIPLIER) {
-                viewer.clock.multiplier = animationSpeed;
-              }
-              isInitialAnimationRef.current = false; // Initial animation complete
-              console.log(`Route animation at full speed: ${animationSpeed}x`);
-
-              // Start continuous slow azimuth rotation during main route
-              azimuthRotationIntervalRef.current = setInterval(() => {
-                if (!viewer || viewer.isDestroyed() || isEndingAnimationRef.current || !viewer.clock || !viewer.clock.shouldAnimate) {
-                  if (azimuthRotationIntervalRef.current) {
-                    clearInterval(azimuthRotationIntervalRef.current);
-                    azimuthRotationIntervalRef.current = null;
-                  }
-                  return;
-                }
-
-                // Rotate slowly: 360° over ~2 minutes = 0.05°/frame at 10fps
-                continuousAzimuthRef.current += 0.05;
-                if (continuousAzimuthRef.current >= 360) {
-                  continuousAzimuthRef.current = 0;
-                }
-              }, 100);
-
-              // Monitor for route completion
-              checkCompletionIntervalRef.current = setInterval(() => {
-                if (!viewer || viewer.isDestroyed() || !viewer.clock || !viewer.clock.shouldAnimate) {
-                  if (checkCompletionIntervalRef.current) {
-                    clearInterval(checkCompletionIntervalRef.current);
-                    checkCompletionIntervalRef.current = null;
-                  }
-                  return;
-                }
-
-                const currentTime = viewer.clock.currentTime;
-                const timeRemaining = Cesium.JulianDate.secondsDifference(stopTime, currentTime);
-
-                // The postRenderListener will handle route ending naturally
-              }, 100);
-            } else {
-              // During camera animation: update both azimuth and tilt simultaneously
-              // Custom ease in-out with extra gentle start to eliminate jerk
-              let eased;
-              if (cameraProgress < 0.5) {
-                // Ease in: use quartic (x^4) for extremely gentle start
-                const t = cameraProgress * 2;
-                eased = t * t * t * t / 2;
-              } else {
-                // Ease out: use quartic for gentle end
-                const t = (cameraProgress - 0.5) * 2;
-                eased = 0.5 + (1 - Math.pow(1 - t, 4)) / 2;
-              }
-
-              // Apply same easing to both azimuth and tilt
-              cameraAzimuthProgressRef.current = eased;
-              cameraTiltProgressRef.current = eased;
-            }
-          }, 100);
-        } else {
-          // If skipping intro, mark intro complete immediately and start main rotation
-          console.log('Skipping intro - setting camera to final positions');
-          try { (window as any).CESIUM_INTRO_COMPLETE = true; } catch (e) {}
-          isInitialAnimationRef.current = false;
-          // Set camera progress to final positions for immediate main animation view
-          cameraAzimuthProgressRef.current = 1;
-          cameraTiltProgressRef.current = 1;
-          console.log('Camera refs set: azimuth=', cameraAzimuthProgressRef.current, 'tilt=', cameraTiltProgressRef.current, 'isInitial=', isInitialAnimationRef.current);
-          azimuthRotationIntervalRef.current = setInterval(() => {
-            if (!viewer || viewer.isDestroyed() || isEndingAnimationRef.current || !viewer.clock || !viewer.clock.shouldAnimate) {
-              if (azimuthRotationIntervalRef.current) { clearInterval(azimuthRotationIntervalRef.current); azimuthRotationIntervalRef.current = null; }
-              return;
-            }
-            continuousAzimuthRef.current += 0.05; if (continuousAzimuthRef.current >= 360) continuousAzimuthRef.current = 0;
-          }, 100);
+        try {
+          (window as any).CESIUM_INTRO_COMPLETE = true;
+          console.log('✅ CESIUM_INTRO_COMPLETE flag set');
+        } catch (e) {
+          // ignore
         }
+
+        if (!(window as any).__MANUAL_MULTIPLIER) {
+          viewer.clock.multiplier = animationSpeed;
+        }
+        isInitialAnimationRef.current = false;
+
+        // Start continuous slow azimuth rotation during main route
+        azimuthRotationIntervalRef.current = setInterval(() => {
+          if (!viewer || viewer.isDestroyed() || isEndingAnimationRef.current || !viewer.clock || !viewer.clock.shouldAnimate) {
+            if (azimuthRotationIntervalRef.current) {
+              clearInterval(azimuthRotationIntervalRef.current);
+              azimuthRotationIntervalRef.current = null;
+            }
+            return;
+          }
+
+          // Rotate slowly: 360° over ~2 minutes = 0.05°/frame at 10fps
+          continuousAzimuthRef.current += 0.05;
+          if (continuousAzimuthRef.current >= 360) {
+            continuousAzimuthRef.current = 0;
+          }
+        }, 100);
+
+        // Monitor for route completion
+        checkCompletionIntervalRef.current = setInterval(() => {
+          if (!viewer || viewer.isDestroyed() || !viewer.clock || !viewer.clock.shouldAnimate) {
+            if (checkCompletionIntervalRef.current) {
+              clearInterval(checkCompletionIntervalRef.current);
+              checkCompletionIntervalRef.current = null;
+            }
+            return;
+          }
+
+          const currentTime = viewer.clock.currentTime;
+          const timeRemaining = Cesium.JulianDate.secondsDifference(stopTime, currentTime);
+
+          // The postRenderListener will handle route ending naturally
+        }, 100);
       }, ANIMATION.SETTLE_DURATION_SECONDS * 1000);
     } else {
       // Fallback
@@ -1350,22 +1265,6 @@ export default function useCesiumAnimation({
     // Store cleanup function
     (window as any).animationCleanup = cleanup;
     }; // End of initializeAnimation
-
-    // Initialize camera refs to skip intro by default
-    const skipIntro = (window as any).__SKIP_INTRO !== false; // default true
-    if (skipIntro) {
-      // Skip intro: set camera to final positions immediately (before settle timeout)
-      isInitialAnimationRef.current = false;
-      cameraAzimuthProgressRef.current = 1;
-      cameraTiltProgressRef.current = 1;
-      console.log('Pre-init camera refs for skipped intro: azimuth=1, tilt=1, isInitial=false');
-    } else {
-      // Do intro: start with camera looking down
-      isInitialAnimationRef.current = true;
-      cameraAzimuthProgressRef.current = 0;
-      cameraTiltProgressRef.current = 0;
-      console.log('Pre-init camera refs for intro animation: azimuth=0, tilt=0, isInitial=true');
-    }
 
     // Start animation immediately - postRenderListener will position camera correctly
     console.log('Starting animation sequence');

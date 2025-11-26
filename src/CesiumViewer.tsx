@@ -7,7 +7,6 @@ import useCesiumAnimation from './hooks/useCesiumAnimation';
 import useCesiumCamera from './hooks/useCesiumCamera';
 import constants from '../config/constants';
 import FpsCounter from './components/FpsCounter';
-import RecordButton from './components/RecordButton';
 
 export default function CesiumViewer(): JSX.Element {
 	const containerRef = useRef<HTMLDivElement | null>(null);
@@ -202,8 +201,6 @@ export default function CesiumViewer(): JSX.Element {
 		<div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
 
 		<FpsCounter viewer={viewerRef.current} />
-
-		<RecordButton viewer={viewerRef.current} startTime={timeRange?.startTime} stopTime={timeRange?.stopTime} animationSpeed={animationSpeed} />			{/* Welcome / Load Route */}
 			{!isDockerMode && !routeValidated && (
 				<div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.95)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
 					<div style={{ textAlign: 'center', color: 'white' }}>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as Cesium from 'cesium';
 import CAMERA from '../../config/constants.json';
 
@@ -18,6 +18,13 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
   });
 
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
+  const getViewer = (): Cesium.Viewer | null => {
+    return (window as any).__CESIUM_VIEWER || null;
+  };
 
   useEffect(() => {
     // Apply values on mount and whenever they change
@@ -51,14 +58,11 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
         (window as any).__restartRoute();
       } else {
         // Fallback to basic restart if global function not available
-        let viewer = (window as any).Cesium?.Viewer?.instances?.[0];
-        if (!viewer) {
-          viewer = (window as any).__CESIUM_VIEWER;
-        }
+        const viewerInstance = getViewer();
 
-        if (viewer && viewer.clock && viewer.clock.startTime) {
-          viewer.clock.currentTime = Cesium.JulianDate.clone(viewer.clock.startTime);
-          viewer.clock.shouldAnimate = true;
+        if (viewerInstance && viewerInstance.clock && viewerInstance.clock.startTime) {
+          viewerInstance.clock.currentTime = Cesium.JulianDate.clone(viewerInstance.clock.startTime);
+          viewerInstance.clock.shouldAnimate = true;
           console.log('🔄 Route restarted from beginning (fallback method)');
         } else {
           console.warn('Could not restart route: viewer or clock not found');
@@ -66,6 +70,85 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
       }
     } catch (e) {
       console.error('Error restarting route:', e);
+    }
+  };
+
+  const handleStartAnimation = () => {
+    try {
+      if ((window as any).__startFullAnimation) {
+        (window as any).__startFullAnimation();
+      } else if ((window as any).__restartRoute) {
+        (window as any).__restartRoute();
+      }
+    } catch (e) {
+      console.error('Error starting animation:', e);
+    }
+  };
+
+  const handleStopAnimation = () => {
+    try {
+      const viewerInstance = getViewer();
+      if (viewerInstance && viewerInstance.clock) {
+        viewerInstance.clock.shouldAnimate = false;
+        console.log('⏹️ Animation stopped');
+      }
+    } catch (e) {
+      console.error('Error stopping animation:', e);
+    }
+  };
+
+  const startRecording = async () => {
+    const viewer = getViewer();
+    if (!viewer) return;
+
+    try {
+      const canvas = viewer.scene.canvas;
+      const stream = canvas.captureStream(60);
+
+      const options: MediaRecorderOptions = {
+        mimeType: 'video/webm;codecs=vp9',
+        videoBitsPerSecond: 20000000
+      };
+
+      if (options.mimeType && !MediaRecorder.isTypeSupported(options.mimeType)) {
+        options.mimeType = 'video/webm;codecs=vp8';
+        options.videoBitsPerSecond = 15000000;
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+      recordedChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cesium-route-${Date.now()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        console.log('✅ Recording saved');
+      };
+
+      mediaRecorder.start(1000);
+      setIsRecording(true);
+      console.log('🎥 Recording started');
+    } catch (e) {
+      console.error('Failed to start recording:', e);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      console.log('⏹️ Recording stopped');
     }
   };
 
@@ -248,30 +331,83 @@ export const CameraControls: React.FC<CameraControlsProps> = ({ onClose }) => {
         />
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexDirection: 'column' }}>
+        {/* Animation Controls */}
+        <div style={{ display: 'flex', gap: '4px' }}>
+          <button onClick={handleStartAnimation} style={{
+            flex: 1,
+            padding: '8px',
+            background: 'rgba(40, 167, 69, 0.3)',
+            border: '1px solid rgba(40, 167, 69, 0.6)',
+            color: 'white',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: 'bold',
+          }}>
+            ▶ Start
+          </button>
+          <button onClick={handleRestartRoute} style={{
+            flex: 1,
+            padding: '8px',
+            background: 'rgba(0, 123, 255, 0.3)',
+            border: '1px solid rgba(0, 123, 255, 0.6)',
+            color: 'white',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: 'bold',
+          }}>
+            🔄 Restart
+          </button>
+          <button onClick={handleStopAnimation} style={{
+            flex: 1,
+            padding: '8px',
+            background: 'rgba(220, 53, 69, 0.3)',
+            border: '1px solid rgba(220, 53, 69, 0.6)',
+            color: 'white',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: 'bold',
+          }}>
+            ⏹ Stop
+          </button>
+        </div>
+
+        {/* Record Button */}
+        <button
+          onClick={isRecording ? stopRecording : startRecording}
+          disabled={!getViewer()}
+          style={{
+            padding: '8px',
+            background: isRecording
+              ? 'rgba(220, 53, 69, 0.3)'
+              : 'rgba(220, 53, 69, 0.2)',
+            border: isRecording
+              ? '1px solid rgba(220, 53, 69, 0.8)'
+              : '1px solid rgba(220, 53, 69, 0.5)',
+            color: 'white',
+            borderRadius: '4px',
+            cursor: getViewer() ? 'pointer' : 'not-allowed',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            opacity: getViewer() ? 1 : 0.5,
+          }}
+        >
+          {isRecording ? '⏹ Stop Recording' : '⏺ Record'}
+        </button>
+
         <button onClick={handleReset} style={{
-          flex: 1,
           padding: '8px',
           background: 'rgba(255, 255, 255, 0.1)',
           border: '1px solid rgba(255, 255, 255, 0.3)',
           color: 'white',
           borderRadius: '4px',
           cursor: 'pointer',
-          fontSize: '12px',
+          fontSize: '11px',
         }}>
-          Reset to Defaults
-        </button>
-        <button onClick={handleRestartRoute} style={{
-          flex: 1,
-          padding: '8px',
-          background: 'rgba(100, 150, 255, 0.2)',
-          border: '1px solid rgba(100, 150, 255, 0.5)',
-          color: 'white',
-          borderRadius: '4px',
-          cursor: 'pointer',
-          fontSize: '12px',
-        }}>
-          🔄 Restart Route
+          Reset Camera
         </button>
       </div>
 
