@@ -492,7 +492,7 @@ export default function useCesiumAnimation({
     viewer.clock.multiplier = 0; // No animation yet
 
     const startingPosition = hikerEntity.position?.getValue(startTime);
-    
+
     console.log(`[DEBUG] Starting position: ${startingPosition ? 'defined' : 'undefined'}, Route positions: ${fullRoutePositions.length}, hikerEntity: ${hikerEntity ? 'defined' : 'undefined'}`);
 
     if (startingPosition && fullRoutePositions.length > 1) {

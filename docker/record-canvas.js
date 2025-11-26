@@ -447,7 +447,7 @@ async function recordRoute() {
   server.close();
 
   // Encode with FFmpeg
-  const outputPath = '/output/route-video.mp4';
+  const outputPath = path.join(OUTPUT_DIR, 'route-video.mp4');
   const ffmpegArgs = [
     '-framerate', String(RECORD_FPS),
     '-i', path.join(FRAMES_DIR, 'frame-%06d.jpg'),
