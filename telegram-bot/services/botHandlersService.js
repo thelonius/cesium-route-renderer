@@ -348,19 +348,21 @@ class BotHandlersService {
       const userName = msg.from.username || msg.from.first_name || 'Hiker';
       const outputId = `render-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      const result = await this.api.submitRender(fileBuffer, doc.file_name, userName, outputId);
-
-      if (!result.success) {
-        throw new Error(result.error || 'Render submission failed');
-      }
-
-      // Track render
+      // Track render BEFORE submitting (so /status works immediately)
       this.state.setActiveRender(chatId, {
         outputId,
         fileName: doc.file_name,
         startTime: Date.now(),
         status: 'rendering'
       });
+
+      const result = await this.api.submitRender(fileBuffer, doc.file_name, userName, outputId);
+
+      if (!result.success) {
+        // Clear active render on failure
+        this.state.clearActiveRender(chatId);
+        throw new Error(result.error || 'Render submission failed');
+      }
 
       await this.bot.sendMessage(chatId,
         t(chatId, 'processing.starting', { outputId }, userLang),
