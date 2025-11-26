@@ -184,10 +184,14 @@ async function recordRoute() {
   const server = await startServer();
 
   // Detect browser type from executable path
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium';
+  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/firefox-esr';
   const isFirefox = executablePath.includes('firefox');
 
-  const browserArgs = [
+  const browserArgs = isFirefox ? [
+    '-headless',
+    `--width=${RECORD_WIDTH}`,
+    `--height=${RECORD_HEIGHT}`
+  ] : [
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
@@ -213,7 +217,8 @@ async function recordRoute() {
   const browser = await puppeteer.launch({
     headless: true,
     args: browserArgs,
-    executablePath: executablePath
+    executablePath: executablePath,
+    product: isFirefox ? 'firefox' : 'chrome'
   });  const page = await browser.newPage();
   await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 });
 

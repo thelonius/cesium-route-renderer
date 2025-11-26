@@ -11,9 +11,9 @@ FROM node:20
 
 WORKDIR /app
 
-# Install Chromium, FFmpeg, and Xvfb for virtual display
+# Install Firefox ESR, FFmpeg, and Xvfb for virtual display
 RUN apt-get update && apt-get install -y \
-    chromium \
+    firefox-esr \
     ffmpeg \
     xvfb \
     xauth \
@@ -29,7 +29,8 @@ COPY --from=build /app/config ./config
 
 # Set Puppeteer environment variables before installing
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/firefox-esr
+ENV PUPPETEER_PRODUCT=firefox
 
 # Install minimal HTTP server and recording dependencies
 RUN npm install --no-save puppeteer@19.0.0 serve-handler
