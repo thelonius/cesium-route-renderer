@@ -69,7 +69,7 @@ export default function useCesiumAnimation({
   const trailPositionsRef = useRef<Cesium.Cartesian3[]>([]);
   const lastAddedTimeRef = useRef<Cesium.JulianDate | null>(null);
   const smoothedBackRef = useRef(CAMERA_BASE_BACK);
-  const smoothedHeightRef = useRef(CAMERA_BASE_HEIGHT);
+  const smoothedHeightRef = useRef(CAMERA_BASE_HEIGHT * 3);
   const cameraAzimuthProgressRef = useRef(0); // 0 = no rotation, 1 = full azimuth (for opening)
   const cameraTiltProgressRef = useRef(0); // 0 = looking down, 1 = fully tilted
   const isInitialAnimationRef = useRef(true); // Track if we're still in opening animation
@@ -415,8 +415,8 @@ export default function useCesiumAnimation({
 
         const transform = Cesium.Transforms.eastNorthUpToFixedFrame(position);
 
-        // Use constant camera position (no dynamic altitude adjustment)
-        const cameraOffsetLocal = new Cesium.Cartesian3(-CAMERA_BASE_BACK, 0, CAMERA_BASE_HEIGHT);
+        // Use constant camera position with tripled height for better vertical coverage on mobile
+        const cameraOffsetLocal = new Cesium.Cartesian3(-CAMERA_BASE_BACK, 0, CAMERA_BASE_HEIGHT * 3);
         const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
 
         // Validate camera position
