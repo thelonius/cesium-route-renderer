@@ -206,6 +206,7 @@ async function recordRoute() {
       '--enable-webgl',
       '--use-gl=angle',
       '--use-angle=swiftshader',
+      '--enable-unsafe-swiftshader',
       '--ignore-gpu-blacklist',
       '--disable-gpu-vsync',
       '--disable-frame-rate-limit',
