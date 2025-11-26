@@ -143,6 +143,22 @@ async function recordRoute() {
   statusInfo.buildVersion = getBuildVersion();
   statusInfo.startTime = Date.now();
 
+  // Copy GPX file to dist directory so it can be served by the HTTP server
+  const gpxFilename = process.env.GPX_FILENAME;
+  if (!gpxFilename) {
+    throw new Error('GPX_FILENAME environment variable is required');
+  }
+
+  const gpxSourcePath = path.join(__dirname, gpxFilename);
+  const gpxDestPath = path.join(__dirname, 'dist', gpxFilename);
+
+  if (fs.existsSync(gpxSourcePath)) {
+    fs.copyFileSync(gpxSourcePath, gpxDestPath);
+    console.log(`Copied GPX file from ${gpxSourcePath} to ${gpxDestPath}`);
+  } else {
+    throw new Error(`GPX file not found at ${gpxSourcePath}`);
+  }
+
   const server = await startServer();
 
   const browser = await puppeteer.launch({
@@ -172,11 +188,7 @@ async function recordRoute() {
   const page = await browser.newPage();
   await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 });
 
-  // Load the app
-  const gpxFilename = process.env.GPX_FILENAME;
-  if (!gpxFilename) {
-    throw new Error('GPX_FILENAME environment variable is required');
-  }
+  // Load the app (gpxFilename already set above)
   const userName = process.env.USER_NAME || 'Hiker';
   const animationSpeed = process.env.ANIMATION_SPEED || '30';
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
