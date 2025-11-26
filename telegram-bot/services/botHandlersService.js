@@ -166,6 +166,25 @@ class BotHandlersService {
     const activeRender = this.state.getActiveRender(chatId);
 
     if (!activeRender) {
+      // Check if user has completed renders
+      const history = this.state.getHistory(chatId);
+      if (history && history.length > 0) {
+        const lastRender = history[history.length - 1];
+        const statusMessage = userLang === 'ru'
+          ? `📊 **Последний рендер**\n\n✅ **${lastRender.fileName}**\n📋 ID: \`${lastRender.outputId}\`\n\n📥 Видео готово к скачиванию`
+          : `📊 **Last Render**\n\n✅ **${lastRender.fileName}**\n📋 ID: \`${lastRender.outputId}\`\n\n📥 Video ready for download`;
+
+        await this.bot.sendMessage(chatId, statusMessage, {
+          parse_mode: 'Markdown',
+          reply_markup: {
+            inline_keyboard: [[
+              { text: userLang === 'ru' ? '📥 Скачать видео' : '📥 Download Video', url: lastRender.videoUrl }
+            ]]
+          }
+        });
+        return;
+      }
+
       await this.bot.sendMessage(chatId, t(chatId, 'status.noActive', {}, userLang));
       return;
     }
@@ -456,7 +475,7 @@ class BotHandlersService {
         const logs = result.text;
 
         // Check if render completed
-        if (logs.includes('✅ Video file created successfully')) {
+        if (logs.includes('Recording complete! Video saved to') || logs.includes('✅ Video file created successfully')) {
           clearInterval(intervalId);
           this.progressIntervals.delete(outputId);
 
