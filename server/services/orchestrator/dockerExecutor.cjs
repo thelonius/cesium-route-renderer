@@ -66,7 +66,14 @@ function executeDockerRender(renderConfig, renderState, onProgress, onProgressUp
           dockerOutputs.exitCode = code;
 
           if (code !== 0) {
-            reject(new Error(`Docker exited with code ${code}`));
+            // Log stderr to help diagnose Docker failures
+            if (stderr) {
+              console.error('Docker stderr output:', stderr);
+            }
+            const error = new Error(`Docker exited with code ${code}`);
+            error.stderr = stderr;
+            error.stdout = stdout;
+            reject(error);
           } else {
             resolve(dockerOutputs);
           }
