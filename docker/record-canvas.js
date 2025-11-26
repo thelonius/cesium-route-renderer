@@ -149,14 +149,20 @@ async function recordRoute() {
     throw new Error('GPX_FILENAME environment variable is required');
   }
 
-  const gpxSourcePath = path.join(__dirname, gpxFilename);
+  // Check if GPX is already in dist (mounted by API) or in /app (manual run)
   const gpxDestPath = path.join(__dirname, 'dist', gpxFilename);
+  const gpxSourcePath = path.join(__dirname, gpxFilename);
 
-  if (fs.existsSync(gpxSourcePath)) {
-    fs.copyFileSync(gpxSourcePath, gpxDestPath);
-    console.log(`Copied GPX file from ${gpxSourcePath} to ${gpxDestPath}`);
+  if (!fs.existsSync(gpxDestPath)) {
+    // GPX not in dist, try to copy from /app
+    if (fs.existsSync(gpxSourcePath)) {
+      fs.copyFileSync(gpxSourcePath, gpxDestPath);
+      console.log(`Copied GPX file from ${gpxSourcePath} to ${gpxDestPath}`);
+    } else {
+      throw new Error(`GPX file not found at ${gpxSourcePath} or ${gpxDestPath}`);
+    }
   } else {
-    throw new Error(`GPX file not found at ${gpxSourcePath}`);
+    console.log(`Using GPX file already at ${gpxDestPath}`);
   }
 
   const server = await startServer();
