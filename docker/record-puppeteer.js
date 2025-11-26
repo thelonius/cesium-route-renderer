@@ -1,9 +1,9 @@
 const puppeteer = require('puppeteer');
+const { PuppeteerScreenRecorder } = require('puppeteer-screen-recorder');
 const http = require('http');
 const handler = require('serve-handler');
 const path = require('path');
 const fs = require('fs');
-const { execSync } = require('child_process');
 
 const PORT = 8080;
 
@@ -69,8 +69,7 @@ function getGPXDuration() {
     if (!gpxFilename) {
       throw new Error('GPX_FILENAME environment variable is required');
     }
-    // In Docker, GPX files are mounted at /app/public/
-    const gpxPath = path.join('/app', 'public', gpxFilename);
+    const gpxPath = path.join(__dirname, 'dist', gpxFilename);
     console.log(`Reading GPX file: ${gpxPath}`);
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
 
@@ -138,8 +137,8 @@ function getRecordingDuration() {
   // Auto-calculate from GPX
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
-    // Get animation speed multiplier from environment or default to 4x
-    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '4');
+    // Get animation speed multiplier from environment or default to 10
+    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '10');
 
     // Calculate playback duration (route duration / speed multiplier)
     const playbackDuration = gpxDuration / speedMultiplier;
@@ -183,16 +182,25 @@ async function recordRoute() {
   const server = await startServer();
 
   // Allow overriding recording FPS and resolution via environment variables
-  // Docker environment - use moderate settings that work well on CPU
-  // These settings worked well on November 12th
+  // If running in a headless/container environment, automatically prefer
+  // lower-quality but stable defaults unless explicit env vars are provided.
+  const isHeadlessEnv = (process.env.HEADLESS === 'true' || process.env.HEADLESS === '1')
+
+  // Default high-quality values
   const DEFAULT_FPS = 60
-  const DEFAULT_WIDTH = 720
-  const DEFAULT_HEIGHT = 1280
+  const DEFAULT_WIDTH = 1080
+  const DEFAULT_HEIGHT = 1920
 
-  const TARGET_FPS = parseInt(process.env.RECORD_FPS || String(DEFAULT_FPS), 10)
-  const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || String(DEFAULT_WIDTH), 10)
-  const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || String(DEFAULT_HEIGHT), 10)
+  // Lower-quality defaults for headless/container runs
+  const HEADLESS_FPS = 30
+  const HEADLESS_WIDTH = 720
+  const HEADLESS_HEIGHT = 1280
 
+  const TARGET_FPS = parseInt(process.env.RECORD_FPS || (isHeadlessEnv ? String(HEADLESS_FPS) : String(DEFAULT_FPS)), 10)
+  const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || (isHeadlessEnv ? String(HEADLESS_WIDTH) : String(DEFAULT_WIDTH)), 10)
+  const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || (isHeadlessEnv ? String(HEADLESS_HEIGHT) : String(DEFAULT_HEIGHT)), 10)
+
+  console.log(`HEADLESS mode: ${isHeadlessEnv}`)
   console.log(`Recording target FPS: ${TARGET_FPS}, resolution: ${RECORD_WIDTH}x${RECORD_HEIGHT}`)
 
   const browser = await puppeteer.launch({
@@ -202,11 +210,12 @@ async function recordRoute() {
       '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
       '--enable-webgl',
-      '--use-gl=angle', // Use ANGLE for WebGL in headless mode (better than swiftshader)
-      '--use-angle=swiftshader', // SwiftShader backend for ANGLE (software but optimized)
+      '--use-gl=swiftshader', // Use SwiftShader software GL in containers for stability
+      '--enable-unsafe-swiftshader', // Opt into SwiftShader (lower security; OK for trusted content)
       '--ignore-gpu-blacklist',
-      '--disable-gpu-vsync',
-      '--disable-frame-rate-limit',
+      '--disable-gpu', // Disable GPU to force software rendering
+      '--disable-gpu-vsync', // Disable vsync for unlimited FPS
+      '--disable-frame-rate-limit', // Remove frame rate limit
       '--disable-background-timer-throttling', // Prevent timer throttling
       '--disable-backgrounding-occluded-windows',
       '--disable-renderer-backgrounding',
@@ -250,11 +259,10 @@ async function recordRoute() {
     throw new Error('GPX_FILENAME environment variable is required');
   }
   const userName = process.env.USER_NAME || 'Hiker';
-  const animationSpeed = process.env.ANIMATION_SPEED || '4'; // Default to 4x for balanced speed
-  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
+  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}`;
 
   // Navigate to the app FIRST
-  console.log(`Loading Cesium app with GPX: ${gpxFilename}, user: ${userName}, speed: ${animationSpeed}x`);
+  console.log(`Loading Cesium app with GPX: ${gpxFilename}, user: ${userName}`);
   await page.goto(appUrl, {
     waitUntil: 'domcontentloaded',
     timeout: 30000
@@ -292,13 +300,8 @@ async function recordRoute() {
     console.warn('Animation ready marker not found after 60s, starting recording anyway...');
   }
 
-  // Wait additional time for terrain and imagery tiles to fully load and settle
-  console.log('Waiting 15 seconds for map tiles to fully load and camera to settle...');
-  await page.waitForTimeout(15000); // 15 seconds
-  console.log('Map should be fully loaded now');
-
   // NOW start recording after everything is loaded
-  console.log('Setting up canvas stream recorder...');
+  console.log('Setting up screen recorder...');
 
   // Calculate expected file size based on duration and bitrate
   const recordDurationMinutes = RECORD_DURATION / 1000 / 60;
@@ -312,96 +315,49 @@ async function recordRoute() {
     console.warn('Consider reducing bitrate or using shorter routes.');
   }
 
-  // Use canvas.captureStream() for direct Cesium canvas recording at 30 FPS
-  console.log('Starting canvas stream recording at 30 FPS...');
+  const recorder = new PuppeteerScreenRecorder(page, {
+    followNewTab: false,
+    fps: TARGET_FPS, // configurable target FPS
+    videoFrame: {
+      width: RECORD_WIDTH,
+      height: RECORD_HEIGHT,
+    },
+    aspectRatio: '9:16',
+    videoCrf: 28, // Higher CRF = smaller file (18=high quality, 28=medium, 32=lower quality)
+    videoCodec: 'libx264',
+    videoPreset: 'medium', // Better compression than ultrafast
+    videoBitrate: '2500k', // Reduced from 5000k to keep under 50MB for Telegram
+  });
 
   let recordingStarted = false;
   try {
-    // Start recording using canvas.captureStream()
-    await page.evaluate(async (duration) => {
-      const canvas = document.querySelector('.cesium-viewer canvas');
-      if (!canvas) {
-        throw new Error('Cesium canvas not found');
-      }
-
-      console.log('Found Cesium canvas, starting captureStream at 30 FPS');
-
-      // Get canvas stream at 30 FPS
-      const stream = canvas.captureStream(30);
-
-      // Create MediaRecorder with VP9 codec for better quality
-      const options = {
-        mimeType: 'video/webm;codecs=vp9',
-        videoBitsPerSecond: 2500000 // 2.5 Mbps
-      };
-
-      // Fallback to VP8 if VP9 not supported
-      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        options.mimeType = 'video/webm;codecs=vp8';
-        options.videoBitsPerSecond = 2000000; // 2 Mbps
-      }
-
-      const mediaRecorder = new MediaRecorder(stream, options);
-      const recordedChunks = [];
-
-      return new Promise((resolve, reject) => {
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data.size > 0) {
-            recordedChunks.push(event.data);
-          }
-        };
-
-        mediaRecorder.onstop = () => {
-          const blob = new Blob(recordedChunks, { type: 'video/webm' });
-
-          // Convert blob to array buffer and save to file
-          blob.arrayBuffer().then(arrayBuffer => {
-            const buffer = Buffer.from(arrayBuffer);
-            require('fs').writeFileSync('/output/temp-recording.webm', buffer);
-            console.log('Canvas recording saved as WebM to /output/temp-recording.webm');
-            resolve(recordedChunks.length);
-          }).catch(reject);
-        };
-
-        mediaRecorder.onerror = (event) => {
-          console.error('MediaRecorder error:', event);
-          reject(new Error('MediaRecorder failed'));
-        };
-
-        // Start recording
-        mediaRecorder.start(1000); // Collect data every second
-        console.log(`Canvas recording started for ${duration / 1000} seconds at 30 FPS`);
-
-        // Stop recording after the specified duration
-        setTimeout(() => {
-          mediaRecorder.stop();
-        }, duration);
-      });
-    }, RECORD_DURATION);
-
+    await recorder.start('/output/route-video.mp4');
     recordingStarted = true;
-    console.log('Canvas recording started');
+    console.log('Recording started');
 
-    // Wait for recording to complete
-    console.log(`Recording animation for ${RECORD_DURATION / 1000} seconds...`);
+    const recordingSeconds = RECORD_DURATION / 1000;
+    console.log(`Recording animation for ${recordingSeconds} seconds...`);
 
-    // Wait for the recording duration plus some buffer
-    await page.waitForTimeout(RECORD_DURATION + 2000);
+    // Log progress every 30 seconds during recording
+    const progressInterval = 30000; // 30 seconds
+    const totalIntervals = Math.ceil(RECORD_DURATION / progressInterval);
 
-    console.log('Canvas recording completed, converting to MP4...');
+    for (let i = 0; i < totalIntervals; i++) {
+      const waitTime = Math.min(progressInterval, RECORD_DURATION - (i * progressInterval));
+      await page.waitForTimeout(waitTime);
 
-    // Convert WebM to MP4 using FFmpeg
-    try {
-      execSync(`ffmpeg -i /output/temp-recording.webm -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -movflags +faststart -colorspace bt709 -color_primaries bt709 -color_trc bt709 /output/route-video.mp4`, {
-        stdio: 'inherit'
-      });
-      console.log('✅ Video conversion to MP4 complete!');
-    } catch (error) {
-      console.error('FFmpeg conversion failed:', error);
-      throw error;
+      const elapsedSeconds = Math.min((i + 1) * (progressInterval / 1000), recordingSeconds);
+      const percentComplete = Math.round((elapsedSeconds / recordingSeconds) * 100);
+
+      if (elapsedSeconds < recordingSeconds) {
+        console.log(`📹 Recording progress: ${elapsedSeconds.toFixed(0)}/${recordingSeconds.toFixed(0)}s (${percentComplete}%)`);
+      }
     }
 
-    console.log('🎬 Video saved to /output/route-video.mp4');
+    console.log('Stopping recording...');
+    await recorder.stop();
+    console.log('Recorder stopped successfully');
+    console.log('🎬 Starting video encoding (this may take several minutes)...');
   } catch (err) {
     console.error('Error during recording lifecycle:', err && err.stack ? err.stack : err);
     try { fs.appendFileSync(ERROR_LOG_PATH, `[${new Date().toISOString()}] recording error: ${err && err.stack ? err.stack : err}\n`); } catch (e) {}
@@ -411,7 +367,7 @@ async function recordRoute() {
     try { server.close(); } catch (e) { console.warn('Error closing server:', e && e.message); }
   }
 
-  console.log('🎉 Recording process complete!');
+  console.log('Recording complete! Video saved to /output/route-video.mp4');
 }
 
 recordRoute().catch((error) => {

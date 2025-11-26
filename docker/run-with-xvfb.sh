@@ -1,10 +1,21 @@
 #!/bin/bash
 set -e
 
-# Ensure output directory exists
-mkdir -p /app/output
+echo "Starting Xvfb with GLX support and optimizations..."
+# Increase color depth to 24-bit and add performance flags
+Xvfb :99 -screen 0 1080x1920x24 -ac +extension GLX +render -noreset -nolisten tcp -dpi 96 &
+XVFB_PID=$!
+export DISPLAY=:99
 
-LOG_FILE="/app/output/recorder.log"
+# Wait for Xvfb to be ready
+sleep 2
 
-echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Starting Cesium recording..." | tee -a "$LOG_FILE"
+# Set environment variables for better performance
+export LIBGL_ALWAYS_SOFTWARE=0
+export GALLIUM_DRIVER=llvmpipe
+
+echo "Running recording script..."
 node record-puppeteer.js
+
+# Cleanup
+kill $XVFB_PID 2>/dev/null || true
