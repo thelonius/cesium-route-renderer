@@ -215,9 +215,8 @@ async function recordRoute() {
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
       '--force-device-scale-factor=1',
       // Alpine Linux Chromium specific flags
-      '--crash-dumps-dir=/tmp/crashpad',
+      '--no-zygote',
       '--user-data-dir=/tmp/chrome-user-data',
-      '--single-process',
       '--disable-extensions',
       '--disable-software-rasterizer'
     ],
