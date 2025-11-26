@@ -56,9 +56,12 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 ENV HOME=/tmp
 
 # Install minimal HTTP server and recording dependencies
+# ⚠️ DO NOT INSTALL puppeteer-screen-recorder - it performs poorly!
+# We use canvas frame capture (record-canvas.js) for better performance
 RUN npm install --no-save puppeteer@19.0.0 serve-handler
 
 # Copy recording scripts
+# Using canvas frame capture method (NOT puppeteer-screen-recorder)
 COPY docker/record-canvas.js ./
 COPY docker/run-with-xvfb.sh ./
 RUN chmod +x run-with-xvfb.sh
