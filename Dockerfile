@@ -20,9 +20,11 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chromium (ARM64 compatible, simpler than Firefox integration)
-RUN apt-get update && apt-get install -y \
-    chromium \
+# Install Google Chrome (stable, official build) - more reliable than Chromium on ARM64
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built app
@@ -32,10 +34,10 @@ COPY --from=build /app/config ./config
 
 # Set Puppeteer environment variables before installing
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 # Install minimal HTTP server and recording dependencies
-RUN npm install --no-save puppeteer@21.0.0 serve-handler
+RUN npm install --no-save puppeteer@19.0.0 serve-handler
 
 # Copy recording scripts
 COPY docker/record-puppeteer.js ./
