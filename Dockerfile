@@ -67,7 +67,7 @@ COPY docker/record-canvas.js ./
 COPY docker/run-with-xvfb.sh ./
 RUN chmod +x run-with-xvfb.sh
 
-# Create output directory
-RUN mkdir -p /app/output && chmod 777 /app/output
+# Create output directories with proper permissions for any user
+RUN mkdir -p /app/output /output && chmod 777 /app/output /output
 
 CMD ["./run-with-xvfb.sh"]
