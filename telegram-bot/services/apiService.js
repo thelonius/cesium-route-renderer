@@ -16,7 +16,6 @@ class ApiService {
   constructor(apiServerUrl, publicUrl) {
     this.apiServer = apiServerUrl || 'http://localhost:3000';
     this.publicUrl = publicUrl || apiServerUrl || 'http://localhost:3000';
-    this.timeout = 120000; // 2 minutes default timeout
   }
 
   /**
@@ -45,7 +44,6 @@ class ApiService {
     try {
       const response = await axios.post(`${this.apiServer}/render-route`, form, {
         headers: form.getHeaders(),
-        timeout: this.timeout,
         maxContentLength: Infinity,
         maxBodyLength: Infinity
       });
@@ -73,9 +71,7 @@ class ApiService {
    */
   async checkStatus(outputId) {
     try {
-      const response = await axios.get(`${this.apiServer}/status/${outputId}`, {
-        timeout: 10000
-      });
+      const response = await axios.get(`${this.apiServer}/render-status/${outputId}`);
 
       return {
         success: true,
@@ -99,11 +95,7 @@ class ApiService {
    */
   async getLogs(outputId) {
     try {
-      const response = await axios.get(`${this.apiServer}/logs/${outputId}`, {
-        timeout: 15000
-      });
-
-      return {
+      const response = await axios.get(`${this.apiServer}/render-log/${outputId}`);urn {
         success: true,
         data: response.data
       };
@@ -125,9 +117,7 @@ class ApiService {
    */
   async getLogsText(outputId) {
     try {
-      const response = await axios.get(`${this.apiServer}/logs/${outputId}/text`, {
-        timeout: 15000
-      });
+      const response = await axios.get(`${this.apiServer}/logs/${outputId}/text`);
 
       return {
         success: true,
@@ -152,8 +142,7 @@ class ApiService {
   async runCleanup(daysOld = 7) {
     try {
       const response = await axios.get(`${this.apiServer}/cleanup`, {
-        params: { daysOld },
-        timeout: 60000 // 1 minute for cleanup
+        params: { daysOld }
       });
 
       return {
@@ -177,11 +166,7 @@ class ApiService {
    */
   async getStats() {
     try {
-      const response = await axios.get(`${this.apiServer}/api/stats`, {
-        timeout: 10000
-      });
-
-      return {
+      const response = await axios.get(`${this.apiServer}/docker-images`);urn {
         success: true,
         data: response.data
       };
@@ -202,9 +187,7 @@ class ApiService {
    */
   async getActiveRenders() {
     try {
-      const response = await axios.get(`${this.apiServer}/api/active-renders`, {
-        timeout: 10000
-      });
+      const response = await axios.get(`${this.apiServer}/api/active-renders`);
 
       return {
         success: true,
@@ -228,9 +211,7 @@ class ApiService {
    */
   async cancelRender(outputId) {
     try {
-      const response = await axios.delete(`${this.apiServer}/render/${outputId}`, {
-        timeout: 10000
-      });
+      const response = await axios.delete(`${this.apiServer}/output/${outputId}`);
 
       return {
         success: true,
@@ -253,9 +234,7 @@ class ApiService {
    */
   async getSettings() {
     try {
-      const response = await axios.get(`${this.apiServer}/api/settings`, {
-        timeout: 5000
-      });
+      const response = await axios.get(`${this.apiServer}/api/settings`);
 
       return {
         success: true,
@@ -278,9 +257,7 @@ class ApiService {
    */
   async updateSettings(settings) {
     try {
-      const response = await axios.put(`${this.apiServer}/api/settings`, settings, {
-        timeout: 5000
-      });
+      const response = await axios.put(`${this.apiServer}/api/settings`, settings);
 
       return {
         success: true,
@@ -323,11 +300,7 @@ class ApiService {
    */
   async healthCheck() {
     try {
-      const response = await axios.get(`${this.apiServer}/health`, {
-        timeout: 5000
-      });
-
-      return response.status === 200;
+      const response = await axios.get(`${this.apiServer}/stats`);urn response.status === 200;
     } catch (error) {
       console.error('Health check failed:', error.message);
       return false;
