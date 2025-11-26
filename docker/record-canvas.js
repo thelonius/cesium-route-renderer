@@ -374,11 +374,14 @@ async function recordRoute() {
     const frameStartTime = Date.now();
 
     try {
-      // Check if animation is complete (outro finished)
-      const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
-      if (isComplete) {
-        console.log('✅ Animation outro complete, stopping recording');
-        break;
+      // Check if animation is complete (outro finished) - but only after capturing at least a few frames
+      // to avoid breaking immediately if flag was set during initialization
+      if (frameCount > 5) {
+        const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
+        if (isComplete) {
+          console.log('✅ Animation outro complete, stopping recording');
+          break;
+        }
       }
 
       const targetTime = startTime + (frameCount * frameInterval);
@@ -460,7 +463,7 @@ async function recordRoute() {
     ffmpeg.on('close', (code) => {
       if (code === 0) {
         console.log('✅ Video encoding complete!');
-        console.log(`📦 Video saved to ${outputPath}`);
+        console.log('Recording complete! Video saved to', outputPath);
 
         // Cleanup frames
         try {

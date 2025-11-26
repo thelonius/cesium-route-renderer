@@ -249,7 +249,12 @@ export default function useCesiumAnimation({
     // Create dynamic trail with reduced artifacts
     const trailEntity = viewer.entities.add({
       polyline: {
-        positions: new Cesium.CallbackProperty(() => trailPositionsRef.current, false),
+        positions: new Cesium.CallbackProperty(() => {
+          // Filter out any invalid positions before returning to Cesium
+          return trailPositionsRef.current.filter(pos =>
+            pos && Cesium.Cartesian3.equals(pos, pos)
+          );
+        }, false),
         width: 4, // Reduced from 5 to minimize rendering artifacts
         material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.9)), // Slight transparency to reduce artifacts
         depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.5)),
