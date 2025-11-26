@@ -214,7 +214,10 @@ async function recordRoute() {
       '--disable-renderer-backgrounding',
       '--js-flags=--max-old-space-size=4096',
       `--window-size=${RECORD_WIDTH},${RECORD_HEIGHT}`,
-      '--force-device-scale-factor=1'
+      '--force-device-scale-factor=1',
+      '--disable-crash-reporter',
+      '--crash-dumps-dir=/tmp',
+      '--breakpad-dump-location=/tmp'
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome'
   });
