@@ -11,20 +11,15 @@ FROM node:20
 
 WORKDIR /app
 
-# Install FFmpeg, Xvfb for virtual display, and browser dependencies
+# Install Chromium, FFmpeg, and Xvfb for virtual display
 RUN apt-get update && apt-get install -y \
+    chromium \
     ffmpeg \
     xvfb \
     xauth \
-    wget \
-    gnupg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Google Chrome (stable, official build) - more reliable than Chromium on ARM64
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
-    && apt-get update \
-    && apt-get install -y google-chrome-stable \
+    libgl1-mesa-dri \
+    libgl1-mesa-glx \
+    libglu1-mesa \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy built app
@@ -34,7 +29,7 @@ COPY --from=build /app/config ./config
 
 # Set Puppeteer environment variables before installing
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Install minimal HTTP server and recording dependencies
 RUN npm install --no-save puppeteer@19.0.0 serve-handler
