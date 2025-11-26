@@ -1154,6 +1154,102 @@ export default function useCesiumAnimation({
         // Mark that animation has started to disable preRender early-reset
         animationStartedRef.current = true;
 
+        // Intro animation: tilt from vertical view down to follow position
+        if (!skipIntro) {
+          console.log(`🎬 Starting ${ANIMATION.INTRO_DURATION_SECONDS}s intro animation (vertical → follow view)`);
+          
+          let introProgress = 0;
+          const introSteps = ANIMATION.INTRO_DURATION_SECONDS * 10; // 10 steps/sec at 100ms
+          const introInterval = setInterval(() => {
+            if (!viewer || viewer.isDestroyed() || !hikerEntity.position) {
+              clearInterval(introInterval);
+              return;
+            }
+
+            introProgress += 1 / introSteps;
+            const eased = 1 - Math.pow(1 - introProgress, 3); // Ease-out cubic
+
+            if (introProgress >= 1) {
+              clearInterval(introInterval);
+              console.log('✅ Intro complete - starting route animation at', animationSpeed + 'x');
+              
+              try {
+                (window as any).CESIUM_INTRO_COMPLETE = true;
+              } catch (e) {}
+              
+              isInitialAnimationRef.current = false;
+              
+              // NOW start the clock and animation after intro
+              if (manualStepEnabledRef.current) {
+                savedMultiplierRef.current = animationSpeed;
+                viewer.clock.multiplier = 1;
+                try { viewer.clock.shouldAnimate = true; } catch (e) {}
+                safeSetCurrentTime(viewer.clock.startTime || startTime, 'post-intro manual-step');
+                lastManualStepTimeRef.current = performance.now();
+              } else {
+                if (!(window as any).__MANUAL_MULTIPLIER) {
+                  viewer.clock.multiplier = animationSpeed;
+                }
+                viewer.clock.shouldAnimate = true;
+              }
+              
+              // Start azimuth rotation
+              azimuthRotationIntervalRef.current = setInterval(() => {
+                if (!viewer || viewer.isDestroyed() || isEndingAnimationRef.current || !viewer.clock || !viewer.clock.shouldAnimate) {
+                  if (azimuthRotationIntervalRef.current) {
+                    clearInterval(azimuthRotationIntervalRef.current);
+                    azimuthRotationIntervalRef.current = null;
+                  }
+                  return;
+                }
+                continuousAzimuthRef.current += 0.05;
+                if (continuousAzimuthRef.current >= 360) {
+                  continuousAzimuthRef.current = 0;
+                }
+              }, 100);
+            } else {
+              // Animate camera from vertical to angled view
+              const currentPos = hikerEntity.position.getValue(startTime);
+              if (!currentPos) return;
+              
+              const transform = Cesium.Transforms.eastNorthUpToFixedFrame(currentPos);
+
+              // Interpolate pitch: -90° (vertical) → -48° (angled follow)
+              const startPitchDeg = -90;
+              const endPitchDeg = -48;
+              const currentPitchDeg = Cesium.Math.lerp(startPitchDeg, endPitchDeg, eased);
+
+              // Keep camera at same height, adjust distance based on pitch
+              const height = CAMERA.BASE_HEIGHT;
+              const distance = CAMERA.BASE_BACK * (1 - eased * 0.3); // Closer at start
+
+              const cameraOffset = new Cesium.Cartesian3(-distance, 0, height);
+              const cameraPos = Cesium.Matrix4.multiplyByPoint(transform, cameraOffset, new Cesium.Cartesian3());
+
+              viewer.camera.position = cameraPos;
+
+              // Look at hiker position
+              const lookOffset = new Cesium.Cartesian3(0, 0, height * 0.48);
+              viewer.camera.lookAt(currentPos, lookOffset);
+
+              // Apply pitch rotation (convert to radians)
+              const heading = viewer.camera.heading;
+              const roll = viewer.camera.roll;
+              viewer.camera.setView({
+                orientation: {
+                  heading,
+                  pitch: Cesium.Math.toRadians(currentPitchDeg),
+                  roll
+                }
+              });
+            }
+          }, 100);
+          
+          return; // Exit early - clock will start after intro
+        }
+
+        // No intro - start animation immediately
+
         if (manualStepEnabledRef.current) {
           // Manual stepping: save desired multiplier and step the clock per frame
           savedMultiplierRef.current = animationSpeed;

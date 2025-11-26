@@ -202,6 +202,31 @@ export default function CesiumViewer() {
       {/* FPS Counter for debugging */}
       <FpsCounter viewer={viewerRef.current} />
 
+      {/* Camera Controls hint - Only show in web mode after route is loaded */}
+      {!isDockerMode && routeValidated && !error && (
+        <div style={{
+          position: 'absolute',
+          bottom: '10px',
+          left: '10px',
+          zIndex: 1000,
+          padding: '6px 12px',
+          backgroundColor: 'rgba(42, 42, 42, 0.7)',
+          color: 'rgba(255, 255, 255, 0.8)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          borderRadius: '4px',
+          fontSize: '12px',
+          fontFamily: 'sans-serif',
+        }}>
+          Press <kbd style={{
+            padding: '2px 6px',
+            backgroundColor: 'rgba(255, 255, 255, 0.2)',
+            borderRadius: '3px',
+            fontSize: '11px',
+            fontWeight: 'bold'
+          }}>C</kbd> for camera controls
+        </div>
+      )}
+
       {/* Welcome Screen - Show only in web mode when no route selected */}
       {!isDockerMode && !routeValidated && (
         <div style={{
@@ -331,10 +356,11 @@ export default function CesiumViewer() {
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          backgroundColor: 'rgba(255, 0, 0, 0.8)',
+          backgroundColor: 'rgba(255, 0, 0, 0.3)',
           color: 'white',
           padding: '1rem',
           borderRadius: '4px',
+          border: '1px solid rgba(255, 0, 0, 0.5)',
           zIndex: 1500,
         }}>
           {error}
@@ -347,10 +373,11 @@ export default function CesiumViewer() {
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backgroundColor: 'rgba(0, 0, 0, 0.3)',
           color: 'white',
           padding: '1.5rem',
           borderRadius: '4px',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
           zIndex: 1500,
           textAlign: 'center',
         }}>
