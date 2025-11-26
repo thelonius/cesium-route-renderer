@@ -7,7 +7,7 @@ set -e
 
 SERVER="theo@195.133.27.96"
 DEPLOY_DIR="cesium-route-renderer"
-BRANCH="${1:-main}"
+BRANCH="${1:-update/docker-version}"
 
 echo "🚀 Deploying branch: $BRANCH"
 
