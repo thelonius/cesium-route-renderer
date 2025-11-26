@@ -121,7 +121,10 @@ export default function CesiumViewer() {
     setShowRouteSelector(false);
   };
 
-  const processFile = async (file: File) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
     try {
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -139,6 +142,12 @@ export default function CesiumViewer() {
         const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
         const blob = new Blob([content], { type: mimeType });
         const blobUrl = URL.createObjectURL(blob);
+        
+        try {
+          localStorage.setItem('lastDroppedRouteContent', content);
+          localStorage.setItem('lastDroppedRouteName', file.name);
+        } catch (e) {}
+        
         setAvailableRoutes(prev => [...prev, file.name]);
         setCurrentRoute(blobUrl);
         setRouteValidated(true);
@@ -146,43 +155,68 @@ export default function CesiumViewer() {
       };
       reader.readAsText(file);
     } catch (error) {
-      console.error('Error processing file:', error);
-      alert('Error processing file');
+      console.error('Error uploading file:', error);
+      alert('Error uploading file');
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await processFile(file);
-  };
+  // Drag-and-drop support
+  useEffect(() => {
+    const onDrop = (ev: DragEvent) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const files = ev.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result || '');
+        const isKML = text.includes('<kml') || text.includes('<kml:');
+        const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
+        const blob = new Blob([text], { type: mimeType });
+        const blobUrl = URL.createObjectURL(blob);
+        try {
+          localStorage.setItem('lastDroppedRouteContent', text);
+          localStorage.setItem('lastDroppedRouteName', file.name);
+        } catch (e) {}
+        setCurrentRoute(blobUrl);
+        setRouteValidated(true);
+        setShowRouteSelector(false);
+      };
+      reader.readAsText(file);
+    };
+    const onDragOver = (ev: DragEvent) => {
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+    };
+    window.addEventListener('drop', onDrop);
+    window.addEventListener('dragover', onDragOver);
+    return () => {
+      window.removeEventListener('drop', onDrop);
+      window.removeEventListener('dragover', onDragOver);
+    };
+  }, []);
 
-  const handleDrop = async (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    
-    const file = event.dataTransfer.files?.[0];
-    if (!file) return;
-    
-    if (!file.name.endsWith('.gpx') && !file.name.endsWith('.kml')) {
-      alert('Please drop a GPX or KML file');
-      return;
-    }
-    
-    await processFile(file);
-  };
-
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-  };
+  // Restore last dropped route from localStorage if present
+  useEffect(() => {
+    try {
+      const last = localStorage.getItem('lastDroppedRouteContent');
+      const name = localStorage.getItem('lastDroppedRouteName') || 'route.gpx';
+      if (last && !currentRoute) {
+        const isKML = last.includes('<kml') || last.includes('<kml:');
+        const mimeType = isKML ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml';
+        const blob = new Blob([last], { type: mimeType });
+        const blobUrl = URL.createObjectURL(blob);
+        console.log('Restored last dropped route from localStorage:', name);
+        setCurrentRoute(blobUrl);
+        setRouteValidated(true);
+        setShowRouteSelector(false);
+      }
+    } catch (e) {}
+  }, []);
 
   return (
-    <div 
-      style={{ position: 'relative', width: '100%', height: '100%' }}
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-    >
+    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={containerRef} className="cesium-container" style={{ width: '100%', height: '100%' }} />
 
       {/* FPS Counter for debugging */}
