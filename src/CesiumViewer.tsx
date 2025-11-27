@@ -72,15 +72,15 @@ export default function CesiumViewer() {
     animationSpeed
   });
 
-  // Setup camera - called at top level
-  useCesiumCamera({
-    viewer: viewerRef.current,
-    targetEntity: entity,
-    hikerEntity: entity,
-    isIntroComplete: true,
-    enableCollisionDetection: false,
-    smoothFactor: 0.9
-  });
+  // Setup camera - DISABLED: camera is handled by useCesiumAnimation
+  // useCesiumCamera({
+  //   viewer: viewerRef.current,
+  //   targetEntity: entity,
+  //   hikerEntity: entity,
+  //   isIntroComplete: true,
+  //   enableCollisionDetection: false,
+  //   smoothFactor: 0.9
+  // });
 
   // Track entity reference
   useEffect(() => {
