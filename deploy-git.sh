@@ -38,8 +38,7 @@ if [ ! -d .git ]; then
     echo "📦 Cloning repository for the first time..."
     cd ..
     rm -rf $DEPLOY_DIR
-    # Replace with your actual git repository URL
-    git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git $DEPLOY_DIR
+    git clone https://github.com/thelonius/cesium-route-renderer.git $DEPLOY_DIR
     cd $DEPLOY_DIR
 else
     echo "🔄 Pulling latest changes..."
