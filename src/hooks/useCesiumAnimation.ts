@@ -138,6 +138,96 @@ export default function useCesiumAnimation({
     trailPositionsRef.current = [];
     dlog('Animation state reset for new route');
 
+    // Intro animation function
+    const startIntroAnimation = () => {
+      console.log(`🎬 Starting ${ANIMATION.INTRO_DURATION_SECONDS}s intro animation`);
+
+      let introProgress = 0;
+      const introSteps = ANIMATION.INTRO_DURATION_SECONDS * 60; // 60fps
+      let introFrameId: number | null = null;
+
+      const introFrame = () => {
+        if (!viewer || viewer.isDestroyed()) {
+          if (introFrameId) cancelAnimationFrame(introFrameId);
+          return;
+        }
+
+        introProgress += 1 / introSteps;
+        const eased = 1 - Math.pow(1 - introProgress, 3); // Ease-out cubic
+
+        if (introProgress >= 1) {
+          // Intro complete
+          if (introFrameId) cancelAnimationFrame(introFrameId);
+          console.log('✅ Intro complete - starting route animation');
+
+          // Mark ready and intro complete
+          try {
+            (window as any).CESIUM_INTRO_COMPLETE = true;
+            (window as any).CESIUM_ANIMATION_READY = true;
+          } catch (e) {}
+
+          // Transition to normal follow camera
+          isInitialAnimationRef.current = false;
+          cameraAzimuthProgressRef.current = 1;
+          cameraTiltProgressRef.current = 1;
+
+          // Start the clock for route animation
+          if (manualStepEnabledRef.current) {
+            savedMultiplierRef.current = animationSpeed;
+            viewer.clock.multiplier = 1;
+            viewer.clock.shouldAnimate = true;
+            safeSetCurrentTime(viewer.clock.startTime || startTime, 'post-intro manual-step');
+            lastManualStepTimeRef.current = performance.now();
+          } else {
+            if (!(window as any).__MANUAL_MULTIPLIER) {
+              viewer.clock.multiplier = animationSpeed;
+            }
+            viewer.clock.shouldAnimate = true;
+          }
+
+          // Start azimuth rotation
+          if (azimuthRotationIntervalRef.current) {
+            clearInterval(azimuthRotationIntervalRef.current);
+          }
+          azimuthRotationIntervalRef.current = setInterval(() => {
+            if (!viewer || viewer.isDestroyed() || isEndingAnimationRef.current || !viewer.clock || !viewer.clock.shouldAnimate) {
+              if (azimuthRotationIntervalRef.current) {
+                clearInterval(azimuthRotationIntervalRef.current);
+                azimuthRotationIntervalRef.current = null;
+              }
+              return;
+            }
+            continuousAzimuthRef.current += 0.05;
+            if (continuousAzimuthRef.current >= 360) continuousAzimuthRef.current = 0;
+          }, 100);
+
+          // Monitor for route completion
+          if (checkCompletionIntervalRef.current) {
+            clearInterval(checkCompletionIntervalRef.current);
+          }
+          checkCompletionIntervalRef.current = setInterval(() => {
+            if (!viewer || viewer.isDestroyed() || !viewer.clock) {
+              if (checkCompletionIntervalRef.current) {
+                clearInterval(checkCompletionIntervalRef.current);
+                checkCompletionIntervalRef.current = null;
+              }
+              return;
+            }
+          }, 100);
+        } else {
+          // Update intro progress
+          cameraAzimuthProgressRef.current = eased;
+          cameraTiltProgressRef.current = eased;
+
+          // Continue intro animation
+          introFrameId = requestAnimationFrame(introFrame);
+        }
+      };
+
+      // Start intro animation
+      introFrameId = requestAnimationFrame(introFrame);
+    };
+
     // Expose global restart function
     (window as any).__restartRoute = () => {
       try {
@@ -165,9 +255,13 @@ export default function useCesiumAnimation({
         // Reset clock
         viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
         lastAddedTimeRef.current = Cesium.JulianDate.clone(startTime);
-        viewer.clock.shouldAnimate = true;
+        viewer.clock.shouldAnimate = false; // Will be started by intro animation
         // Clear completion flag
         (window as any).CESIUM_ANIMATION_COMPLETE = false;
+        (window as any).CESIUM_INTRO_COMPLETE = false;
+        (window as any).CESIUM_ANIMATION_READY = false;
+        // Restart intro animation
+        startIntroAnimation();
         // Log diagnostic info
         console.log('✅ Route restarted - Loop:', isLoopRouteRef.current, 'HasCentroid:', !!loopCentroidRef.current, 'LoopRadius:', loopRadiusRef.current.toFixed(0));
         console.log('   Camera settings - lookX:', getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO).toFixed(2),
@@ -950,17 +1044,26 @@ export default function useCesiumAnimation({
             const lookZ = getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO || 0.2);
 
             // Calculate the target point
-            let lookAtTarget = cameraLookAtTarget;
-            if (isInitialAnimationRef.current) {
-              lookAtTarget = smoothedPosition; // During intro, look at hiker directly
-            }
+            const lookAtTarget = cameraLookAtTarget;
 
-            // The lookAt offset needs to be in the rotated frame
-            // Apply the same azimuth rotation to the offset
+            // Interpolate camera offset based on tilt progress (0 = vertical, 1 = angled follow)
+            const tiltProgress = cameraTiltProgressRef.current;
             const offsetDistance = cameraOffsetDistance;
-            const offsetX = -offsetDistance * lookX * Math.cos(baseAzimuthRadians);
-            const offsetY = -offsetDistance * lookX * Math.sin(baseAzimuthRadians);
-            const offsetZ = cameraOffsetHeight * lookZ;
+
+            // Start offset: vertical (0, 0, height) - looking straight down
+            const startOffsetX = 0;
+            const startOffsetY = 0;
+            const startOffsetZ = cameraOffsetHeight;
+
+            // End offset: angled follow with azimuth rotation
+            const endOffsetX = -offsetDistance * lookX * Math.cos(baseAzimuthRadians);
+            const endOffsetY = -offsetDistance * lookX * Math.sin(baseAzimuthRadians);
+            const endOffsetZ = cameraOffsetHeight * lookZ;
+
+            // Interpolate between start and end
+            const offsetX = startOffsetX + (endOffsetX - startOffsetX) * tiltProgress;
+            const offsetY = startOffsetY + (endOffsetY - startOffsetY) * tiltProgress;
+            const offsetZ = startOffsetZ + (endOffsetZ - startOffsetZ) * tiltProgress;
 
             const lookAtOffset = new Cesium.Cartesian3(offsetX, offsetY, offsetZ);
             viewer.camera.lookAt(lookAtTarget, lookAtOffset);
@@ -1141,6 +1244,9 @@ export default function useCesiumAnimation({
 
         // Initial status display
         displayStatusBar();
+
+        // Start intro animation
+        startIntroAnimation();
 
         console.log('Scheduling RAF for animation start');
         // Intro and outro animations are skipped by default to focus on route animation.
@@ -1335,21 +1441,11 @@ export default function useCesiumAnimation({
     (window as any).animationCleanup = cleanup;
     }; // End of initializeAnimation
 
-    // Initialize camera refs to skip intro by default
-    const skipIntro = (window as any).__SKIP_INTRO !== false; // default true
-    if (skipIntro) {
-      // Skip intro: set camera to final positions immediately (before settle timeout)
-      isInitialAnimationRef.current = false;
-      cameraAzimuthProgressRef.current = 1;
-      cameraTiltProgressRef.current = 1;
-      console.log('Pre-init camera refs for skipped intro: azimuth=1, tilt=1, isInitial=false');
-    } else {
-      // Do intro: start with camera looking down
-      isInitialAnimationRef.current = true;
-      cameraAzimuthProgressRef.current = 0;
-      cameraTiltProgressRef.current = 0;
-      console.log('Pre-init camera refs for intro animation: azimuth=0, tilt=0, isInitial=true');
-    }
+    // Initialize camera refs for intro animation
+    isInitialAnimationRef.current = true;
+    cameraAzimuthProgressRef.current = 0;
+    cameraTiltProgressRef.current = 0;
+    console.log('Pre-init camera refs for intro animation: azimuth=0, tilt=0, isInitial=true');
 
     // Start animation immediately - postRenderListener will position camera correctly
     console.log('Starting animation sequence');
