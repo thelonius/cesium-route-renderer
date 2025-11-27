@@ -3,7 +3,10 @@ import CesiumViewer from './CesiumViewer'
 import { CameraControls } from './components/CameraControls'
 
 export default function App() {
-  const [showControls, setShowControls] = useState(true);
+  const [showControls, setShowControls] = useState(false);
+
+  // Enable intro/outro debug mode - uncomment to test intro/outro only
+  (window as any).__DEBUG_INTRO_OUTRO = true;
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {

@@ -60,6 +60,6 @@ export interface CameraStrategyContext {
   positions: Cesium.Cartesian3[];
   times: Cesium.JulianDate[];
   settings: CameraSettings;
-  patternAdjustment: PatternCameraAdjustment;
+  patternCameraAdjustment: PatternCameraAdjustment;
   segments?: RouteSegment[];
 }
