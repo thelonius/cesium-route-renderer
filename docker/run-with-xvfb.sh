@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Ensure output directory exists with proper permissions
+mkdir -p /app/output /output 2>/dev/null || true
+chmod 777 /app/output /output 2>/dev/null || true
+
 LOG_FILE="/app/output/recorder.log"
 
 echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Starting Cesium canvas-based recording..." | tee -a "$LOG_FILE"
