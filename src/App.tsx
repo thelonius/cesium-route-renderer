@@ -13,6 +13,12 @@ export default function App() {
       if (e.key === 'c' || e.key === 'C') {
         setShowControls(prev => !prev);
       }
+      if (e.key === 'r' || e.key === 'R') {
+        // Restart route animation
+        if ((window as any).__restartRoute) {
+          (window as any).__restartRoute();
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
