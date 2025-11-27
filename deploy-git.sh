@@ -21,7 +21,7 @@ fi
 
 # Step 2: Push to remote
 echo "📤 Pushing to git remote..."
-git push origin $BRANCH
+git push origin $BRANCH --force
 
 # Step 3: Deploy on server
 echo "🔧 Deploying on server..."
