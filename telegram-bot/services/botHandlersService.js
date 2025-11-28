@@ -343,12 +343,12 @@ class BotHandlersService {
       if (analysis.success && analysis.statistics.duration) {
         const routeDurationMinutes = analysis.statistics.duration.minutes;
 
-        // Platform-agnostic: all videos are 40 seconds
-        const TARGET_VIDEO_SECONDS = 40;
+        // Platform-agnostic: all videos are 20 seconds
+        const TARGET_VIDEO_SECONDS = 20;
         const OUTPUT_FPS = 24;
-        const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * OUTPUT_FPS; // 960
+        const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * OUTPUT_FPS; // 480
 
-        // Animation speed is dynamically calculated to fit route into 40 seconds
+        // Animation speed is dynamically calculated to fit route into 20 seconds
         animationSpeed = Math.ceil((routeDurationMinutes * 60) / TARGET_VIDEO_SECONDS);
 
         const estimation = renderingConfig.estimateRenderTime(routeDurationMinutes, animationSpeed);
@@ -356,7 +356,7 @@ class BotHandlersService {
           estimatedRenderMinutes = estimation.totalMinutes;
           estimatedSizeMB = estimation.estimatedSizeMB;
 
-          const recordingMinutes = TARGET_VIDEO_SECONDS / 60; // Fixed 40 seconds = 0.67 minutes
+          const recordingMinutes = TARGET_VIDEO_SECONDS / 60; // Fixed 20 seconds = 0.33 minutes
           let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
           statusMsg += t(chatId, 'estimation.speed', { speed: animationSpeed }, userLang) + '\n';
           statusMsg += t(chatId, 'estimation.videoLength', { length: recordingMinutes.toFixed(1) }, userLang) + '\n';
