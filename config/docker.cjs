@@ -68,12 +68,12 @@ class DockerConfig {
     // Check for nvidia-docker or GPU device
     const fs = require('fs');
     const { execSync } = require('child_process');
-    
+
     // First check if USE_GPU env is set
     if (this.useGPU) {
       return true;
     }
-    
+
     // Check for nvidia-smi
     try {
       execSync('nvidia-smi', { stdio: 'ignore' });
@@ -81,7 +81,7 @@ class DockerConfig {
     } catch {
       // nvidia-smi not available
     }
-    
+
     // Fallback to device check
     return fs.existsSync(this.gpuDevice);
   }

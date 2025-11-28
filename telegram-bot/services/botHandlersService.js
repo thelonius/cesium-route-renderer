@@ -117,22 +117,26 @@ class BotHandlersService {
     const chatId = msg.chat.id;
     const userLang = msg.from.language_code || 'en';
 
+    const width = CONSTANTS.RENDER.DEFAULT_WIDTH;
+    const height = CONSTANTS.RENDER.DEFAULT_HEIGHT;
+    const fps = CONSTANTS.RENDER.DEFAULT_FPS;
+
     const message = userLang === 'ru'
       ? `📦 **Cesium Route Renderer**\n\n` +
         `🏷️ Версия: ${versionInfo.version}\n` +
         `🔗 Коммит: ${versionInfo.commit}\n` +
         `📅 Сборка: ${versionInfo.buildDate}\n\n` +
         `⚙️ Конфигурация:\n` +
-        `• FPS: 24\n` +
-        `• Разрешение: 720×1280\n` +
+        `• FPS: ${fps}\n` +
+        `• Разрешение: ${width}×${height}\n` +
         `• Макс. скорость: ${CONSTANTS.ANIMATION.MAX_SPEED}x`
       : `📦 **Cesium Route Renderer**\n\n` +
         `🏷️ Version: ${versionInfo.version}\n` +
         `🔗 Commit: ${versionInfo.commit}\n` +
         `📅 Build: ${versionInfo.buildDate}\n\n` +
         `⚙️ Configuration:\n` +
-        `• FPS: 24\n` +
-        `• Resolution: 720×1280\n` +
+        `• FPS: ${fps}\n` +
+        `• Resolution: ${width}×${height}\n` +
         `• Max speed: ${CONSTANTS.ANIMATION.MAX_SPEED}x`;
 
     await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });

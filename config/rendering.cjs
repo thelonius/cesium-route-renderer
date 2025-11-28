@@ -148,6 +148,13 @@ class RenderingConfig {
       const packagePath = path.join(__dirname, '..', 'package.json');
       const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 
+      // Get build time from package.json stat or use current time
+      let buildDate = new Date().toISOString().split('T')[0];
+      try {
+        const stats = fs.statSync(packagePath);
+        buildDate = stats.mtime.toISOString().split('T')[0];
+      } catch (e) {}
+
       // Get git commit if available
       let gitCommit = 'unknown';
       try {
@@ -158,7 +165,7 @@ class RenderingConfig {
       return {
         version: pkg.version || '0.1.0',
         commit: gitCommit,
-        buildDate: new Date().toISOString().split('T')[0]
+        buildDate: buildDate
       };
     } catch (e) {
       return { version: '0.1.0', commit: 'unknown', buildDate: 'unknown' };

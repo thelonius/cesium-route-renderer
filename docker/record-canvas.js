@@ -69,9 +69,9 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = 24; // 24 FPS for better CPU performance
-const RECORD_WIDTH = 720;
-const RECORD_HEIGHT = 1280;
+const RECORD_FPS = parseInt(process.env.RECORD_FPS) || 24;
+const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH) || 720;
+const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT) || 1280;
 
 // Status tracking
 let statusInfo = {
