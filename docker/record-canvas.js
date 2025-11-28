@@ -548,17 +548,31 @@ async function recordRoute() {
       }
 
       // Capture frame using CDP (much faster than canvas.toDataURL)
-      const { data: frameDataBase64 } = await cdpSession.send('Page.captureScreenshot', {
-        format: 'jpeg',
-        quality: 85,
-        clip: {
-          x: 0,
-          y: 0,
-          width: RECORD_WIDTH,
-          height: RECORD_HEIGHT,
-          scale: 1
-        }
-      });
+      // Add timeout to prevent hanging
+      let frameDataBase64;
+      try {
+        const screenshotResult = await Promise.race([
+          cdpSession.send('Page.captureScreenshot', {
+            format: 'jpeg',
+            quality: 85,
+            clip: {
+              x: 0,
+              y: 0,
+              width: RECORD_WIDTH,
+              height: RECORD_HEIGHT,
+              scale: 1
+            }
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('CDP screenshot timeout')), 30000))
+        ]);
+        frameDataBase64 = screenshotResult.data;
+      } catch (cdpErr) {
+        console.error(`❌ CDP screenshot error at frame ${frameCount}:`, cdpErr.message);
+        // Fallback to page.screenshot if CDP fails
+        console.log('Falling back to page.screenshot...');
+        const buffer = await page.screenshot({ type: 'jpeg', quality: 85 });
+        frameDataBase64 = buffer.toString('base64');
+      }
 
       if (frameDataBase64) {
         const framePath = path.join(FRAMES_DIR, `frame-${String(frameCount).padStart(6, '0')}.jpg`);
