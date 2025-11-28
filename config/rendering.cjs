@@ -94,7 +94,7 @@ class RenderingConfig {
   /**
    * Estimate render time based on fixed video duration
    * Platform-agnostic: all videos are 40 seconds at 24fps = 960 frames
-   * Based on actual measurements: ~6 seconds per frame on CPU
+   * Based on actual measurements: ~2 seconds per frame with CDP on CPU
    * @param {number} routeDurationMinutes - Route duration in minutes (for display only)
    * @param {number} animationSpeed - Animation speed multiplier (ignored in new system)
    * @returns {Object} Estimation details
@@ -109,8 +109,8 @@ class RenderingConfig {
     const recordingSeconds = TARGET_VIDEO_SECONDS;
     const recordingMinutes = recordingSeconds / 60;
 
-    // Based on actual measurements: ~6 seconds per frame capture (software rendering with SwiftShader)
-    const SECONDS_PER_FRAME = 6;
+    // CDP screenshot is much faster than canvas.toDataURL (~2s vs ~13s per frame)
+    const SECONDS_PER_FRAME = 2;
     const captureSeconds = TOTAL_FRAMES * SECONDS_PER_FRAME;
     const captureMinutes = captureSeconds / 60;
 
