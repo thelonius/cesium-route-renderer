@@ -553,7 +553,7 @@ async function recordRoute() {
           const tSec = (frameIndex / Math.max(1, totalFrames - 1)) * duration;
           const newTime = window.Cesium.JulianDate.addSeconds(start, tSec, new window.Cesium.JulianDate());
           viewer.clock.currentTime = newTime;
-          
+
           if (logDetails) {
             return {
               frameIndex,
@@ -571,7 +571,7 @@ async function recordRoute() {
           return { error: e && e.message };
         }
       }, frameIndex, totalFrames, frameCount < 3 || frameCount % 100 === 0);
-      
+
       // Log details for first few frames and every 100th frame
       if (stepResult && (frameCount < 3 || frameCount % 100 === 0)) {
         console.log(`📊 Frame ${frameCount} stepping:`, JSON.stringify(stepResult));
