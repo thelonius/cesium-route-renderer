@@ -189,11 +189,11 @@ async function recordRoute() {
     '--ignore-gpu-blocklist'
   ];
 
-  console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (non-headless + Xvfb)' : 'CPU (SwiftShader)'}`);
+  console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (headless=new + Xvfb)' : 'CPU (SwiftShader)'}`);
 
   console.log('Launching browser...');
   const browser = await puppeteer.launch({
-    headless: useGPU ? false : true,  // Non-headless for GPU (runs on Xvfb)
+    headless: 'new',  // Use new headless mode for both GPU and CPU
     timeout: 60000,  // 60 second launch timeout
     args: [
       '--no-sandbox',
