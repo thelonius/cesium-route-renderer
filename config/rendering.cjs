@@ -143,18 +143,18 @@ class RenderingConfig {
   getVersionInfo() {
     const fs = require('fs');
     const path = require('path');
-    
+
     try {
       const packagePath = path.join(__dirname, '..', 'package.json');
       const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
-      
+
       // Get git commit if available
       let gitCommit = 'unknown';
       try {
         const { execSync } = require('child_process');
         gitCommit = execSync('git rev-parse --short HEAD', { cwd: path.join(__dirname, '..'), encoding: 'utf8' }).trim();
       } catch (e) {}
-      
+
       return {
         version: pkg.version || '0.1.0',
         commit: gitCommit,
