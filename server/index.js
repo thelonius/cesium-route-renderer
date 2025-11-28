@@ -38,8 +38,10 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
 
   console.log(`Starting render for output ID: ${outputId}, user: ${userName}, async: ${asyncMode}`);
 
-  // Create output directory
-  fs.mkdirSync(outputDir, { recursive: true});
+  // Create output directory with world-writable permissions for Docker container
+  fs.mkdirSync(outputDir, { recursive: true, mode: 0o777 });
+  // Ensure the directory has correct permissions (mkdirSync mode may be affected by umask)
+  fs.chmodSync(outputDir, 0o777);
 
   // Detect file type and use appropriate extension
   const originalName = gpxFile.originalname.toLowerCase();
