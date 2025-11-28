@@ -535,46 +535,30 @@ async function recordRoute() {
         await page.waitForTimeout(50);
       }
 
-      // Instead of relying on Cesium's real-time clock multiplier we explicitly
-      // step the Cesium clock to the desired simulation time for this frame.
-      // This makes each captured frame correspond to a unique simulation time
-      // and avoids duplicate images when the canvas isn't updating fast enough.
-      const frameIndex = frameCount;
-      const stepResult = await page.evaluate((frameIndex, totalFrames, logDetails) => {
-        try {
-          const viewer = window.Cesium && window.Cesium.Viewer && window.Cesium.Viewer.instances[0];
-          if (!viewer || !viewer.clock || !viewer.clock.startTime || !viewer.clock.stopTime) {
-            return { error: 'No viewer/clock/times' };
-          }
-
-          const start = viewer.clock.startTime;
-          const stop = viewer.clock.stopTime;
-          const duration = window.Cesium.JulianDate.secondsDifference(stop, start);
-          const tSec = (frameIndex / Math.max(1, totalFrames - 1)) * duration;
-          const newTime = window.Cesium.JulianDate.addSeconds(start, tSec, new window.Cesium.JulianDate());
-          viewer.clock.currentTime = newTime;
-
-          if (logDetails) {
+      // Log frame stepping details for first few frames and every 100th frame
+      if (frameCount < 3 || frameCount % 100 === 0) {
+        const stepDetails = await page.evaluate(() => {
+          try {
+            const viewer = window.__CESIUM_VIEWER;
+            const JulianDate = window.__CESIUM_JD_CLASS;
+            if (!viewer || !JulianDate) {
+              return { error: 'No viewer or JulianDate class' };
+            }
+            const start = viewer.clock.startTime;
+            const stop = viewer.clock.stopTime;
+            const current = viewer.clock.currentTime;
             return {
-              frameIndex,
-              totalFrames,
-              simulationDuration: duration,
-              tSec,
-              startTime: window.Cesium.JulianDate.toIso8601(start),
-              stopTime: window.Cesium.JulianDate.toIso8601(stop),
-              newTime: window.Cesium.JulianDate.toIso8601(newTime),
-              secondsPerFrame: duration / totalFrames
+              simulationDuration: JulianDate.secondsDifference(stop, start),
+              currentTime: JulianDate.secondsDifference(current, start),
+              startTime: start.toString(),
+              stopTime: stop.toString(),
+              secondsPerFrame: window.__ANIM_SECONDS_PER_FRAME
             };
+          } catch (e) {
+            return { error: e && e.message };
           }
-          return { ok: true };
-        } catch (e) {
-          return { error: e && e.message };
-        }
-      }, frameIndex, totalFrames, frameCount < 3 || frameCount % 100 === 0);
-
-      // Log details for first few frames and every 100th frame
-      if (stepResult && (frameCount < 3 || frameCount % 100 === 0)) {
-        console.log(`📊 Frame ${frameCount} stepping:`, JSON.stringify(stepResult));
+        });
+        console.log(`📊 Frame ${frameCount} stepping:`, JSON.stringify(stepDetails));
       }
 
       // Force two RAFs to make sure the canvas has painted the new frame
