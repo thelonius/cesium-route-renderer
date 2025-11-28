@@ -396,7 +396,7 @@ class BotHandlersService {
       const startMsg = userLang === 'ru'
         ? `🚀 Рендер запущен! Прогресс будет отображаться по мере выполнения.`
         : `🚀 Render started! Progress updates will be shown as it runs.`;
-      
+
       await this.bot.sendMessage(chatId, startMsg, {
         reply_markup: {
           inline_keyboard: [[
@@ -568,17 +568,17 @@ class BotHandlersService {
             if (!hasReportedStart || percent >= lastReportedPercent + 10) {
               hasReportedStart = true;
               lastReportedPercent = Math.floor(percent / 10) * 10;
-              
+
               let progressMsg = userLang === 'ru'
                 ? `📹 Рендеринг: ${percent}% (${currentFrame}/${totalFrames} кадров)`
                 : `📹 Rendering: ${percent}% (${currentFrame}/${totalFrames} frames)`;
-              
+
               if (etaMinutes) {
                 progressMsg += userLang === 'ru'
                   ? ` | ⏱️ ~${etaMinutes} мин`
                   : ` | ⏱️ ~${etaMinutes} min`;
               }
-              
+
               await this.bot.sendMessage(chatId, progressMsg);
             }
           }

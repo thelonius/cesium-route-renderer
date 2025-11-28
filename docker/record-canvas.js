@@ -198,6 +198,9 @@ async function recordRoute() {
   const page = await browser.newPage();
   await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 });
 
+  // Get CDP session for fast screenshot capture (much faster than canvas.toDataURL)
+  const cdpSession = await page.target().createCDPSession();
+
   // Load the app (gpxFilename already set above)
   const userName = process.env.USER_NAME || 'Hiker';
   const animationSpeed = process.env.ANIMATION_SPEED || '30';
@@ -300,46 +303,6 @@ async function recordRoute() {
 
   console.log('Starting capture...');
 
-  // Inject canvas extraction function using toDataURL instead of toBlob
-  // toDataURL works better with WebGL canvases even without preserveDrawingBuffer
-  await page.evaluate(() => {
-    window.captureFrame = async function() {
-      try {
-        // Find Cesium canvas - try specific class first, fall back to first canvas
-        let canvas = document.querySelector('canvas.cesium-canvas');
-        if (!canvas) {
-          // Fallback: get the first canvas element (Cesium's viewer canvas)
-          canvas = document.querySelector('canvas');
-        }
-        if (!canvas) {
-          console.error('No canvas element found at all');
-          console.error('Available canvases:', document.querySelectorAll('canvas').length);
-          return null;
-        }
-
-        // Use toDataURL - it's synchronous and works better with WebGL
-        try {
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          if (!dataUrl || dataUrl === 'data:,') {
-            console.error('toDataURL returned empty string');
-            console.error('This means canvas has not been drawn to yet');
-            return null;
-          }
-
-          // Remove the data URL prefix to get just the base64
-          const base64 = dataUrl.split(',')[1];
-          return base64;
-        } catch (e) {
-          console.error('toDataURL exception:', e.message, e.stack);
-          return null;
-        }
-      } catch (e) {
-        console.error('captureFrame exception:', e.message, e.stack);
-        return null;
-      }
-    };
-  });
-
   // Debug: Check DOM state before testing capture
   const domInfo = await page.evaluate(() => {
     const cesiumCanvas = document.querySelector('canvas.cesium-canvas');
@@ -364,30 +327,22 @@ async function recordRoute() {
   });
   console.log('DOM State:', JSON.stringify(domInfo, null, 2));
 
-  // Test capture to verify setup
-  console.log('Testing canvas capture...');
-  const testFrame = await page.evaluate(() => window.captureFrame());
-  if (!testFrame) {
-    console.error('❌ Test capture failed! Canvas may not be ready.');
-    console.log('Waiting additional 3 seconds and retrying...');
-    await page.waitForTimeout(3000);
-
-    // Check DOM again after wait
-    const domInfo2 = await page.evaluate(() => {
-      const canvas = document.querySelector('canvas.cesium-canvas');
-      return {
-        canvas: canvas ? { width: canvas.width, height: canvas.height } : null,
-        animationReady: window.CESIUM_ANIMATION_READY
-      };
+  // Test CDP screenshot capture (much faster than canvas.toDataURL)
+  console.log('Testing CDP screenshot capture...');
+  try {
+    const testScreenshot = await cdpSession.send('Page.captureScreenshot', {
+      format: 'jpeg',
+      quality: 85,
+      clip: { x: 0, y: 0, width: RECORD_WIDTH, height: RECORD_HEIGHT, scale: 1 }
     });
-    console.log('DOM State after wait:', JSON.stringify(domInfo2, null, 2));
-
-    const retryFrame = await page.evaluate(() => window.captureFrame());
-    if (!retryFrame) {
-      throw new Error('Canvas capture not working - canvas toDataURL returns null even though canvas exists');
+    if (!testScreenshot.data) {
+      throw new Error('CDP screenshot returned empty');
     }
+    console.log('✅ CDP screenshot test successful!');
+  } catch (err) {
+    console.error('❌ CDP screenshot test failed:', err.message);
+    throw new Error('CDP screenshot not working');
   }
-  console.log('✅ Test capture successful!');
 
   // IMPORTANT: Set up manual time control BEFORE signaling capture ready
   // This prevents the animation from running too fast and completing before we can capture
@@ -592,8 +547,18 @@ async function recordRoute() {
         console.log('🔍 Flag state at frame 10:', JSON.stringify(flagState));
       }
 
-      // Capture frame from canvas
-      const frameDataBase64 = await page.evaluate(() => window.captureFrame());
+      // Capture frame using CDP (much faster than canvas.toDataURL)
+      const { data: frameDataBase64 } = await cdpSession.send('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 85,
+        clip: {
+          x: 0,
+          y: 0,
+          width: RECORD_WIDTH,
+          height: RECORD_HEIGHT,
+          scale: 1
+        }
+      });
 
       if (frameDataBase64) {
         const framePath = path.join(FRAMES_DIR, `frame-${String(frameCount).padStart(6, '0')}.jpg`);
