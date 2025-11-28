@@ -6,6 +6,9 @@ const { getUserLanguage, setUserLanguage, t, formatMessage } = require('../i18n'
 const CONSTANTS = require('../../config/constants.cjs');
 const renderingConfig = require('../../config/rendering.cjs');
 
+// Get version at startup
+const versionInfo = renderingConfig.getVersionInfo();
+
 /**
  * Bot Handlers Service
  *
@@ -47,6 +50,9 @@ class BotHandlersService {
     // /help
     this.bot.onText(/\/help/, (msg) => this.handleHelp(msg));
 
+    // /version
+    this.bot.onText(/\/version/, (msg) => this.handleVersion(msg));
+
     // /language
     this.bot.onText(/\/language/, (msg) => this.handleLanguage(msg));
 
@@ -83,7 +89,14 @@ class BotHandlersService {
   async handleStart(msg) {
     const chatId = msg.chat.id;
     const userLang = msg.from.language_code || 'en';
-    const message = formatMessage(chatId, 'welcome', {}, userLang);
+    let message = formatMessage(chatId, 'welcome', {}, userLang);
+    
+    // Add version info
+    const versionLine = userLang === 'ru' 
+      ? `\n\n📦 Версия: ${versionInfo.version} (${versionInfo.commit})`
+      : `\n\n📦 Version: ${versionInfo.version} (${versionInfo.commit})`;
+    message += versionLine;
+    
     await this.bot.sendMessage(chatId, message);
   }
 
@@ -95,6 +108,34 @@ class BotHandlersService {
     const userLang = msg.from.language_code || 'en';
     const message = formatMessage(chatId, 'help', {}, userLang);
     await this.bot.sendMessage(chatId, message);
+  }
+
+  /**
+   * Handle /version command
+   */
+  async handleVersion(msg) {
+    const chatId = msg.chat.id;
+    const userLang = msg.from.language_code || 'en';
+    
+    const message = userLang === 'ru'
+      ? `📦 **Cesium Route Renderer**\n\n` +
+        `🏷️ Версия: ${versionInfo.version}\n` +
+        `🔗 Коммит: ${versionInfo.commit}\n` +
+        `📅 Сборка: ${versionInfo.buildDate}\n\n` +
+        `⚙️ Конфигурация:\n` +
+        `• FPS: 24\n` +
+        `• Разрешение: 720×1280\n` +
+        `• Макс. скорость: ${CONSTANTS.ANIMATION.MAX_SPEED}x`
+      : `📦 **Cesium Route Renderer**\n\n` +
+        `🏷️ Version: ${versionInfo.version}\n` +
+        `🔗 Commit: ${versionInfo.commit}\n` +
+        `📅 Build: ${versionInfo.buildDate}\n\n` +
+        `⚙️ Configuration:\n` +
+        `• FPS: 24\n` +
+        `• Resolution: 720×1280\n` +
+        `• Max speed: ${CONSTANTS.ANIMATION.MAX_SPEED}x`;
+    
+    await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
   }
 
   /**
@@ -166,7 +207,10 @@ class BotHandlersService {
     const activeRender = this.state.getActiveRender(chatId);
 
     if (!activeRender) {
-      await this.bot.sendMessage(chatId, t(chatId, 'status.noActive', {}, userLang));
+      const noActiveMsg = userLang === 'ru'
+        ? `❌ Нет активных рендеров. Отправьте GPX файл!\n\n📦 v${versionInfo.version} (${versionInfo.commit})`
+        : `❌ No active renders. Send me a GPX file to start!\n\n📦 v${versionInfo.version} (${versionInfo.commit})`;
+      await this.bot.sendMessage(chatId, noActiveMsg);
       return;
     }
 
@@ -313,6 +357,9 @@ class BotHandlersService {
           let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
           statusMsg += t(chatId, 'estimation.speed', { speed: animationSpeed }, userLang) + '\n';
           statusMsg += t(chatId, 'estimation.videoLength', { length: recordingMinutes.toFixed(1) }, userLang) + '\n';
+          statusMsg += userLang === 'ru' 
+            ? `🎞️ Кадров: ${estimation.totalFrames}\n`
+            : `🎞️ Frames: ${estimation.totalFrames}\n`;
           statusMsg += t(chatId, 'estimation.size', { size: estimatedSizeMB }, userLang) + '\n';
           statusMsg += t(chatId, 'estimation.time', { time: estimatedRenderMinutes }, userLang) + '\n\n';
 
@@ -321,6 +368,9 @@ class BotHandlersService {
           }
 
           statusMsg += t(chatId, 'estimation.starting', {}, userLang);
+          statusMsg += userLang === 'ru'
+            ? `\n💡 Оценка времени обновится по факту`
+            : `\n💡 Time estimate will update based on actual performance`;
           await this.bot.sendMessage(chatId, statusMsg);
         }
       }

@@ -93,7 +93,7 @@ class RenderingConfig {
 
   /**
    * Estimate render time based on route duration
-   * Conservative estimate for software rendering
+   * Based on actual measurements: ~6 seconds per frame at 24fps
    * @param {number} routeDurationMinutes - Route duration in minutes
    * @param {number} animationSpeed - Animation speed multiplier
    * @returns {Object} Estimation details
@@ -103,26 +103,28 @@ class RenderingConfig {
       return null;
     }
 
-    // Recording duration in minutes
+    // Recording duration in seconds (video playback time)
     const recordingSeconds = (routeDurationMinutes * 60 / animationSpeed) + this.videoBufferSeconds;
     const recordingMinutes = recordingSeconds / 60;
 
-    // Total frames at configured FPS
-    const totalFrames = Math.ceil(recordingSeconds * this.fps);
+    // Total frames at configured FPS (24fps for Docker recording)
+    const DOCKER_FPS = 24;
+    const totalFrames = Math.ceil(recordingSeconds * DOCKER_FPS);
 
-    // Software rendering is slow - approximately 0.4-0.5 fps
-    const FRAMES_PER_SECOND = 0.45; // Conservative estimate
-    const captureMinutes = totalFrames / FRAMES_PER_SECOND / 60;
+    // Based on actual measurements: ~6 seconds per frame capture (software rendering with SwiftShader)
+    const SECONDS_PER_FRAME = 6;
+    const captureSeconds = totalFrames * SECONDS_PER_FRAME;
+    const captureMinutes = captureSeconds / 60;
 
-    // Encoding is faster - about 2-3x real-time
-    const encodingMinutes = recordingMinutes * 2.5;
+    // Encoding is fast - about 10x real-time with libx264
+    const encodingMinutes = recordingMinutes / 10;
 
-    // Total with overhead
-    const overheadMinutes = 2; // Startup time
+    // Total with overhead (startup, Cesium loading, etc.)
+    const overheadMinutes = 2;
     const totalMinutes = Math.ceil(captureMinutes + encodingMinutes + overheadMinutes);
 
-    // Estimate file size (CRF 20 at 1280x720 ~ 1-1.5 MB/minute)
-    const estimatedSizeMB = Math.ceil(recordingMinutes * 1.3);
+    // Estimate file size (CRF 23 at 720x1280 ~ 1.3-1.5 MB/minute of video)
+    const estimatedSizeMB = Math.ceil(recordingMinutes * 1.4);
 
     return {
       totalMinutes,
@@ -132,6 +134,35 @@ class RenderingConfig {
       estimatedSizeMB,
       totalFrames
     };
+  }
+
+  /**
+   * Get version info
+   * @returns {Object} Version information
+   */
+  getVersionInfo() {
+    const fs = require('fs');
+    const path = require('path');
+    
+    try {
+      const packagePath = path.join(__dirname, '..', 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+      
+      // Get git commit if available
+      let gitCommit = 'unknown';
+      try {
+        const { execSync } = require('child_process');
+        gitCommit = execSync('git rev-parse --short HEAD', { cwd: path.join(__dirname, '..'), encoding: 'utf8' }).trim();
+      } catch (e) {}
+      
+      return {
+        version: pkg.version || '0.1.0',
+        commit: gitCommit,
+        buildDate: new Date().toISOString().split('T')[0]
+      };
+    } catch (e) {
+      return { version: '0.1.0', commit: 'unknown', buildDate: 'unknown' };
+    }
   }
 }
 
