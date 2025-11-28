@@ -381,6 +381,16 @@ async function recordRoute() {
   }
   console.log('✅ Test capture successful!');
 
+  // Signal to Cesium that we're ready to start capturing
+  // This will trigger the animation to start
+  console.log('🎬 Signaling capture ready - animation will start now');
+  await page.evaluate(() => {
+    window.CESIUM_CAPTURE_READY = true;
+  });
+
+  // Give the animation a moment to process the signal and start
+  await page.waitForTimeout(100);
+
   console.log('✅ Starting canvas frame capture...');
   const frameInterval = 1000 / RECORD_FPS;
   const totalFrames = Math.ceil(RECORD_DURATION * RECORD_FPS);
@@ -392,14 +402,22 @@ async function recordRoute() {
     const frameStartTime = Date.now();
 
     try {
-      // Check if animation is complete (outro finished) - but only after capturing at least a few frames
-      // to avoid breaking immediately if flag was set during initialization
-      if (frameCount > 5) {
+      // Check if animation is complete (outro finished) - but only after capturing at least some frames
+      // Increased threshold to 30 frames (about 1.25 seconds) to ensure animation has truly started
+      if (frameCount > 30) {
         const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
         if (isComplete) {
           console.log('✅ Animation outro complete, stopping recording');
           break;
         }
+      } else if (frameCount === 10) {
+        // Log flag state at frame 10 for debugging
+        const flagState = await page.evaluate(() => ({
+          complete: window.CESIUM_ANIMATION_COMPLETE,
+          ready: window.CESIUM_ANIMATION_READY,
+          introComplete: window.CESIUM_INTRO_COMPLETE
+        }));
+        console.log('🔍 Flag state at frame 10:', JSON.stringify(flagState));
       }
 
       const targetTime = startTime + (frameCount * frameInterval);

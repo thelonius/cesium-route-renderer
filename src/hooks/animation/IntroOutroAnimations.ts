@@ -77,14 +77,36 @@ export function createIntroAnimation(options: IntroAnimationOptions): CameraAnim
       setCameraAzimuthProgress(1);
       setCameraTiltProgress(1);
 
-      // Start the clock for route animation
-      if (!(window as any).__MANUAL_MULTIPLIER) {
-        viewer.clock.multiplier = animationSpeed;
-      }
-      viewer.clock.shouldAnimate = true;
+      // In Docker mode, wait for CESIUM_CAPTURE_READY before starting animation
+      // This ensures frame capture is ready before animation begins
+      const isDockerMode = !!(window as any).__DOCKER_MODE;
+      
+      const startClock = () => {
+        if (!(window as any).__MANUAL_MULTIPLIER) {
+          viewer.clock.multiplier = animationSpeed;
+        }
+        viewer.clock.shouldAnimate = true;
+        console.log('🎬 Clock started, animation running');
+        // Start azimuth rotation
+        startAzimuthRotation();
+      };
 
-      // Start azimuth rotation
-      startAzimuthRotation();
+      if (isDockerMode) {
+        // Wait for capture ready signal
+        const checkCaptureReady = () => {
+          if ((window as any).CESIUM_CAPTURE_READY) {
+            console.log('📹 Capture ready signal received, starting animation');
+            startClock();
+          } else {
+            setTimeout(checkCaptureReady, 50);
+          }
+        };
+        console.log('⏳ Waiting for capture ready signal...');
+        checkCaptureReady();
+      } else {
+        // Web mode - start immediately
+        startClock();
+      }
     }
   );
 
