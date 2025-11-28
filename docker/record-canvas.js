@@ -399,29 +399,43 @@ async function recordRoute() {
   // This pauses the free-running clock and lets us step time precisely
   console.log('🎬 Switching to manual time control for frame capture...');
   const animationInfo = await page.evaluate((fps, animSpeed) => {
+    // Wrap everything in try/catch with detailed diagnostics
     try {
-      // Use the global viewer reference set by useViewerInit.ts
+      console.log('=== Manual time control setup starting ===');
+      
+      // Step 1: Check window globals
+      console.log('Step 1: Checking window globals...');
+      console.log('window.__CESIUM_VIEWER exists:', !!window.__CESIUM_VIEWER);
+      console.log('window.__CESIUM exists:', !!window.__CESIUM);
+      
       const viewer = window.__CESIUM_VIEWER;
       if (!viewer) {
         return { success: false, error: 'No viewer (window.__CESIUM_VIEWER not found)' };
       }
+      console.log('Viewer found');
+      
+      // Step 2: Check clock
+      console.log('Step 2: Checking clock...');
+      console.log('viewer.clock exists:', !!viewer.clock);
       if (!viewer.clock) {
         return { success: false, error: 'No clock on viewer' };
       }
+      console.log('Clock found');
+      
+      // Step 3: Check startTime
+      console.log('Step 3: Checking startTime...');
+      console.log('viewer.clock.startTime exists:', !!viewer.clock.startTime);
+      console.log('viewer.clock.startTime type:', typeof viewer.clock.startTime);
       if (!viewer.clock.startTime) {
         return { success: false, error: 'No startTime on clock' };
       }
+      console.log('startTime found');
       
-      // Debug: log what we have
-      console.log('Clock state:', {
-        hasStartTime: !!viewer.clock.startTime,
-        hasStopTime: !!viewer.clock.stopTime,
-        startTimeType: typeof viewer.clock.startTime,
-        startTimeConstructor: viewer.clock.startTime?.constructor?.name
-      });
-
-      // Get JulianDate class from the clock's time objects (they are JulianDate instances)
-      // This works regardless of whether Cesium is exposed globally
+      // Step 4: Get constructor
+      console.log('Step 4: Getting JulianDate constructor...');
+      console.log('startTime.constructor exists:', !!viewer.clock.startTime.constructor);
+      console.log('startTime.constructor.name:', viewer.clock.startTime.constructor?.name);
+      
       const JulianDate = viewer.clock.startTime.constructor;
 
       console.log('JulianDate from clock:', {
