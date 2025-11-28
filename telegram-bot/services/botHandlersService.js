@@ -342,24 +342,27 @@ class BotHandlersService {
 
       if (analysis.success && analysis.statistics.duration) {
         const routeDurationMinutes = analysis.statistics.duration.minutes;
-        const requiredSpeed = Math.ceil(routeDurationMinutes / (CONSTANTS.RENDER.MAX_VIDEO_MINUTES - CONSTANTS.ANIMATION.ADAPTIVE_BUFFER_MINUTES));
-
-        if (requiredSpeed > animationSpeed) {
-          animationSpeed = requiredSpeed;
-        }
+        
+        // Platform-agnostic: all videos are 40 seconds
+        const TARGET_VIDEO_SECONDS = 40;
+        const OUTPUT_FPS = 24;
+        const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * OUTPUT_FPS; // 960
+        
+        // Animation speed is dynamically calculated to fit route into 40 seconds
+        animationSpeed = Math.ceil((routeDurationMinutes * 60) / TARGET_VIDEO_SECONDS);
 
         const estimation = renderingConfig.estimateRenderTime(routeDurationMinutes, animationSpeed);
         if (estimation) {
           estimatedRenderMinutes = estimation.totalMinutes;
           estimatedSizeMB = estimation.estimatedSizeMB;
 
-          const recordingMinutes = routeDurationMinutes / animationSpeed;
+          const recordingMinutes = TARGET_VIDEO_SECONDS / 60; // Fixed 40 seconds = 0.67 minutes
           let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
           statusMsg += t(chatId, 'estimation.speed', { speed: animationSpeed }, userLang) + '\n';
           statusMsg += t(chatId, 'estimation.videoLength', { length: recordingMinutes.toFixed(1) }, userLang) + '\n';
           statusMsg += userLang === 'ru'
-            ? `🎞️ Кадров: ${estimation.totalFrames}\n`
-            : `🎞️ Frames: ${estimation.totalFrames}\n`;
+            ? `🎞️ Кадров: ${TOTAL_FRAMES}\n`
+            : `🎞️ Frames: ${TOTAL_FRAMES}\n`;
           statusMsg += t(chatId, 'estimation.size', { size: estimatedSizeMB }, userLang) + '\n';
           statusMsg += t(chatId, 'estimation.time', { time: estimatedRenderMinutes }, userLang) + '\n\n';
 
