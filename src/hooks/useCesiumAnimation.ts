@@ -841,14 +841,17 @@ export default function useCesiumAnimation({
         // Initial status display
         displayStatusBar();
 
-        // Start intro animation
-        startIntroAnimation();
-
         console.log('Scheduling RAF for animation start');
         // Intro and outro animations are skipped by default to focus on route animation.
         // Set window.__SKIP_INTRO=false or window.__SKIP_OUTRO=false to enable them.
         const skipIntro = (window as any).__SKIP_INTRO !== false; // default true
         const skipOutro = (window as any).__SKIP_OUTRO !== false; // default true
+        const isDockerMode = !!(window as any).__DOCKER_MODE;
+
+        // Start intro animation ONLY if not skipping - this handles Docker-mode capture ready
+        if (!skipIntro) {
+          startIntroAnimation();
+        }
 
         // Mark that animation has started to disable preRender early-reset
         animationStartedRef.current = true;
@@ -969,6 +972,33 @@ export default function useCesiumAnimation({
           cameraAzimuthProgressRef.current = 1;
           cameraTiltProgressRef.current = 1;
           console.log('Camera refs set: azimuth=', cameraAzimuthProgressRef.current, 'tilt=', cameraTiltProgressRef.current, 'phase=', animationPhaseRef.current);
+
+          // Start clock - wait for capture ready in Docker mode
+          const startClock = () => {
+            if (!(window as any).__MANUAL_MULTIPLIER) {
+              viewer.clock.multiplier = animationSpeed;
+            }
+            viewer.clock.shouldAnimate = true;
+            console.log('🎬 Clock started (skip-intro mode), animation running');
+          };
+
+          if (isDockerMode) {
+            // Wait for capture ready signal before starting clock
+            const checkCaptureReady = () => {
+              if ((window as any).CESIUM_CAPTURE_READY) {
+                console.log('📹 Capture ready signal received (skip-intro mode), starting animation');
+                startClock();
+              } else {
+                setTimeout(checkCaptureReady, 50);
+              }
+            };
+            console.log('⏳ Waiting for capture ready signal (skip-intro mode)...');
+            checkCaptureReady();
+          } else {
+            // Web mode - start immediately
+            startClock();
+          }
+
           azimuthRotationIntervalRef.current = setInterval(() => {
             const phase = animationPhaseRef.current;
             if (!viewer || viewer.isDestroyed() || phase === AnimationPhase.OUTRO || phase === AnimationPhase.COMPLETE || !viewer.clock || !viewer.clock.shouldAnimate) {

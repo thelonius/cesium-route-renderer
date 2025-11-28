@@ -80,7 +80,7 @@ export function createIntroAnimation(options: IntroAnimationOptions): CameraAnim
       // In Docker mode, wait for CESIUM_CAPTURE_READY before starting animation
       // This ensures frame capture is ready before animation begins
       const isDockerMode = !!(window as any).__DOCKER_MODE;
-      
+
       const startClock = () => {
         if (!(window as any).__MANUAL_MULTIPLIER) {
           viewer.clock.multiplier = animationSpeed;
