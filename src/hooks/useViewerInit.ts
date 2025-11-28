@@ -113,41 +113,51 @@ export default function useViewerInit(
       }
     })();
 
-    // Load imagery - prioritize Bing Maps in all environments with robust fallback
+    // Load imagery - prioritize ArcGIS satellite imagery (no Ion required), then fallback chain
     (async () => {
       try {
         viewer.imageryLayers.removeAll();
 
-        // Try Cesium Ion Bing Maps first (highest quality)
-        console.log('🔄 Attempting to load Bing Maps imagery...');
-        const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {
-          // Add timeout and retry options
-        });
-        viewer.imageryLayers.addImageryProvider(ionImagery);
-        console.log('✅ Successfully loaded Bing Maps imagery');
+        // Try ArcGIS World Imagery first - free, high quality satellite imagery, no Ion required
+        console.log('🔄 Attempting to load ArcGIS World Imagery...');
+        const arcgisImagery = await Cesium.ArcGisMapServerImageryProvider.fromUrl(
+          'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer'
+        );
+        viewer.imageryLayers.addImageryProvider(arcgisImagery);
+        console.log('✅ Successfully loaded ArcGIS World Imagery (satellite)');
 
-      } catch (error) {
-        console.warn('❌ Bing Maps failed, trying Sentinel-2...', error instanceof Error ? error.message : String(error));
+      } catch (arcgisError) {
+        console.warn('❌ ArcGIS failed, trying Bing Maps via Ion...', arcgisError instanceof Error ? arcgisError.message : String(arcgisError));
 
         try {
-          // Try Sentinel-2 as high-quality alternative
-          const sentinelImagery = await Cesium.IonImageryProvider.fromAssetId(3954, {});
-          viewer.imageryLayers.addImageryProvider(sentinelImagery);
-          console.log('✅ Loaded Sentinel-2 imagery (high quality)');
+          // Try Cesium Ion Bing Maps as fallback
+          const ionImagery = await Cesium.IonImageryProvider.fromAssetId(2, {});
+          viewer.imageryLayers.addImageryProvider(ionImagery);
+          console.log('✅ Successfully loaded Bing Maps imagery via Ion');
 
-        } catch (sentinelError) {
-          console.warn('❌ Sentinel-2 failed, falling back to OpenStreetMap...', sentinelError instanceof Error ? sentinelError.message : String(sentinelError));
+        } catch (error) {
+          console.warn('❌ Bing Maps failed, trying Sentinel-2...', error instanceof Error ? error.message : String(error));
 
           try {
-            // Final fallback to OpenStreetMap
-            const osm = new Cesium.OpenStreetMapImageryProvider({
-              url: 'https://a.tile.openstreetmap.org/'
-            });
-            viewer.imageryLayers.addImageryProvider(osm);
-            console.log('✅ Loaded OpenStreetMap imagery (reliable fallback)');
+            // Try Sentinel-2 as high-quality alternative
+            const sentinelImagery = await Cesium.IonImageryProvider.fromAssetId(3954, {});
+            viewer.imageryLayers.addImageryProvider(sentinelImagery);
+            console.log('✅ Loaded Sentinel-2 imagery (high quality)');
 
-          } catch (osmError) {
-            console.error('❌ All imagery providers failed:', osmError instanceof Error ? osmError.message : String(osmError));
+          } catch (sentinelError) {
+            console.warn('❌ Sentinel-2 failed, falling back to OpenStreetMap...', sentinelError instanceof Error ? sentinelError.message : String(sentinelError));
+
+            try {
+              // Final fallback to OpenStreetMap
+              const osm = new Cesium.OpenStreetMapImageryProvider({
+                url: 'https://a.tile.openstreetmap.org/'
+              });
+              viewer.imageryLayers.addImageryProvider(osm);
+              console.log('✅ Loaded OpenStreetMap imagery (reliable fallback)');
+
+            } catch (osmError) {
+              console.error('❌ All imagery providers failed:', osmError instanceof Error ? osmError.message : String(osmError));
+            }
           }
         }
       }
