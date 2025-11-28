@@ -189,10 +189,10 @@ async function recordRoute() {
     '--ignore-gpu-blocklist'
   ];
 
-  console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (ANGLE/GL)' : 'CPU (SwiftShader)'}`);
+  console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (non-headless + Xvfb)' : 'CPU (SwiftShader)'}`);
 
   const browser = await puppeteer.launch({
-    headless: useGPU ? 'new' : true,  // Use new headless mode for GPU
+    headless: useGPU ? false : true,  // Non-headless for GPU (runs on Xvfb)
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
