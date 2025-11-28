@@ -30,6 +30,13 @@ function logAnalysisResults(routeProfile, outputDir) {
   fs.appendFileSync(logPath, `[${timestamp}] Route pattern: ${routeProfile.pattern.type} (${(routeProfile.pattern.confidence * 100).toFixed(0)}% confidence)\n`);
   fs.appendFileSync(logPath, `[${timestamp}] Overlay hooks: ${routeProfile.overlays.hooks.length} generated\n`);
   fs.appendFileSync(logPath, `[${timestamp}] Analysis time: ${routeProfile.metadata.analysisTime}ms\n`);
+  
+  // Make log file world-writable so Docker container can append to it
+  try {
+    fs.chmodSync(logPath, 0o666);
+  } catch (e) {
+    console.warn('Could not chmod log file:', e.message);
+  }
 }
 
 /**
