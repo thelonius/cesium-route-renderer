@@ -10,7 +10,9 @@ class DockerConfig {
     this.groupId = CONSTANTS.DOCKER.GROUP_ID;
     this.shmSize = CONSTANTS.DOCKER.SHM_SIZE;
     this.imageName = CONSTANTS.DOCKER.DEFAULT_IMAGE;
+    this.gpuImageName = CONSTANTS.DOCKER.GPU_IMAGE || 'cesium-route-recorder:gpu';
     this.gpuDevice = CONSTANTS.DOCKER.GPU_DEVICE;
+    this.useGPU = process.env.USE_GPU === 'true' || process.env.USE_GPU === '1';
   }
 
   /**
@@ -63,19 +65,37 @@ class DockerConfig {
    * @returns {boolean}
    */
   hasGPU() {
+    // Check for nvidia-docker or GPU device
     const fs = require('fs');
+    const { execSync } = require('child_process');
+    
+    // First check if USE_GPU env is set
+    if (this.useGPU) {
+      return true;
+    }
+    
+    // Check for nvidia-smi
+    try {
+      execSync('nvidia-smi', { stdio: 'ignore' });
+      return true;
+    } catch {
+      // nvidia-smi not available
+    }
+    
+    // Fallback to device check
     return fs.existsSync(this.gpuDevice);
   }
 
   /**
-   * Add GPU device to Docker args if available
+   * Add GPU support to Docker args
    * @param {Array<string>} args - Existing Docker arguments
    * @returns {Array<string>} Docker arguments with GPU if available
    */
   addGPUIfAvailable(args) {
-    if (this.hasGPU()) {
-      args.push('--device', this.gpuDevice);
-      console.log('GPU device found, enabling hardware acceleration');
+    if (this.hasGPU() || this.useGPU) {
+      // Use nvidia-docker runtime with --gpus flag
+      args.splice(1, 0, '--gpus', 'all');
+      console.log('🚀 GPU acceleration enabled');
     }
     return args;
   }
@@ -86,7 +106,9 @@ class DockerConfig {
    * @returns {Array<string>} Docker arguments with image name
    */
   addImageName(args) {
-    args.push(this.imageName);
+    // Use GPU image if GPU is available
+    const image = (this.hasGPU() || this.useGPU) ? this.gpuImageName : this.imageName;
+    args.push(image);
     return args;
   }
 

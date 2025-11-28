@@ -4,6 +4,7 @@
     "GROUP_ID": "1002",
     "SHM_SIZE": "2g",
     "DEFAULT_IMAGE": "cesium-route-recorder",
+    "GPU_IMAGE": "cesium-route-recorder:gpu",
     "GPU_DEVICE": "/dev/dri/card0"
   },
 
