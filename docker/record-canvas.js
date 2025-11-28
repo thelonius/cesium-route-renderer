@@ -228,7 +228,7 @@ async function recordRoute() {
     window.__DOCKER_MODE = true;
     window.__SKIP_INTRO = false;  // Enable intro animation
     window.__SKIP_OUTRO = false;  // Enable outro animation
-    console.log('Docker mode detection:', { 
+    console.log('Docker mode detection:', {
       dockerMode: window.__DOCKER_MODE,
       skipIntro: window.__SKIP_INTRO,
       skipOutro: window.__SKIP_OUTRO

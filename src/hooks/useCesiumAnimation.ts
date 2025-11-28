@@ -844,9 +844,19 @@ export default function useCesiumAnimation({
         console.log('Scheduling RAF for animation start');
         // Intro and outro animations are skipped by default to focus on route animation.
         // Set window.__SKIP_INTRO=false or window.__SKIP_OUTRO=false to enable them.
-        const skipIntro = (window as any).__SKIP_INTRO !== false; // default true
-        const skipOutro = (window as any).__SKIP_OUTRO !== false; // default true
+        const skipIntroRaw = (window as any).__SKIP_INTRO;
+        const skipOutroRaw = (window as any).__SKIP_OUTRO;
+        const skipIntro = skipIntroRaw !== false; // default true
+        const skipOutro = skipOutroRaw !== false; // default true
         const isDockerMode = !!(window as any).__DOCKER_MODE;
+        console.log('🎬 Animation config:', {
+          skipIntroRaw,
+          skipOutroRaw,
+          skipIntro,
+          skipOutro,
+          isDockerMode,
+          windowDockerMode: (window as any).__DOCKER_MODE
+        });
 
         // Start intro animation ONLY if not skipping - this handles Docker-mode capture ready
         if (!skipIntro) {
