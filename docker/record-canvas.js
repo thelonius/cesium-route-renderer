@@ -398,22 +398,30 @@ async function recordRoute() {
   // Switch to manual time control for frame-accurate capture
   // This pauses the free-running clock and lets us step time precisely
   console.log('🎬 Switching to manual time control for frame capture...');
+  
+  // DIAGNOSTIC: First try a simple evaluation to see if it works at all
+  console.log('Testing simple page.evaluate...');
+  const simpleTest = await page.evaluate(() => {
+    return { test: 'success', hasViewer: !!window.__CESIUM_VIEWER };
+  });
+  console.log('Simple test result:', JSON.stringify(simpleTest));
+  
   const animationInfo = await page.evaluate((fps, animSpeed) => {
     // Wrap everything in try/catch with detailed diagnostics
     try {
       console.log('=== Manual time control setup starting ===');
-      
+
       // Step 1: Check window globals
       console.log('Step 1: Checking window globals...');
       console.log('window.__CESIUM_VIEWER exists:', !!window.__CESIUM_VIEWER);
       console.log('window.__CESIUM exists:', !!window.__CESIUM);
-      
+
       const viewer = window.__CESIUM_VIEWER;
       if (!viewer) {
         return { success: false, error: 'No viewer (window.__CESIUM_VIEWER not found)' };
       }
       console.log('Viewer found');
-      
+
       // Step 2: Check clock
       console.log('Step 2: Checking clock...');
       console.log('viewer.clock exists:', !!viewer.clock);
@@ -421,7 +429,7 @@ async function recordRoute() {
         return { success: false, error: 'No clock on viewer' };
       }
       console.log('Clock found');
-      
+
       // Step 3: Check startTime
       console.log('Step 3: Checking startTime...');
       console.log('viewer.clock.startTime exists:', !!viewer.clock.startTime);
@@ -430,12 +438,12 @@ async function recordRoute() {
         return { success: false, error: 'No startTime on clock' };
       }
       console.log('startTime found');
-      
+
       // Step 4: Get constructor
       console.log('Step 4: Getting JulianDate constructor...');
       console.log('startTime.constructor exists:', !!viewer.clock.startTime.constructor);
       console.log('startTime.constructor.name:', viewer.clock.startTime.constructor?.name);
-      
+
       const JulianDate = viewer.clock.startTime.constructor;
 
       console.log('JulianDate from clock:', {
