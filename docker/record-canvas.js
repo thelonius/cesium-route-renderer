@@ -385,97 +385,52 @@ async function recordRoute() {
   }
   console.log('✅ Test capture successful!');
 
-  // Signal to Cesium that we're ready to start capturing
-  // This will trigger the animation to start
-  console.log('🎬 Signaling capture ready - animation will start now');
-  await page.evaluate(() => {
-    window.CESIUM_CAPTURE_READY = true;
-  });
-
-  // Give the animation a moment to process the signal and start
-  await page.waitForTimeout(500);
-
-  // Switch to manual time control for frame-accurate capture
-  // This pauses the free-running clock and lets us step time precisely
-  console.log('🎬 Switching to manual time control for frame capture...');
-  
-  // DIAGNOSTIC: First try a simple evaluation to see if it works at all
-  console.log('Testing simple page.evaluate...');
-  const simpleTest = await page.evaluate(() => {
-    return { test: 'success', hasViewer: !!window.__CESIUM_VIEWER };
-  });
-  console.log('Simple test result:', JSON.stringify(simpleTest));
+  // IMPORTANT: Set up manual time control BEFORE signaling capture ready
+  // This prevents the animation from running too fast and completing before we can capture
+  console.log('🎬 Setting up manual time control BEFORE animation starts...');
   
   const animationInfo = await page.evaluate((fps, animSpeed) => {
-    // Wrap everything in try/catch with detailed diagnostics
     try {
-      console.log('=== Manual time control setup starting ===');
-
-      // Step 1: Check window globals
-      console.log('Step 1: Checking window globals...');
-      console.log('window.__CESIUM_VIEWER exists:', !!window.__CESIUM_VIEWER);
-      console.log('window.__CESIUM exists:', !!window.__CESIUM);
-
       const viewer = window.__CESIUM_VIEWER;
-      if (!viewer) {
-        return { success: false, error: 'No viewer (window.__CESIUM_VIEWER not found)' };
+      if (!viewer || !viewer.clock || !viewer.clock.startTime) {
+        return { 
+          success: false, 
+          error: 'Viewer/clock not ready: ' + JSON.stringify({
+            hasViewer: !!viewer,
+            hasClock: !!viewer?.clock,
+            hasStartTime: !!viewer?.clock?.startTime
+          })
+        };
       }
-      console.log('Viewer found');
 
-      // Step 2: Check clock
-      console.log('Step 2: Checking clock...');
-      console.log('viewer.clock exists:', !!viewer.clock);
-      if (!viewer.clock) {
-        return { success: false, error: 'No clock on viewer' };
-      }
-      console.log('Clock found');
-
-      // Step 3: Check startTime
-      console.log('Step 3: Checking startTime...');
-      console.log('viewer.clock.startTime exists:', !!viewer.clock.startTime);
-      console.log('viewer.clock.startTime type:', typeof viewer.clock.startTime);
-      if (!viewer.clock.startTime) {
-        return { success: false, error: 'No startTime on clock' };
-      }
-      console.log('startTime found');
-
-      // Step 4: Get constructor
-      console.log('Step 4: Getting JulianDate constructor...');
-      console.log('startTime.constructor exists:', !!viewer.clock.startTime.constructor);
-      console.log('startTime.constructor.name:', viewer.clock.startTime.constructor?.name);
-
+      // Get JulianDate class from the clock's time objects
       const JulianDate = viewer.clock.startTime.constructor;
-
-      console.log('JulianDate from clock:', {
-        name: JulianDate?.name,
-        hasSecondsDifference: typeof JulianDate?.secondsDifference === 'function',
-        hasAddSeconds: typeof JulianDate?.addSeconds === 'function',
-        hasClone: typeof JulianDate?.clone === 'function',
-        hasCompare: typeof JulianDate?.compare === 'function'
-      });
-
+      
       if (!JulianDate || typeof JulianDate.secondsDifference !== 'function') {
-        return { success: false, error: 'Cannot get JulianDate from clock.startTime.constructor' };
+        return { 
+          success: false, 
+          error: 'JulianDate not available. Constructor name: ' + (viewer.clock.startTime.constructor?.name || 'unknown')
+        };
       }
 
       // Get animation time bounds
       const startTime = viewer.clock.startTime;
       const stopTime = viewer.clock.stopTime;
       const totalSeconds = JulianDate.secondsDifference(stopTime, startTime);
-
-      // Calculate time step per frame at the animation speed
-      // At 446x speed and 24fps: each frame = 446/24 = ~18.58 seconds of simulation time
+      
+      // Calculate time step per frame
       const secondsPerFrame = animSpeed / fps;
 
-      console.log('Animation setup:', {
+      console.log('Animation setup (before capture start):', {
         totalSeconds,
         secondsPerFrame,
         expectedFrames: Math.ceil(totalSeconds / secondsPerFrame)
       });
 
-      // Pause the automatic clock - we'll step manually
+      // CRITICAL: Keep the clock paused! Don't let it run freely
       viewer.clock.shouldAnimate = false;
-
+      viewer.clock.multiplier = 0; // Extra safety
+      
       // Reset to start time
       viewer.clock.currentTime = JulianDate.clone(startTime);
 
@@ -483,13 +438,21 @@ async function recordRoute() {
       window.__CESIUM_JD_CLASS = JulianDate;
       window.__ANIM_SECONDS_PER_FRAME = secondsPerFrame;
       window.__ANIM_STOP_TIME = stopTime;
+      window.__ANIM_START_TIME = startTime;
+      
+      // Mark manual control as active
+      window.__MANUAL_TIME_CONTROL = true;
 
-      // Store step function globally
+      // Create step function that will be called for each frame
       window.__stepAnimation = function() {
         const JD = window.__CESIUM_JD_CLASS;
         const viewer = window.__CESIUM_VIEWER;
         const secondsPerFrame = window.__ANIM_SECONDS_PER_FRAME;
         const stopTime = window.__ANIM_STOP_TIME;
+
+        if (!viewer || !JD) {
+          return { done: true, error: 'Viewer or JD not available' };
+        }
 
         const current = viewer.clock.currentTime;
         const newTime = JD.addSeconds(current, secondsPerFrame, new JD());
@@ -497,29 +460,29 @@ async function recordRoute() {
         // Check if we've reached the end
         if (JD.compare(newTime, stopTime) >= 0) {
           viewer.clock.currentTime = JD.clone(stopTime);
+          viewer.scene.requestRender();
           return { done: true };
         }
 
         viewer.clock.currentTime = newTime;
-
-        // Trigger a render
         viewer.scene.requestRender();
 
         return { done: false };
       };
 
-      // Trigger initial render
+      // Trigger initial render at start position
       viewer.scene.requestRender();
 
       return {
         success: true,
         totalSeconds,
         secondsPerFrame,
+        expectedFrames: Math.ceil(totalSeconds / secondsPerFrame),
         startTime: JulianDate.toIso8601(startTime),
         stopTime: JulianDate.toIso8601(stopTime)
       };
     } catch (err) {
-      return { success: false, error: 'Exception: ' + err.message };
+      return { success: false, error: 'Exception: ' + err.message + ' at ' + err.stack };
     }
   }, RECORD_FPS, parseInt(process.env.ANIMATION_SPEED || '30'));
 
@@ -528,7 +491,17 @@ async function recordRoute() {
   }
 
   console.log(`📊 Animation: ${animationInfo.totalSeconds.toFixed(0)}s total, ${animationInfo.secondsPerFrame.toFixed(2)}s per frame`);
+  console.log(`📊 Expected frames: ${animationInfo.expectedFrames}`);
   console.log(`📊 Time range: ${animationInfo.startTime} to ${animationInfo.stopTime}`);
+
+  // NOW signal capture ready - but the animation won't run on its own because we set shouldAnimate=false
+  console.log('🎬 Signaling capture ready - manual time stepping will control animation');
+  await page.evaluate(() => {
+    window.CESIUM_CAPTURE_READY = true;
+  });
+
+  // Small wait to ensure the signal is processed
+  await page.waitForTimeout(100);
 
   console.log('✅ Starting canvas frame capture...');
   const frameInterval = 1000 / RECORD_FPS;
