@@ -74,6 +74,8 @@ export default function useViewerInit(
     // Expose viewer globally for debug tools and recorder
     try {
       (window as any).__CESIUM_VIEWER = viewer;
+      // Expose Cesium library globally for recorder's manual time stepping
+      (window as any).__CESIUM = Cesium;
     } catch (e) {
       // ignore
     }

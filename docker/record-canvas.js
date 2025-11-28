@@ -405,10 +405,16 @@ async function recordRoute() {
       return { success: false, error: 'No viewer/clock (window.__CESIUM_VIEWER not found)' };
     }
     
+    // Get Cesium from the global that the app exports (check multiple possible locations)
+    const Cesium = window.Cesium || window.__CESIUM;
+    if (!Cesium || !Cesium.JulianDate) {
+      return { success: false, error: 'Cesium.JulianDate not found in window scope' };
+    }
+    
     // Get animation time bounds
     const startTime = viewer.clock.startTime;
     const stopTime = viewer.clock.stopTime;
-    const totalSeconds = window.Cesium.JulianDate.secondsDifference(stopTime, startTime);
+    const totalSeconds = Cesium.JulianDate.secondsDifference(stopTime, startTime);
     
     // Calculate time step per frame at the animation speed
     // At 446x speed and 24fps: each frame = 446/24 = ~18.58 seconds of simulation time
@@ -418,16 +424,20 @@ async function recordRoute() {
     viewer.clock.shouldAnimate = false;
     
     // Reset to start time
-    viewer.clock.currentTime = window.Cesium.JulianDate.clone(startTime);
+    viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
+    
+    // Store Cesium reference for step function
+    window.__CESIUM = Cesium;
     
     // Store step function globally
     window.__stepAnimation = function() {
+      const C = window.__CESIUM;
       const current = viewer.clock.currentTime;
-      const newTime = window.Cesium.JulianDate.addSeconds(current, secondsPerFrame, new window.Cesium.JulianDate());
+      const newTime = C.JulianDate.addSeconds(current, secondsPerFrame, new C.JulianDate());
       
       // Check if we've reached the end
-      if (window.Cesium.JulianDate.compare(newTime, stopTime) >= 0) {
-        viewer.clock.currentTime = window.Cesium.JulianDate.clone(stopTime);
+      if (C.JulianDate.compare(newTime, stopTime) >= 0) {
+        viewer.clock.currentTime = C.JulianDate.clone(stopTime);
         return { done: true };
       }
       
@@ -446,8 +456,8 @@ async function recordRoute() {
       success: true,
       totalSeconds,
       secondsPerFrame,
-      startTime: window.Cesium.JulianDate.toIso8601(startTime),
-      stopTime: window.Cesium.JulianDate.toIso8601(stopTime)
+      startTime: Cesium.JulianDate.toIso8601(startTime),
+      stopTime: Cesium.JulianDate.toIso8601(stopTime)
     };
   }, RECORD_FPS, parseInt(process.env.ANIMATION_SPEED || '30'));
   
