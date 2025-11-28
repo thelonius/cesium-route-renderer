@@ -195,10 +195,10 @@ async function recordRoute() {
   // - With real X display (GPU): use headless=false to leverage actual GPU
   // - Without real display: use headless='new' (software rendering)
   const headlessMode = (useGPU && hasRealDisplay) ? false : 'new';
-  const renderMode = useGPU 
-    ? (hasRealDisplay ? 'GPU (real X display)' : 'GPU (headless + Xvfb)') 
+  const renderMode = useGPU
+    ? (hasRealDisplay ? 'GPU (real X display)' : 'GPU (headless + Xvfb)')
     : 'CPU (SwiftShader)';
-  
+
   console.log(`🖥️  Rendering mode: ${renderMode}`);
   console.log(`   DISPLAY=${process.env.DISPLAY}, headless=${headlessMode}`);
 

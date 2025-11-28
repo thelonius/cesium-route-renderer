@@ -11,7 +11,7 @@ FROM node:20
 
 WORKDIR /app
 
-# Install Google Chrome (stable), FFmpeg, and Xvfb
+# Install Google Chrome (stable), FFmpeg, Xvfb, and NVIDIA GPU support libraries
 # Note: Using Google Chrome instead of Debian Chromium package due to crash handler issues
 # Debian Chromium 142+ has crashpad compatibility problems
 RUN apt-get update && apt-get install -y \
@@ -20,9 +20,20 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     xvfb \
     xauth \
+    # Mesa OpenGL libraries (fallback software rendering)
     libgl1-mesa-dri \
     libgl1-mesa-glx \
     libglu1-mesa \
+    libegl1-mesa \
+    # NVIDIA GPU support - EGL and GLX for hardware acceleration
+    libegl1 \
+    libglx0 \
+    libglvnd0 \
+    libglvnd-dev \
+    # Vulkan support for GPU rendering
+    libvulkan1 \
+    mesa-vulkan-drivers \
+    # Chrome dependencies
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -46,6 +57,13 @@ RUN apt-get update && apt-get install -y \
     && dpkg -i google-chrome-stable_current_amd64.deb || apt-get -fy install \
     && rm google-chrome-stable_current_amd64.deb \
     && rm -rf /var/lib/apt/lists/*
+
+# Set NVIDIA driver environment variables for container GPU access
+# These tell libglvnd to use NVIDIA's EGL/GLX implementation when available
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute
+ENV __NV_PRIME_RENDER_OFFLOAD=1
+ENV __GLX_VENDOR_LIBRARY_NAME=nvidia
 
 # Copy built app
 COPY --from=build /app/dist ./dist
