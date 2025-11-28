@@ -170,24 +170,29 @@ async function recordRoute() {
   // Check if GPU is available (USE_GPU env or nvidia-smi available)
   const useGPU = process.env.USE_GPU === '1' || process.env.USE_GPU === 'true';
 
+  // GPU args for headless Chrome with NVIDIA
+  // Note: headless=new is required for GPU in newer Chrome
   const gpuArgs = useGPU ? [
     '--enable-webgl',
-    '--use-gl=egl',
-    '--enable-gpu',
-    '--ignore-gpu-blacklist',
-    '--enable-features=VaapiVideoDecoder',
-    '--disable-software-rasterizer'
+    '--enable-webgl2',
+    '--use-gl=angle',
+    '--use-angle=gl',
+    '--enable-gpu-rasterization',
+    '--enable-zero-copy',
+    '--ignore-gpu-blocklist',
+    '--enable-features=Vulkan,UseSkiaRenderer',
+    '--disable-vulkan-fallback-to-gl-for-testing'
   ] : [
     '--enable-webgl',
     '--use-gl=angle',
     '--use-angle=swiftshader',
-    '--ignore-gpu-blacklist'
+    '--ignore-gpu-blocklist'
   ];
 
-  console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (EGL)' : 'CPU (SwiftShader)'}`);
+  console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (ANGLE/GL)' : 'CPU (SwiftShader)'}`);
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: useGPU ? 'new' : true,  // Use new headless mode for GPU
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
