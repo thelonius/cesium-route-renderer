@@ -12,7 +12,14 @@ class DockerConfig {
     this.imageName = CONSTANTS.DOCKER.DEFAULT_IMAGE;
     this.gpuImageName = CONSTANTS.DOCKER.GPU_IMAGE || 'cesium-route-recorder:gpu';
     this.gpuDevice = CONSTANTS.DOCKER.GPU_DEVICE;
-    this.useGPU = process.env.USE_GPU === 'true' || process.env.USE_GPU === '1';
+  }
+
+  /**
+   * Check if GPU mode is enabled via environment variable
+   * @returns {boolean}
+   */
+  get useGPU() {
+    return process.env.USE_GPU === 'true' || process.env.USE_GPU === '1';
   }
 
   /**
@@ -97,14 +104,14 @@ class DockerConfig {
       // Use nvidia-docker runtime with --gpus flag
       args.splice(1, 0, '--gpus', 'all');
       console.log('🚀 GPU acceleration enabled');
-      
+
       // Add X11 display support for real GPU rendering (not SwiftShader)
       // Check if HOST_DISPLAY is set (e.g., :1 for X server with NVIDIA)
       const hostDisplay = process.env.HOST_DISPLAY;
       if (hostDisplay) {
         console.log(`🖥️  Using host X display: ${hostDisplay}`);
         // Mount X11 socket and pass display
-        args.splice(1, 0, 
+        args.splice(1, 0,
           '-v', '/tmp/.X11-unix:/tmp/.X11-unix:rw',
           '-e', `HOST_DISPLAY=${hostDisplay}`
         );
@@ -134,6 +141,10 @@ class DockerConfig {
     let args = this.buildRunArgs(options);
     args = this.addGPUIfAvailable(args);
     args = this.addImageName(args);
+
+    // Debug: log the full command
+    console.log('🐳 Docker args:', args.join(' '));
+
     return args;
   }
 }
