@@ -509,7 +509,7 @@ class BotHandlersService {
         const logs = result.text;
 
         // Check if render completed - multiple possible completion messages
-        const isComplete = 
+        const isComplete =
           logs.includes('Recording complete!') ||
           logs.includes('🎉 Recording process complete') ||
           logs.includes('✅ Video encoding complete') ||
@@ -526,7 +526,7 @@ class BotHandlersService {
         }
 
         // Check for fatal errors
-        const hasFatalError = 
+        const hasFatalError =
           logs.includes('Recording failed:') ||
           logs.includes('fatal error:') ||
           logs.includes('Docker exited with code');
@@ -553,7 +553,7 @@ class BotHandlersService {
             const currentFrame = parseInt(match[1]);
             const totalFrames = parseInt(match[2]);
             const percent = Math.floor(parseFloat(match[3]));
-            
+
             // Report at 25%, 50%, 75% milestones
             if (percent >= lastReportedPercent + 25) {
               lastReportedPercent = Math.floor(percent / 25) * 25;
@@ -585,7 +585,7 @@ class BotHandlersService {
   async sendVideoToUser(chatId, outputId, userLang) {
     try {
       const videoUrl = this.api.getVideoUrl(outputId);
-      
+
       // First, try to download and send the video
       const axios = require('axios');
       const videoResponse = await axios.get(videoUrl, {
@@ -595,7 +595,7 @@ class BotHandlersService {
 
       const videoBuffer = Buffer.from(videoResponse.data);
       const fileSizeMB = (videoBuffer.length / 1024 / 1024).toFixed(2);
-      
+
       console.log(`[${outputId}] Video downloaded, size: ${fileSizeMB}MB`);
 
       // Check if video is too large for Telegram (50MB limit)
@@ -603,7 +603,7 @@ class BotHandlersService {
         const successMsg = userLang === 'ru'
           ? `✅ Видео готово! (${fileSizeMB}MB - слишком большое для Telegram)\n\n📥 Скачать: ${videoUrl}`
           : `✅ Video ready! (${fileSizeMB}MB - too large for Telegram)\n\n📥 Download: ${videoUrl}`;
-        
+
         await this.bot.sendMessage(chatId, successMsg, {
           reply_markup: {
             inline_keyboard: [[
@@ -616,9 +616,9 @@ class BotHandlersService {
         const successMsg = userLang === 'ru'
           ? `✅ Видео готово! (${fileSizeMB}MB)`
           : `✅ Video ready! (${fileSizeMB}MB)`;
-        
+
         await this.bot.sendMessage(chatId, successMsg);
-        
+
         await this.bot.sendVideo(chatId, videoBuffer, {
           caption: userLang === 'ru' ? '🎬 Ваш маршрут' : '🎬 Your route',
           filename: 'route-video.mp4'
@@ -636,13 +636,13 @@ class BotHandlersService {
 
     } catch (error) {
       console.error(`[${outputId}] Failed to send video:`, error.message);
-      
+
       // Fallback to URL
       const videoUrl = this.api.getVideoUrl(outputId);
       const errorMsg = userLang === 'ru'
         ? `✅ Видео готово!\n\n📥 Скачать: ${videoUrl}`
         : `✅ Video ready!\n\n📥 Download: ${videoUrl}`;
-      
+
       await this.bot.sendMessage(chatId, errorMsg, {
         reply_markup: {
           inline_keyboard: [[

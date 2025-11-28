@@ -58,7 +58,7 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   if (asyncMode) {
     // Clean up uploaded file immediately
     fs.unlinkSync(gpxFile.path);
-    
+
     // Respond immediately with accepted status
     res.json({
       success: true,
