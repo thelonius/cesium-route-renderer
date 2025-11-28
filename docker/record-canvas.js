@@ -526,6 +526,9 @@ async function recordRoute() {
   const totalFrames = Math.ceil(RECORD_DURATION * RECORD_FPS);
   let frameCount = 0;
 
+  console.log(`📊 Capture config: ${totalFrames} frames, ${RECORD_DURATION}s duration, ${RECORD_FPS} FPS`);
+  console.log(`📊 Frame interval: ${frameInterval.toFixed(2)}ms`);
+
   const startTime = Date.now();
 
   while (frameCount < totalFrames) {
@@ -543,10 +546,12 @@ async function recordRoute() {
       // This makes each captured frame correspond to a unique simulation time
       // and avoids duplicate images when the canvas isn't updating fast enough.
       const frameIndex = frameCount;
-      await page.evaluate((frameIndex, totalFrames) => {
+      const stepResult = await page.evaluate((frameIndex, totalFrames, logDetails) => {
         try {
           const viewer = window.Cesium && window.Cesium.Viewer && window.Cesium.Viewer.instances[0];
-          if (!viewer || !viewer.clock || !viewer.clock.startTime || !viewer.clock.stopTime) return;
+          if (!viewer || !viewer.clock || !viewer.clock.startTime || !viewer.clock.stopTime) {
+            return { error: 'No viewer/clock/times' };
+          }
 
           const start = viewer.clock.startTime;
           const stop = viewer.clock.stopTime;
@@ -554,10 +559,29 @@ async function recordRoute() {
           const tSec = (frameIndex / Math.max(1, totalFrames - 1)) * duration;
           const newTime = window.Cesium.JulianDate.addSeconds(start, tSec, new window.Cesium.JulianDate());
           viewer.clock.currentTime = newTime;
+          
+          if (logDetails) {
+            return {
+              frameIndex,
+              totalFrames,
+              simulationDuration: duration,
+              tSec,
+              startTime: window.Cesium.JulianDate.toIso8601(start),
+              stopTime: window.Cesium.JulianDate.toIso8601(stop),
+              newTime: window.Cesium.JulianDate.toIso8601(newTime),
+              secondsPerFrame: duration / totalFrames
+            };
+          }
+          return { ok: true };
         } catch (e) {
-          console.warn('Failed to set viewer.clock.currentTime for frame:', e && e.message);
+          return { error: e && e.message };
         }
-      }, frameIndex, totalFrames);
+      }, frameIndex, totalFrames, frameCount < 3 || frameCount % 100 === 0);
+      
+      // Log details for first few frames and every 100th frame
+      if (stepResult && (frameCount < 3 || frameCount % 100 === 0)) {
+        console.log(`📊 Frame ${frameCount} stepping:`, JSON.stringify(stepResult));
+      }
 
       // Force two RAFs to make sure the canvas has painted the new frame
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
