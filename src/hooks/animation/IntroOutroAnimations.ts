@@ -93,12 +93,12 @@ export function createIntroAnimation(options: IntroAnimationOptions): CameraAnim
 
 /**
  * Creates and starts the outro animation
- * Tilts camera to face straight down at final position
+ * Subtle camera settling motion at end of route
  */
 export function createOutroAnimation(options: OutroAnimationOptions): CameraAnimation {
   const { viewer, finalPosition, setAnimationPhase } = options;
 
-  console.log(`🎬 Starting ${ANIMATION.OUTRO_DURATION_SECONDS}s outro animation - tilting camera to face down`);
+  console.log(`🎬 Starting ${ANIMATION.OUTRO_DURATION_SECONDS}s outro animation - subtle settling motion`);
 
   // Capture current camera state
   const startPosition = Cesium.Cartesian3.clone(viewer.camera.position);
@@ -106,25 +106,44 @@ export function createOutroAnimation(options: OutroAnimationOptions): CameraAnim
   const startUp = Cesium.Cartesian3.clone(viewer.camera.up);
 
   // Calculate target direction (straight down at hiker)
-  const targetDirection = Cesium.Cartesian3.subtract(
+  const fullTargetDirection = Cesium.Cartesian3.subtract(
     finalPosition,
     startPosition,
     new Cesium.Cartesian3()
   );
+  Cesium.Cartesian3.normalize(fullTargetDirection, fullTargetDirection);
+
+  // Only move 15% towards the target for a subtle effect
+  const subtleAmount = 0.15;
+  const targetDirection = Cesium.Cartesian3.lerp(
+    startDirection,
+    fullTargetDirection,
+    subtleAmount,
+    new Cesium.Cartesian3()
+  );
   Cesium.Cartesian3.normalize(targetDirection, targetDirection);
+
+  // Subtle up vector adjustment
+  const targetUp = Cesium.Cartesian3.lerp(
+    startUp,
+    Cesium.Cartesian3.UNIT_Z,
+    subtleAmount,
+    new Cesium.Cartesian3()
+  );
+  Cesium.Cartesian3.normalize(targetUp, targetUp);
 
   const outroAnimation = new CameraAnimation(
     viewer,
     ANIMATION.OUTRO_DURATION_SECONDS,
     (progress) => {
-      // Ease-in cubic for settling motion (starts slow, accelerates)
-      const eased = Math.pow(progress, 3);
+      // Ease-out for smooth deceleration
+      const eased = 1 - Math.pow(1 - progress, 2);
 
       try {
-        // Keep camera position constant - just rotate
+        // Keep camera position constant - just subtle rotation
         viewer.camera.position = startPosition;
 
-        // Interpolate direction from current to straight down
+        // Interpolate direction with subtle movement
         const interpolatedDirection = Cesium.Cartesian3.lerp(
           startDirection,
           targetDirection,
@@ -134,10 +153,10 @@ export function createOutroAnimation(options: OutroAnimationOptions): CameraAnim
         Cesium.Cartesian3.normalize(interpolatedDirection, interpolatedDirection);
         viewer.camera.direction = interpolatedDirection;
 
-        // Interpolate up vector towards north (UNIT_Z)
+        // Interpolate up vector subtly
         const interpolatedUp = Cesium.Cartesian3.lerp(
           startUp,
-          Cesium.Cartesian3.UNIT_Z,
+          targetUp,
           eased,
           new Cesium.Cartesian3()
         );
@@ -149,16 +168,16 @@ export function createOutroAnimation(options: OutroAnimationOptions): CameraAnim
     },
     () => {
       // Outro complete callback
-      console.log('✅ Outro complete - camera facing down');
+      console.log('✅ Outro complete');
 
       // Transition to COMPLETE phase
       setAnimationPhase(AnimationPhase.COMPLETE);
 
-      // Set final camera state
+      // Set final camera state (subtle adjustment from start)
       try {
         viewer.camera.position = startPosition;
         viewer.camera.direction = targetDirection;
-        viewer.camera.up = Cesium.Cartesian3.UNIT_Z;
+        viewer.camera.up = targetUp;
         viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
       } catch (e) {
         console.warn('Failed to set final camera state:', e);
