@@ -457,12 +457,12 @@ async function recordRoute() {
       const targetVideoSeconds = parseInt(window.__RECORD_DURATION || '40');
       const totalFrames = targetVideoSeconds * fps;
       const secondsPerFrame = totalSeconds / totalFrames;
-      
+
       // Calculate the effective speed for logging
       const effectiveSpeed = Math.round(totalSeconds / targetVideoSeconds);
 
-      console.log('🎬 Animation setup: totalSeconds=' + totalSeconds.toFixed(0) + 
-                  ' targetVideoSeconds=' + targetVideoSeconds + 
+      console.log('🎬 Animation setup: totalSeconds=' + totalSeconds.toFixed(0) +
+                  ' targetVideoSeconds=' + targetVideoSeconds +
                   ' fps=' + fps +
                   ' totalFrames=' + totalFrames +
                   ' secondsPerFrame=' + secondsPerFrame.toFixed(2) +

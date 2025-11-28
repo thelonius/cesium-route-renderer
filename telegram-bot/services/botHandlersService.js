@@ -339,42 +339,55 @@ class BotHandlersService {
         await this.bot.sendMessage(chatId, analyticsMessage, { parse_mode: 'Markdown' });
       }
 
-      // Estimate render time
+      // Estimate render time - use actual target video duration from constants
       let animationSpeed = CONSTANTS.ANIMATION.DEFAULT_SPEED;
       let estimatedRenderMinutes = null;
       let estimatedSizeMB = null;
 
       if (analysis.success && analysis.statistics.duration) {
         const routeDurationMinutes = analysis.statistics.duration.minutes;
-        const requiredSpeed = Math.ceil(routeDurationMinutes / (CONSTANTS.RENDER.MAX_VIDEO_MINUTES - CONSTANTS.ANIMATION.ADAPTIVE_BUFFER_MINUTES));
+        const routeDurationSeconds = routeDurationMinutes * 60;
 
-        if (requiredSpeed > animationSpeed) {
-          animationSpeed = requiredSpeed;
-        }
+        // Use the same formula as the server's animationSpeedService
+        const targetVideoSeconds = CONSTANTS.RENDER.TARGET_VIDEO_SECONDS || 40;
+        const videoBufferSeconds = CONSTANTS.RENDER.VIDEO_BUFFER_SECONDS || 5;
+        const targetAnimationSeconds = targetVideoSeconds - videoBufferSeconds;
+
+        // Calculate speed the same way the server does
+        animationSpeed = Math.ceil(routeDurationSeconds / targetAnimationSeconds);
+        animationSpeed = Math.max(animationSpeed, CONSTANTS.ANIMATION.DEFAULT_SPEED);
 
         const estimation = renderingConfig.estimateRenderTime(routeDurationMinutes, animationSpeed);
         if (estimation) {
           estimatedRenderMinutes = estimation.totalMinutes;
           estimatedSizeMB = estimation.estimatedSizeMB;
 
-          const recordingMinutes = routeDurationMinutes / animationSpeed;
+          // Use actual target video duration, not the old formula
+          const videoLengthSeconds = targetVideoSeconds;
+          const totalFrames = Math.ceil(videoLengthSeconds * (CONSTANTS.RENDER.DEFAULT_FPS || 30));
+
           let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
           statusMsg += t(chatId, 'estimation.speed', { speed: animationSpeed }, userLang) + '\n';
-          statusMsg += t(chatId, 'estimation.videoLength', { length: recordingMinutes.toFixed(1) }, userLang) + '\n';
           statusMsg += userLang === 'ru'
-            ? `🎞️ Кадров: ${estimation.totalFrames}\n`
-            : `🎞️ Frames: ${estimation.totalFrames}\n`;
-          statusMsg += t(chatId, 'estimation.size', { size: estimatedSizeMB }, userLang) + '\n';
-          statusMsg += t(chatId, 'estimation.time', { time: estimatedRenderMinutes }, userLang) + '\n\n';
+            ? `📹 Видео: ~${videoLengthSeconds} сек\n`
+            : `📹 Video: ~${videoLengthSeconds} sec\n`;
+          statusMsg += userLang === 'ru'
+            ? `🎞️ Кадров: ${totalFrames}\n`
+            : `🎞️ Frames: ${totalFrames}\n`;
+          statusMsg += t(chatId, 'estimation.size', { size: Math.ceil(estimatedSizeMB || 2) }, userLang) + '\n';
+
+          // Better time estimate: ~0.5-1 second per frame in Docker
+          const estimatedSeconds = Math.ceil(totalFrames * 0.7);
+          const estimatedMins = Math.ceil(estimatedSeconds / 60);
+          statusMsg += userLang === 'ru'
+            ? `⏱️ Оценка: ~${estimatedMins} мин\n\n`
+            : `⏱️ Estimate: ~${estimatedMins} min\n\n`;
 
           if (estimatedSizeMB > CONSTANTS.TELEGRAM.MAX_FILE_SIZE_MB) {
             statusMsg += t(chatId, 'estimation.tooLarge', {}, userLang) + '\n\n';
           }
 
           statusMsg += t(chatId, 'estimation.starting', {}, userLang);
-          statusMsg += userLang === 'ru'
-            ? `\n💡 Оценка времени обновится по факту`
-            : `\n💡 Time estimate will update based on actual performance`;
           await this.bot.sendMessage(chatId, statusMsg);
         }
       }

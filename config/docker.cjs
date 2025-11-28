@@ -97,6 +97,18 @@ class DockerConfig {
       // Use nvidia-docker runtime with --gpus flag
       args.splice(1, 0, '--gpus', 'all');
       console.log('🚀 GPU acceleration enabled');
+      
+      // Add X11 display support for real GPU rendering (not SwiftShader)
+      // Check if HOST_DISPLAY is set (e.g., :1 for X server with NVIDIA)
+      const hostDisplay = process.env.HOST_DISPLAY;
+      if (hostDisplay) {
+        console.log(`🖥️  Using host X display: ${hostDisplay}`);
+        // Mount X11 socket and pass display
+        args.splice(1, 0, 
+          '-v', '/tmp/.X11-unix:/tmp/.X11-unix:rw',
+          '-e', `HOST_DISPLAY=${hostDisplay}`
+        );
+      }
     }
     return args;
   }

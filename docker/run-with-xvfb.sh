@@ -10,20 +10,37 @@ echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Starting Cesium canvas-based record
 
 # Check if GPU mode is enabled
 if [ "$USE_GPU" = "1" ] || [ "$USE_GPU" = "true" ]; then
-    echo "🖥️  GPU mode enabled - starting Xvfb virtual display..." | tee -a "$LOG_FILE"
+    # Check if host X display is available (NVIDIA GPU rendering)
+    if [ -n "$HOST_DISPLAY" ]; then
+        echo "🖥️  GPU mode - using host X display $HOST_DISPLAY with NVIDIA GPU..." | tee -a "$LOG_FILE"
+        export DISPLAY=$HOST_DISPLAY
 
-    # Start Xvfb with GPU-friendly settings
-    export DISPLAY=:99
-    Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
-    XVFB_PID=$!
-    sleep 2
-
-    # Verify Xvfb is running
-    if ! kill -0 $XVFB_PID 2>/dev/null; then
-        echo "❌ Xvfb failed to start" | tee -a "$LOG_FILE"
-        exit 1
+        # Verify X server is accessible
+        if ! xdpyinfo -display $HOST_DISPLAY >/dev/null 2>&1; then
+            echo "⚠️  Host X display not accessible, falling back to Xvfb..." | tee -a "$LOG_FILE"
+            HOST_DISPLAY=""
+        else
+            echo "✅ Connected to host X display $HOST_DISPLAY" | tee -a "$LOG_FILE"
+        fi
     fi
-    echo "✅ Xvfb started on display :99 (PID: $XVFB_PID)" | tee -a "$LOG_FILE"
+
+    # Fallback to Xvfb if no host display
+    if [ -z "$HOST_DISPLAY" ]; then
+        echo "🖥️  GPU mode enabled - starting Xvfb virtual display..." | tee -a "$LOG_FILE"
+
+        # Start Xvfb with GPU-friendly settings
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
+        XVFB_PID=$!
+        sleep 2
+
+        # Verify Xvfb is running
+        if ! kill -0 $XVFB_PID 2>/dev/null; then
+            echo "❌ Xvfb failed to start" | tee -a "$LOG_FILE"
+            exit 1
+        fi
+        echo "✅ Xvfb started on display :99 (PID: $XVFB_PID)" | tee -a "$LOG_FILE"
+    fi
 fi
 
 # Run the recorder
