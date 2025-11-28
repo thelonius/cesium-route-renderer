@@ -9,7 +9,11 @@ const BotHandlersService = require('./services/botHandlersService');
 // Configuration
 const CONSTANTS = require('../config/constants.cjs');
 
-const BOT_TOKEN = '8418496404:AAGLdVNW_Pla_u1bMVfFia-s9klwRsgYZhs';
+const BOT_TOKEN = process.env.BOT_TOKEN;
+if (!BOT_TOKEN) {
+  console.error('Missing BOT_TOKEN environment variable. Set BOT_TOKEN and restart the bot.');
+  process.exit(1);
+}
 const API_SERVER = process.env.API_SERVER || 'http://localhost:3000';
 const PUBLIC_URL = process.env.PUBLIC_URL || 'http://195.133.27.96:3000';
 
