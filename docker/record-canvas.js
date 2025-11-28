@@ -167,6 +167,25 @@ async function recordRoute() {
 
   const server = await startServer();
 
+  // Check if GPU is available (USE_GPU env or nvidia-smi available)
+  const useGPU = process.env.USE_GPU === '1' || process.env.USE_GPU === 'true';
+
+  const gpuArgs = useGPU ? [
+    '--enable-webgl',
+    '--use-gl=egl',
+    '--enable-gpu',
+    '--ignore-gpu-blacklist',
+    '--enable-features=VaapiVideoDecoder',
+    '--disable-software-rasterizer'
+  ] : [
+    '--enable-webgl',
+    '--use-gl=angle',
+    '--use-angle=swiftshader',
+    '--ignore-gpu-blacklist'
+  ];
+
+  console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (EGL)' : 'CPU (SwiftShader)'}`);
+
   const browser = await puppeteer.launch({
     headless: true,
     args: [
@@ -175,10 +194,7 @@ async function recordRoute() {
       '--disable-dev-shm-usage',
       '--disable-web-security',
       '--disable-features=IsolateOrigins,site-per-process',
-      '--enable-webgl',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
-      '--ignore-gpu-blacklist',
+      ...gpuArgs,
       '--disable-gpu-vsync',
       '--disable-frame-rate-limit',
       '--disable-background-timer-throttling',

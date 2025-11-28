@@ -49,7 +49,8 @@ class DockerConfig {
       '-e', `HEADLESS=1`,
       '-e', `RECORD_FPS=${recording.fps || CONSTANTS.RENDER.DEFAULT_FPS}`,
       '-e', `RECORD_WIDTH=${recording.width || CONSTANTS.RENDER.DEFAULT_WIDTH}`,
-      '-e', `RECORD_HEIGHT=${recording.height || CONSTANTS.RENDER.DEFAULT_HEIGHT}`
+      '-e', `RECORD_HEIGHT=${recording.height || CONSTANTS.RENDER.DEFAULT_HEIGHT}`,
+      '-e', `USE_GPU=${this.useGPU ? '1' : '0'}`
     ];
 
     // Add RECORD_DURATION if provided (ensures full route is recorded)
