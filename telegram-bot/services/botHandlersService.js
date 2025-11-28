@@ -342,12 +342,12 @@ class BotHandlersService {
 
       if (analysis.success && analysis.statistics.duration) {
         const routeDurationMinutes = analysis.statistics.duration.minutes;
-        
+
         // Platform-agnostic: all videos are 40 seconds
         const TARGET_VIDEO_SECONDS = 40;
         const OUTPUT_FPS = 24;
         const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * OUTPUT_FPS; // 960
-        
+
         // Animation speed is dynamically calculated to fit route into 40 seconds
         animationSpeed = Math.ceil((routeDurationMinutes * 60) / TARGET_VIDEO_SECONDS);
 
@@ -364,16 +364,12 @@ class BotHandlersService {
             ? `🎞️ Кадров: ${TOTAL_FRAMES}\n`
             : `🎞️ Frames: ${TOTAL_FRAMES}\n`;
           statusMsg += t(chatId, 'estimation.size', { size: estimatedSizeMB }, userLang) + '\n';
-          statusMsg += t(chatId, 'estimation.time', { time: estimatedRenderMinutes }, userLang) + '\n\n';
+          statusMsg += t(chatId, 'estimation.time', { time: estimatedRenderMinutes }, userLang);
 
           if (estimatedSizeMB > CONSTANTS.TELEGRAM.MAX_FILE_SIZE_MB) {
-            statusMsg += t(chatId, 'estimation.tooLarge', {}, userLang) + '\n\n';
+            statusMsg += '\n\n' + t(chatId, 'estimation.tooLarge', {}, userLang);
           }
 
-          statusMsg += t(chatId, 'estimation.starting', {}, userLang);
-          statusMsg += userLang === 'ru'
-            ? `\n💡 Оценка времени обновится по факту`
-            : `\n💡 Time estimate will update based on actual performance`;
           await this.bot.sendMessage(chatId, statusMsg);
         }
       }
@@ -396,17 +392,18 @@ class BotHandlersService {
         status: 'rendering'
       });
 
-      await this.bot.sendMessage(chatId,
-        t(chatId, 'processing.starting', { outputId }, userLang),
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [[
-              { text: t(chatId, 'buttons.viewLogs', {}, userLang), callback_data: `logs_${outputId}` }
-            ]]
-          }
+      // Simple start message without duplicate hints
+      const startMsg = userLang === 'ru'
+        ? `🚀 Рендер запущен! Прогресс будет отображаться по мере выполнения.`
+        : `🚀 Render started! Progress updates will be shown as it runs.`;
+      
+      await this.bot.sendMessage(chatId, startMsg, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: t(chatId, 'buttons.viewLogs', {}, userLang), callback_data: `logs_${outputId}` }
+          ]]
         }
-      );
+      });
 
       // Start progress monitoring
       this.startProgressMonitoring(chatId, outputId, userLang);
@@ -496,8 +493,9 @@ class BotHandlersService {
    */
   startProgressMonitoring(chatId, outputId, userLang) {
     let lastLogLength = 0;
-    let lastReportedPercent = 0;
+    let lastReportedPercent = -1; // Start at -1 to report first progress
     let checkCount = 0;
+    let hasReportedStart = false;
 
     const intervalId = setInterval(async () => {
       try {
@@ -557,12 +555,30 @@ class BotHandlersService {
             const totalFrames = parseInt(match[2]);
             const percent = Math.floor(parseFloat(match[3]));
 
-            // Report at 25%, 50%, 75% milestones
-            if (percent >= lastReportedPercent + 25) {
-              lastReportedPercent = Math.floor(percent / 25) * 25;
-              const progressMsg = userLang === 'ru'
-                ? `📹 Рендеринг: ${lastReportedPercent}% (${currentFrame}/${totalFrames} кадров)`
-                : `📹 Rendering: ${lastReportedPercent}% (${currentFrame}/${totalFrames} frames)`;
+            // Extract ETA if available
+            const etaMatch = logs.match(/ETA: (\d+)s/g);
+            let etaMinutes = null;
+            if (etaMatch && etaMatch.length > 0) {
+              const lastEta = etaMatch[etaMatch.length - 1];
+              const etaSeconds = parseInt(lastEta.match(/ETA: (\d+)s/)[1]);
+              etaMinutes = Math.ceil(etaSeconds / 60);
+            }
+
+            // Report first progress immediately, then at 10% intervals
+            if (!hasReportedStart || percent >= lastReportedPercent + 10) {
+              hasReportedStart = true;
+              lastReportedPercent = Math.floor(percent / 10) * 10;
+              
+              let progressMsg = userLang === 'ru'
+                ? `📹 Рендеринг: ${percent}% (${currentFrame}/${totalFrames} кадров)`
+                : `📹 Rendering: ${percent}% (${currentFrame}/${totalFrames} frames)`;
+              
+              if (etaMinutes) {
+                progressMsg += userLang === 'ru'
+                  ? ` | ⏱️ ~${etaMinutes} мин`
+                  : ` | ⏱️ ~${etaMinutes} min`;
+              }
+              
               await this.bot.sendMessage(chatId, progressMsg);
             }
           }
