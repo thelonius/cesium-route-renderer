@@ -68,8 +68,12 @@ function getRecordingDuration() {
   return 60;
 }
 
-const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = 24; // 24 FPS for better CPU performance
+// Platform-agnostic constant speed rendering
+// Video is always TARGET_VIDEO_SECONDS long, regardless of route duration or platform
+const TARGET_VIDEO_SECONDS = 40; // Fixed output video duration
+const RECORD_FPS = 24; // Output video FPS
+const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * RECORD_FPS; // 960 frames for 40s @ 24fps
+const RECORD_DURATION = TARGET_VIDEO_SECONDS; // For compatibility
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
 
@@ -413,18 +417,21 @@ async function recordRoute() {
         };
       }
 
-      // Get animation time bounds
+      // Get animation time bounds (route simulation time)
       const startTime = viewer.clock.startTime;
       const stopTime = viewer.clock.stopTime;
-      const totalSeconds = JulianDate.secondsDifference(stopTime, startTime);
+      const routeDurationSeconds = JulianDate.secondsDifference(stopTime, startTime);
 
-      // Calculate time step per frame
-      const secondsPerFrame = animSpeed / fps;
+      // Platform-agnostic: calculate simulation seconds per frame
+      // This maps the entire route duration to exactly TOTAL_FRAMES frames
+      const totalFrames = fps * 40; // TARGET_VIDEO_SECONDS = 40
+      const simulationSecondsPerFrame = routeDurationSeconds / (totalFrames - 1);
 
-      console.log('Animation setup (before capture start):', {
-        totalSeconds,
-        secondsPerFrame,
-        expectedFrames: Math.ceil(totalSeconds / secondsPerFrame)
+      console.log('Animation setup (platform-agnostic):', {
+        routeDurationSeconds,
+        targetVideoSeconds: 40,
+        totalFrames,
+        simulationSecondsPerFrame
       });
 
       // CRITICAL: Keep the clock paused! Don't let it run freely
@@ -434,11 +441,13 @@ async function recordRoute() {
       // Reset to start time
       viewer.clock.currentTime = JulianDate.clone(startTime);
 
-      // Store for step function
+      // Store for step function (platform-agnostic)
       window.__CESIUM_JD_CLASS = JulianDate;
-      window.__ANIM_SECONDS_PER_FRAME = secondsPerFrame;
+      window.__ANIM_SECONDS_PER_FRAME = simulationSecondsPerFrame;
       window.__ANIM_STOP_TIME = stopTime;
       window.__ANIM_START_TIME = startTime;
+      window.__ROUTE_DURATION = routeDurationSeconds;
+      window.__TOTAL_FRAMES = totalFrames;
 
       // Mark manual control as active
       window.__MANUAL_TIME_CONTROL = true;
@@ -475,9 +484,10 @@ async function recordRoute() {
 
       return {
         success: true,
-        totalSeconds,
-        secondsPerFrame,
-        expectedFrames: Math.ceil(totalSeconds / secondsPerFrame),
+        routeDurationSeconds,
+        simulationSecondsPerFrame,
+        totalFrames,
+        targetVideoSeconds: 40,
         startTime: JulianDate.toIso8601(startTime),
         stopTime: JulianDate.toIso8601(stopTime)
       };
@@ -490,8 +500,8 @@ async function recordRoute() {
     throw new Error('Failed to set up manual time control: ' + animationInfo.error);
   }
 
-  console.log(`📊 Animation: ${animationInfo.totalSeconds.toFixed(0)}s total, ${animationInfo.secondsPerFrame.toFixed(2)}s per frame`);
-  console.log(`📊 Expected frames: ${animationInfo.expectedFrames}`);
+  console.log(`📊 Route duration: ${animationInfo.routeDurationSeconds.toFixed(0)}s | Target video: ${animationInfo.targetVideoSeconds}s`);
+  console.log(`📊 Total frames: ${animationInfo.totalFrames} | Simulation step: ${animationInfo.simulationSecondsPerFrame.toFixed(2)}s/frame`);
   console.log(`📊 Time range: ${animationInfo.startTime} to ${animationInfo.stopTime}`);
 
   // NOW signal capture ready - but the animation won't run on its own because we set shouldAnimate=false
@@ -505,11 +515,12 @@ async function recordRoute() {
 
   console.log('✅ Starting canvas frame capture...');
   const frameInterval = 1000 / RECORD_FPS;
-  const totalFrames = Math.ceil(RECORD_DURATION * RECORD_FPS);
+  // Use total frames from animation info (platform-agnostic)
+  const totalFrames = animationInfo.totalFrames;
   let frameCount = 0;
 
-  console.log(`📊 Capture config: ${totalFrames} frames, ${RECORD_DURATION}s duration, ${RECORD_FPS} FPS`);
-  console.log(`📊 Frame interval: ${frameInterval.toFixed(2)}ms`);
+  console.log(`📊 Capture config: ${totalFrames} frames, target ${animationInfo.targetVideoSeconds}s video, ${RECORD_FPS} FPS`);
+  console.log(`📊 Frame interval: ${frameInterval.toFixed(2)}ms (output timing only)`);
 
   const startTime = Date.now();
 

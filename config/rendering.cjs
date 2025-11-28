@@ -92,28 +92,26 @@ class RenderingConfig {
   }
 
   /**
-   * Estimate render time based on route duration
-   * Based on actual measurements: ~6 seconds per frame at 24fps
-   * @param {number} routeDurationMinutes - Route duration in minutes
-   * @param {number} animationSpeed - Animation speed multiplier
+   * Estimate render time based on fixed video duration
+   * Platform-agnostic: all videos are 40 seconds at 24fps = 960 frames
+   * Based on actual measurements: ~6 seconds per frame on CPU
+   * @param {number} routeDurationMinutes - Route duration in minutes (for display only)
+   * @param {number} animationSpeed - Animation speed multiplier (ignored in new system)
    * @returns {Object} Estimation details
    */
   estimateRenderTime(routeDurationMinutes, animationSpeed) {
-    if (!routeDurationMinutes || !animationSpeed) {
-      return null;
-    }
+    // Platform-agnostic fixed values
+    const TARGET_VIDEO_SECONDS = 40;  // All videos are 40 seconds
+    const OUTPUT_FPS = 24;
+    const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * OUTPUT_FPS; // 960 frames
 
-    // Recording duration in seconds (video playback time)
-    const recordingSeconds = (routeDurationMinutes * 60 / animationSpeed) + this.videoBufferSeconds;
+    // Recording duration is now fixed
+    const recordingSeconds = TARGET_VIDEO_SECONDS;
     const recordingMinutes = recordingSeconds / 60;
-
-    // Total frames at configured FPS (24fps for Docker recording)
-    const DOCKER_FPS = 24;
-    const totalFrames = Math.ceil(recordingSeconds * DOCKER_FPS);
 
     // Based on actual measurements: ~6 seconds per frame capture (software rendering with SwiftShader)
     const SECONDS_PER_FRAME = 6;
-    const captureSeconds = totalFrames * SECONDS_PER_FRAME;
+    const captureSeconds = TOTAL_FRAMES * SECONDS_PER_FRAME;
     const captureMinutes = captureSeconds / 60;
 
     // Encoding is fast - about 10x real-time with libx264
@@ -132,7 +130,7 @@ class RenderingConfig {
       encodingMinutes: Math.ceil(encodingMinutes),
       recordingMinutes: recordingMinutes.toFixed(1),
       estimatedSizeMB,
-      totalFrames
+      totalFrames: TOTAL_FRAMES
     };
   }
 
