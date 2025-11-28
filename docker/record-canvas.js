@@ -231,39 +231,36 @@ async function recordRoute() {
   // Get rendering info from browser
   const renderInfo = await page.evaluate(() => {
     try {
+      // Use the global viewer reference set by useViewerInit.ts
+      const viewer = window.__CESIUM_VIEWER;
+      
       // Get map provider info
       let mapProvider = 'unknown';
-      if (window.Cesium && window.Cesium.Viewer) {
-        const viewer = window.Cesium.Viewer.instances[0];
-        if (viewer && viewer.imageryLayers) {
-          const layers = viewer.imageryLayers;
-          for (let i = 0; i < layers.length; i++) {
-            const layer = layers.get(i);
-            if (layer && layer.imageryProvider) {
-              const provider = layer.imageryProvider;
-              if (provider.constructor.name.includes('IonImageryProvider')) {
-                if (provider._assetId === 2) mapProvider = 'Bing Maps';
-                else if (provider._assetId === 3954) mapProvider = 'Sentinel-2';
-                else mapProvider = `Cesium Ion (${provider._assetId})`;
-              } else if (provider.constructor.name.includes('OpenStreetMap')) {
-                mapProvider = 'OpenStreetMap';
-              }
-              break;
+      if (viewer && viewer.imageryLayers) {
+        const layers = viewer.imageryLayers;
+        for (let i = 0; i < layers.length; i++) {
+          const layer = layers.get(i);
+          if (layer && layer.imageryProvider) {
+            const provider = layer.imageryProvider;
+            if (provider.constructor.name.includes('IonImageryProvider')) {
+              if (provider._assetId === 2) mapProvider = 'Bing Maps';
+              else if (provider._assetId === 3954) mapProvider = 'Sentinel-2';
+              else mapProvider = `Cesium Ion (${provider._assetId})`;
+            } else if (provider.constructor.name.includes('OpenStreetMap')) {
+              mapProvider = 'OpenStreetMap';
             }
+            break;
           }
         }
       }
 
       // Get terrain quality
       let terrainQuality = 'unknown';
-      if (window.Cesium && window.Cesium.Viewer) {
-        const viewer = window.Cesium.Viewer.instances[0];
-        if (viewer && viewer.scene && viewer.scene.globe) {
-          const errorValue = viewer.scene.globe.maximumScreenSpaceError;
-          if (errorValue !== undefined) {
-            const qualityLevel = getTerrainQualityLevel(errorValue);
-            terrainQuality = `${errorValue} (${qualityLevel})`;
-          }
+      if (viewer && viewer.scene && viewer.scene.globe) {
+        const errorValue = viewer.scene.globe.maximumScreenSpaceError;
+        if (errorValue !== undefined) {
+          const qualityLevel = getTerrainQualityLevel(errorValue);
+          terrainQuality = `${errorValue} (${qualityLevel})`;
         }
       }
 
@@ -358,7 +355,7 @@ async function recordRoute() {
       } : null,
       allCanvasCount: allCanvases.length,
       animationReady: window.CESIUM_ANIMATION_READY,
-      hasViewer: !!window.Cesium?.Viewer
+      hasViewer: !!window.__CESIUM_VIEWER
     };
   });
   console.log('DOM State:', JSON.stringify(domInfo, null, 2));
@@ -402,9 +399,10 @@ async function recordRoute() {
   // This pauses the free-running clock and lets us step time precisely
   console.log('🎬 Switching to manual time control for frame capture...');
   const animationInfo = await page.evaluate((fps, animSpeed) => {
-    const viewer = window.Cesium?.Viewer?.instances?.[0];
+    // Use the global viewer reference set by useViewerInit.ts
+    const viewer = window.__CESIUM_VIEWER;
     if (!viewer || !viewer.clock) {
-      return { success: false, error: 'No viewer/clock' };
+      return { success: false, error: 'No viewer/clock (window.__CESIUM_VIEWER not found)' };
     }
     
     // Get animation time bounds
