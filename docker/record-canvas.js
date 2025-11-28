@@ -396,7 +396,69 @@ async function recordRoute() {
   });
 
   // Give the animation a moment to process the signal and start
-  await page.waitForTimeout(100);
+  await page.waitForTimeout(500);
+
+  // Switch to manual time control for frame-accurate capture
+  // This pauses the free-running clock and lets us step time precisely
+  console.log('🎬 Switching to manual time control for frame capture...');
+  const animationInfo = await page.evaluate((fps, animSpeed) => {
+    const viewer = window.Cesium?.Viewer?.instances?.[0];
+    if (!viewer || !viewer.clock) {
+      return { success: false, error: 'No viewer/clock' };
+    }
+    
+    // Get animation time bounds
+    const startTime = viewer.clock.startTime;
+    const stopTime = viewer.clock.stopTime;
+    const totalSeconds = window.Cesium.JulianDate.secondsDifference(stopTime, startTime);
+    
+    // Calculate time step per frame at the animation speed
+    // At 446x speed and 24fps: each frame = 446/24 = ~18.58 seconds of simulation time
+    const secondsPerFrame = animSpeed / fps;
+    
+    // Pause the automatic clock - we'll step manually
+    viewer.clock.shouldAnimate = false;
+    
+    // Reset to start time
+    viewer.clock.currentTime = window.Cesium.JulianDate.clone(startTime);
+    
+    // Store step function globally
+    window.__stepAnimation = function() {
+      const current = viewer.clock.currentTime;
+      const newTime = window.Cesium.JulianDate.addSeconds(current, secondsPerFrame, new window.Cesium.JulianDate());
+      
+      // Check if we've reached the end
+      if (window.Cesium.JulianDate.compare(newTime, stopTime) >= 0) {
+        viewer.clock.currentTime = window.Cesium.JulianDate.clone(stopTime);
+        return { done: true };
+      }
+      
+      viewer.clock.currentTime = newTime;
+      
+      // Trigger a render
+      viewer.scene.requestRender();
+      
+      return { done: false };
+    };
+    
+    // Trigger initial render
+    viewer.scene.requestRender();
+    
+    return {
+      success: true,
+      totalSeconds,
+      secondsPerFrame,
+      startTime: window.Cesium.JulianDate.toIso8601(startTime),
+      stopTime: window.Cesium.JulianDate.toIso8601(stopTime)
+    };
+  }, RECORD_FPS, parseInt(process.env.ANIMATION_SPEED || '30'));
+  
+  if (!animationInfo.success) {
+    throw new Error('Failed to set up manual time control: ' + animationInfo.error);
+  }
+  
+  console.log(`📊 Animation: ${animationInfo.totalSeconds.toFixed(0)}s total, ${animationInfo.secondsPerFrame.toFixed(2)}s per frame`);
+  console.log(`📊 Time range: ${animationInfo.startTime} to ${animationInfo.stopTime}`);
 
   console.log('✅ Starting canvas frame capture...');
   const frameInterval = 1000 / RECORD_FPS;
@@ -409,8 +471,25 @@ async function recordRoute() {
     const frameStartTime = Date.now();
 
     try {
+      // Step animation time BEFORE capturing frame (except for first frame)
+      if (frameCount > 0) {
+        const stepResult = await page.evaluate(() => {
+          if (window.__stepAnimation) {
+            return window.__stepAnimation();
+          }
+          return { done: false };
+        });
+        
+        if (stepResult.done) {
+          console.log('✅ Animation reached end of route, stopping recording');
+          break;
+        }
+        
+        // Wait for render to complete
+        await page.waitForTimeout(50);
+      }
+
       // Check if animation is complete (outro finished) - but only after capturing at least some frames
-      // Increased threshold to 30 frames (about 1.25 seconds) to ensure animation has truly started
       if (frameCount > 30) {
         const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
         if (isComplete) {
@@ -425,14 +504,6 @@ async function recordRoute() {
           introComplete: window.CESIUM_INTRO_COMPLETE
         }));
         console.log('🔍 Flag state at frame 10:', JSON.stringify(flagState));
-      }
-
-      const targetTime = startTime + (frameCount * frameInterval);
-      const now = Date.now();
-
-      // Wait if we're ahead of schedule
-      if (now < targetTime) {
-        await new Promise(resolve => setTimeout(resolve, targetTime - now));
       }
 
       // Capture frame from canvas
