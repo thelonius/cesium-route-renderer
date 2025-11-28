@@ -29,12 +29,14 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const outputId = req.body.outputId || `route_${Date.now()}`;
   const userName = req.body.userName || 'Hiker'; // Get user's display name
   const outputDir = path.join(__dirname, '../output', outputId);
+  // Check if client wants async (fire-and-forget) mode
+  const asyncMode = req.body.async === 'true' || req.body.async === true || req.query.async === 'true';
 
   if (!gpxFile) {
     return res.status(400).json({ error: 'No GPX file provided' });
   }
 
-  console.log(`Starting render for output ID: ${outputId}, user: ${userName}`);
+  console.log(`Starting render for output ID: ${outputId}, user: ${userName}, async: ${asyncMode}`);
 
   // Create output directory
   fs.mkdirSync(outputDir, { recursive: true});
@@ -52,7 +54,49 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   const routePath = path.join(outputDir, routeFilename);
   fs.copyFileSync(gpxFile.path, routePath);
 
-  // Use render orchestrator service for complete render pipeline
+  // In async mode, respond immediately and start render in background
+  if (asyncMode) {
+    // Clean up uploaded file immediately
+    fs.unlinkSync(gpxFile.path);
+
+    // Respond immediately with accepted status
+    res.json({
+      success: true,
+      status: 'accepted',
+      outputId: outputId,
+      message: 'Render started in background',
+      statusUrl: `/status/${outputId}`,
+      logsUrl: `/logs/${outputId}`
+    });
+
+    // Start render in background (don't await)
+    renderOrchestratorService.startRender(
+      {
+        routeFilePath: routePath,
+        routeFilename: routeFilename,
+        outputDir: outputDir,
+        outputId: outputId,
+        userName: userName
+      },
+      {
+        onProgress: (progress) => {
+          console.log(`📊 [${outputId}] Progress: ${progress.progress}% - ${progress.message}`);
+        },
+        onComplete: (result) => {
+          console.log(`✅ [${outputId}] Render complete!`);
+        },
+        onError: (error) => {
+          console.error(`❌ [${outputId}] Render failed:`, error);
+        }
+      }
+    ).catch(err => {
+      console.error(`❌ [${outputId}] Unhandled render error:`, err);
+    });
+
+    return;
+  }
+
+  // Synchronous mode (original behavior) - wait for completion
   const renderResult = await renderOrchestratorService.startRender(
     {
       routeFilePath: routePath,

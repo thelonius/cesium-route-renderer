@@ -6,6 +6,9 @@ const { getUserLanguage, setUserLanguage, t, formatMessage } = require('../i18n'
 const CONSTANTS = require('../../config/constants.cjs');
 const renderingConfig = require('../../config/rendering.cjs');
 
+// Get version at startup
+const versionInfo = renderingConfig.getVersionInfo();
+
 /**
  * Bot Handlers Service
  *
@@ -47,6 +50,9 @@ class BotHandlersService {
     // /help
     this.bot.onText(/\/help/, (msg) => this.handleHelp(msg));
 
+    // /version
+    this.bot.onText(/\/version/, (msg) => this.handleVersion(msg));
+
     // /language
     this.bot.onText(/\/language/, (msg) => this.handleLanguage(msg));
 
@@ -83,7 +89,14 @@ class BotHandlersService {
   async handleStart(msg) {
     const chatId = msg.chat.id;
     const userLang = msg.from.language_code || 'en';
-    const message = formatMessage(chatId, 'welcome', {}, userLang);
+    let message = formatMessage(chatId, 'welcome', {}, userLang);
+
+    // Add version info
+    const versionLine = userLang === 'ru'
+      ? `\n\n📦 Версия: ${versionInfo.version} (${versionInfo.commit})`
+      : `\n\n📦 Version: ${versionInfo.version} (${versionInfo.commit})`;
+    message += versionLine;
+
     await this.bot.sendMessage(chatId, message);
   }
 
@@ -95,6 +108,34 @@ class BotHandlersService {
     const userLang = msg.from.language_code || 'en';
     const message = formatMessage(chatId, 'help', {}, userLang);
     await this.bot.sendMessage(chatId, message);
+  }
+
+  /**
+   * Handle /version command
+   */
+  async handleVersion(msg) {
+    const chatId = msg.chat.id;
+    const userLang = msg.from.language_code || 'en';
+
+    const message = userLang === 'ru'
+      ? `📦 **Cesium Route Renderer**\n\n` +
+        `🏷️ Версия: ${versionInfo.version}\n` +
+        `🔗 Коммит: ${versionInfo.commit}\n` +
+        `📅 Сборка: ${versionInfo.buildDate}\n\n` +
+        `⚙️ Конфигурация:\n` +
+        `• FPS: 24\n` +
+        `• Разрешение: 720×1280\n` +
+        `• Макс. скорость: ${CONSTANTS.ANIMATION.MAX_SPEED}x`
+      : `📦 **Cesium Route Renderer**\n\n` +
+        `🏷️ Version: ${versionInfo.version}\n` +
+        `🔗 Commit: ${versionInfo.commit}\n` +
+        `📅 Build: ${versionInfo.buildDate}\n\n` +
+        `⚙️ Configuration:\n` +
+        `• FPS: 24\n` +
+        `• Resolution: 720×1280\n` +
+        `• Max speed: ${CONSTANTS.ANIMATION.MAX_SPEED}x`;
+
+    await this.bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
   }
 
   /**
@@ -166,7 +207,10 @@ class BotHandlersService {
     const activeRender = this.state.getActiveRender(chatId);
 
     if (!activeRender) {
-      await this.bot.sendMessage(chatId, t(chatId, 'status.noActive', {}, userLang));
+      const noActiveMsg = userLang === 'ru'
+        ? `❌ Нет активных рендеров. Отправьте GPX файл!\n\n📦 v${versionInfo.version} (${versionInfo.commit})`
+        : `❌ No active renders. Send me a GPX file to start!\n\n📦 v${versionInfo.version} (${versionInfo.commit})`;
+      await this.bot.sendMessage(chatId, noActiveMsg);
       return;
     }
 
@@ -313,6 +357,9 @@ class BotHandlersService {
           let statusMsg = t(chatId, 'estimation.title', {}, userLang) + '\n\n';
           statusMsg += t(chatId, 'estimation.speed', { speed: animationSpeed }, userLang) + '\n';
           statusMsg += t(chatId, 'estimation.videoLength', { length: recordingMinutes.toFixed(1) }, userLang) + '\n';
+          statusMsg += userLang === 'ru'
+            ? `🎞️ Кадров: ${estimation.totalFrames}\n`
+            : `🎞️ Frames: ${estimation.totalFrames}\n`;
           statusMsg += t(chatId, 'estimation.size', { size: estimatedSizeMB }, userLang) + '\n';
           statusMsg += t(chatId, 'estimation.time', { time: estimatedRenderMinutes }, userLang) + '\n\n';
 
@@ -321,6 +368,9 @@ class BotHandlersService {
           }
 
           statusMsg += t(chatId, 'estimation.starting', {}, userLang);
+          statusMsg += userLang === 'ru'
+            ? `\n💡 Оценка времени обновится по факту`
+            : `\n💡 Time estimate will update based on actual performance`;
           await this.bot.sendMessage(chatId, statusMsg);
         }
       }
@@ -443,73 +493,166 @@ class BotHandlersService {
    */
   startProgressMonitoring(chatId, outputId, userLang) {
     let lastLogLength = 0;
-    let progressStage = 'starting';
+    let lastReportedPercent = 0;
+    let checkCount = 0;
 
     const intervalId = setInterval(async () => {
       try {
+        checkCount++;
         const result = await this.api.getLogsText(outputId);
 
         if (!result.success) {
+          console.log(`[${outputId}] Log check ${checkCount}: failed to get logs`);
           return;
         }
 
         const logs = result.text;
 
-        // Check if render completed
-        if (logs.includes('✅ Video file created successfully')) {
+        // Check if render completed - multiple possible completion messages
+        const isComplete =
+          logs.includes('Recording complete!') ||
+          logs.includes('🎉 Recording process complete') ||
+          logs.includes('✅ Video encoding complete') ||
+          logs.includes('Video saved to');
+
+        if (isComplete) {
+          console.log(`[${outputId}] Render complete detected!`);
           clearInterval(intervalId);
           this.progressIntervals.delete(outputId);
 
-          const videoUrl = this.api.getVideoUrl(outputId);
-          const successMsg = t(chatId, 'processing.complete', { url: videoUrl }, userLang);
+          // Try to send video file directly
+          await this.sendVideoToUser(chatId, outputId, userLang);
+          return;
+        }
 
-          await this.bot.sendMessage(chatId, successMsg, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [[
-                { text: t(chatId, 'buttons.download', {}, userLang), url: videoUrl }
-              ]]
+        // Check for fatal errors
+        const hasFatalError =
+          logs.includes('Recording failed:') ||
+          logs.includes('fatal error:') ||
+          logs.includes('Docker exited with code');
+
+        if (hasFatalError) {
+          console.log(`[${outputId}] Render failed detected!`);
+          clearInterval(intervalId);
+          this.progressIntervals.delete(outputId);
+
+          const errorMsg = userLang === 'ru'
+            ? `❌ Рендер не удался. Используйте /logs ${outputId} для деталей.`
+            : `❌ Render failed. Use /logs ${outputId} for details.`;
+          await this.bot.sendMessage(chatId, errorMsg);
+          this.state.clearActiveRender(chatId);
+          return;
+        }
+
+        // Parse and report frame progress
+        const frameMatch = logs.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)/g);
+        if (frameMatch && frameMatch.length > 0) {
+          const lastFrame = frameMatch[frameMatch.length - 1];
+          const match = lastFrame.match(/📹 Frame (\d+)\/(\d+) \((\d+\.?\d*)%\)/);
+          if (match) {
+            const currentFrame = parseInt(match[1]);
+            const totalFrames = parseInt(match[2]);
+            const percent = Math.floor(parseFloat(match[3]));
+
+            // Report at 25%, 50%, 75% milestones
+            if (percent >= lastReportedPercent + 25) {
+              lastReportedPercent = Math.floor(percent / 25) * 25;
+              const progressMsg = userLang === 'ru'
+                ? `📹 Рендеринг: ${lastReportedPercent}% (${currentFrame}/${totalFrames} кадров)`
+                : `📹 Rendering: ${lastReportedPercent}% (${currentFrame}/${totalFrames} frames)`;
+              await this.bot.sendMessage(chatId, progressMsg);
             }
-          });
-
-          // Add to history
-          await this.state.addToHistory(chatId, {
-            outputId,
-            fileName: this.state.getActiveRender(chatId)?.fileName || 'route',
-            videoUrl
-          });
-
-          this.state.clearActiveRender(chatId);
-          return;
-        }
-
-        // Check for errors
-        if (logs.includes('Error:') || logs.includes('failed')) {
-          clearInterval(intervalId);
-          this.progressIntervals.delete(outputId);
-
-          await this.bot.sendMessage(chatId, t(chatId, 'processing.failed', {}, userLang));
-          this.state.clearActiveRender(chatId);
-          return;
-        }
-
-        // Send progress updates
-        if (logs.length > lastLogLength + 500) {
-          lastLogLength = logs.length;
-
-          const statusMessage = this.extractProgressMessage(logs, progressStage, userLang, chatId);
-          if (statusMessage && statusMessage !== progressStage) {
-            progressStage = statusMessage;
-            await this.bot.sendMessage(chatId, statusMessage);
           }
         }
 
+        // Log periodic status
+        if (checkCount % 6 === 0) { // Every minute
+          console.log(`[${outputId}] Check ${checkCount}: logs length ${logs.length}, lastPercent ${lastReportedPercent}%`);
+        }
+
       } catch (error) {
-        console.error('Progress monitoring error:', error);
+        console.error(`[${outputId}] Progress monitoring error:`, error.message);
       }
     }, 10000); // Check every 10 seconds
 
     this.progressIntervals.set(outputId, intervalId);
+    console.log(`[${outputId}] Started progress monitoring`);
+  }
+
+  /**
+   * Send completed video to user
+   */
+  async sendVideoToUser(chatId, outputId, userLang) {
+    try {
+      const videoUrl = this.api.getVideoUrl(outputId);
+
+      // First, try to download and send the video
+      const axios = require('axios');
+      const videoResponse = await axios.get(videoUrl, {
+        responseType: 'arraybuffer',
+        timeout: 60000
+      });
+
+      const videoBuffer = Buffer.from(videoResponse.data);
+      const fileSizeMB = (videoBuffer.length / 1024 / 1024).toFixed(2);
+
+      console.log(`[${outputId}] Video downloaded, size: ${fileSizeMB}MB`);
+
+      // Check if video is too large for Telegram (50MB limit)
+      if (videoBuffer.length > 50 * 1024 * 1024) {
+        const successMsg = userLang === 'ru'
+          ? `✅ Видео готово! (${fileSizeMB}MB - слишком большое для Telegram)\n\n📥 Скачать: ${videoUrl}`
+          : `✅ Video ready! (${fileSizeMB}MB - too large for Telegram)\n\n📥 Download: ${videoUrl}`;
+
+        await this.bot.sendMessage(chatId, successMsg, {
+          reply_markup: {
+            inline_keyboard: [[
+              { text: userLang === 'ru' ? '📥 Скачать' : '📥 Download', url: videoUrl }
+            ]]
+          }
+        });
+      } else {
+        // Send video directly
+        const successMsg = userLang === 'ru'
+          ? `✅ Видео готово! (${fileSizeMB}MB)`
+          : `✅ Video ready! (${fileSizeMB}MB)`;
+
+        await this.bot.sendMessage(chatId, successMsg);
+
+        await this.bot.sendVideo(chatId, videoBuffer, {
+          caption: userLang === 'ru' ? '🎬 Ваш маршрут' : '🎬 Your route',
+          filename: 'route-video.mp4'
+        });
+      }
+
+      // Add to history
+      await this.state.addToHistory(chatId, {
+        outputId,
+        fileName: this.state.getActiveRender(chatId)?.fileName || 'route',
+        videoUrl
+      });
+
+      this.state.clearActiveRender(chatId);
+
+    } catch (error) {
+      console.error(`[${outputId}] Failed to send video:`, error.message);
+
+      // Fallback to URL
+      const videoUrl = this.api.getVideoUrl(outputId);
+      const errorMsg = userLang === 'ru'
+        ? `✅ Видео готово!\n\n📥 Скачать: ${videoUrl}`
+        : `✅ Video ready!\n\n📥 Download: ${videoUrl}`;
+
+      await this.bot.sendMessage(chatId, errorMsg, {
+        reply_markup: {
+          inline_keyboard: [[
+            { text: userLang === 'ru' ? '📥 Скачать' : '📥 Download', url: videoUrl }
+          ]]
+        }
+      });
+
+      this.state.clearActiveRender(chatId);
+    }
   }
 
   /**

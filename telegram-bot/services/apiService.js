@@ -20,7 +20,7 @@ class ApiService {
   }
 
   /**
-   * Submit a GPX/KML file for rendering
+   * Submit a GPX/KML file for rendering (async mode - returns immediately)
    *
    * @param {Buffer} fileBuffer - File data
    * @param {string} fileName - Original file name
@@ -37,6 +37,7 @@ class ApiService {
       contentType: fileName.endsWith('.kml') ? 'application/vnd.google-earth.kml+xml' : 'application/gpx+xml'
     });
     form.append('userName', userName);
+    form.append('async', 'true'); // Enable async mode - returns immediately
 
     if (outputId) {
       form.append('outputId', outputId);
@@ -45,7 +46,7 @@ class ApiService {
     try {
       const response = await axios.post(`${this.apiServer}/render-route`, form, {
         headers: form.getHeaders(),
-        timeout: this.timeout,
+        timeout: 30000, // 30 seconds is enough for async submission
         maxContentLength: Infinity,
         maxBodyLength: Infinity
       });

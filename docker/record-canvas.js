@@ -4,10 +4,9 @@ const http = require('http');
 const handler = require('serve-handler');
 const path = require('path');
 const fs = require('fs');
-const constants = require('./config/constants.cjs');
 
 const PORT = 8080;
-const OUTPUT_DIR = path.resolve('/app/output');
+const OUTPUT_DIR = path.resolve('/output');
 const LOG_PATH = path.join(OUTPUT_DIR, 'recorder.log');
 const ERROR_LOG_PATH = path.join(OUTPUT_DIR, 'recorder-error.log');
 const FRAMES_DIR = path.join(OUTPUT_DIR, 'frames');
@@ -26,18 +25,11 @@ function getGPXDuration() {
     const gpxFilename = process.env.GPX_FILENAME;
     if (!gpxFilename) return null;
 
-    // In Docker, GPX files are mounted at /app/public/
-    const gpxPath = path.join('/app', 'public', gpxFilename);
+    const gpxPath = path.join(__dirname, 'dist', gpxFilename);
     if (!fs.existsSync(gpxPath)) return null;
 
     const gpxContent = fs.readFileSync(gpxPath, 'utf8');
-
-    // Extract only the track segment to avoid metadata times
-    const trkMatch = gpxContent.match(/<trkseg>([\s\S]*)<\/trkseg>/);
-    if (!trkMatch) return null;
-
-    const trackSegment = trkMatch[1];
-    const timeMatches = trackSegment.match(/<time>([^<]+)<\/time>/g);
+    const timeMatches = gpxContent.match(/<time>([^<]+)<\/time>/g);
 
     if (timeMatches && timeMatches.length >= 2) {
       const firstTime = new Date(timeMatches[0].replace(/<\/?time>/g, ''));
@@ -51,7 +43,7 @@ function getGPXDuration() {
   return null;
 }
 
-// Calculate recording duration and animation speed
+// Calculate recording duration
 function getRecordingDuration() {
   if (process.env.RECORD_DURATION) {
     const duration = parseInt(process.env.RECORD_DURATION);
@@ -61,48 +53,13 @@ function getRecordingDuration() {
 
   const gpxDuration = getGPXDuration();
   if (gpxDuration) {
-    // Animation timing components (all configurable):
-    const SETTLE_TIME = parseInt(process.env.SETTLE_TIME || '5'); // Real-time seconds
-    const INTRO_TIME = parseInt(process.env.INTRO_TIME || '5'); // Real-time seconds for intro
-    const OUTRO_TIME = parseInt(process.env.OUTRO_TIME || '5'); // Real-time seconds for outro
-    const TARGET_ROUTE_TIME = parseInt(process.env.TARGET_ROUTE_TIME || '25'); // Target seconds for route
+    const speedMultiplier = parseInt(process.env.ANIMATION_SPEED || '25');
+    const playbackDuration = gpxDuration / speedMultiplier;
+    const totalDuration = Math.ceil(playbackDuration + 19);
 
-    // Calculate speed needed for route to fit target time
-    // Route animation speed: gpxDuration / TARGET_ROUTE_TIME
-    const calculatedRouteSpeed = Math.ceil(gpxDuration / TARGET_ROUTE_TIME);
-
-    // Allow manual override of route speed
-    const routeSpeed = process.env.ANIMATION_SPEED
-      ? parseInt(process.env.ANIMATION_SPEED)
-      : calculatedRouteSpeed;
-
-    global.calculatedAnimationSpeed = routeSpeed;
-
-    // Calculate actual durations
-    const actualRouteTime = gpxDuration / routeSpeed;
-    // Recording duration: we skip intro in recording, so just route + outro + small buffer
-    const totalDuration = Math.ceil(actualRouteTime + OUTRO_TIME + 10);
-
-    console.log(`\n=== Animation Parameters ===`);
-    console.log(`Route duration: ${(gpxDuration / 60).toFixed(1)} min (${(gpxDuration / 3600).toFixed(1)} hours)`);
-    console.log(`Route speed: ${routeSpeed}x ${process.env.ANIMATION_SPEED ? '(manual)' : '(auto-calculated)'}`);
-    console.log(`\nVideo timing breakdown:`);
-    console.log(`  Settle: ${SETTLE_TIME}s (not recorded - pre-animation)`);
-    console.log(`  Intro:  ${INTRO_TIME}s (not recorded - runs before capture starts)`);
-    console.log(`  Route:  ${actualRouteTime.toFixed(1)}s (RECORDED at ${routeSpeed}x speed)`);
-    console.log(`  Outro:  ${OUTRO_TIME}s (RECORDED at 1x speed)`);
-    console.log(`  Total Recording:  ${totalDuration}s (${(totalDuration / 60).toFixed(1)} min)`);
-    console.log(`\nTo customize, set:`);
-    console.log(`  Route:  ${actualRouteTime.toFixed(1)}s`);
-    console.log(`  Outro:  ${OUTRO_TIME}s`);
-    console.log(`  Total:  ${totalDuration}s (${(totalDuration / 60).toFixed(1)} min)`);
-    console.log(`\nTo customize, set:`);
-    console.log(`  SETTLE_TIME=${SETTLE_TIME} (globe loading, not recorded)`);
-    console.log(`  INTRO_TIME=${INTRO_TIME} (camera animation, not recorded)`);
-    console.log(`  TARGET_ROUTE_TIME=${TARGET_ROUTE_TIME} (desired route duration in video)`);
-    console.log(`  OUTRO_TIME=${OUTRO_TIME} (final view, recorded)`);
-    console.log(`  ANIMATION_SPEED=${routeSpeed} (or auto-calculate from TARGET_ROUTE_TIME)`);
-    console.log(`===========================\n`);
+    console.log(`Animation speed: ${speedMultiplier}x`);
+    console.log(`Calculated playback duration: ${(playbackDuration / 60).toFixed(1)} minutes`);
+    console.log(`Recording duration (with buffer): ${totalDuration} seconds`);
 
     return totalDuration;
   }
@@ -112,9 +69,9 @@ function getRecordingDuration() {
 }
 
 const RECORD_DURATION = getRecordingDuration();
-const RECORD_FPS = constants.RENDER.DEFAULT_FPS; // Use centralized config
-const RECORD_WIDTH = parseInt(process.env.RECORD_WIDTH || String(constants.RENDER.DEFAULT_WIDTH), 10);
-const RECORD_HEIGHT = parseInt(process.env.RECORD_HEIGHT || String(constants.RENDER.DEFAULT_HEIGHT), 10);
+const RECORD_FPS = 24; // 24 FPS for better CPU performance
+const RECORD_WIDTH = 720;
+const RECORD_HEIGHT = 1280;
 
 // Status tracking
 let statusInfo = {
@@ -125,10 +82,7 @@ let statusInfo = {
   avgFrameTime: 0,
   totalFrames: 0,
   startTime: null,
-  frameTimes: [],
-  routeDurationMinutes: 0,
-  videoDurationMinutes: 0,
-  animationSpeed: parseInt(process.env.ANIMATION_SPEED || '2')
+  frameTimes: []
 };
 
 // Convert terrain quality value to descriptive level
@@ -163,11 +117,7 @@ function displayStatusBar() {
   const avgFrameTime = statusInfo.frameTimes.length > 0 ?
     (statusInfo.frameTimes.reduce((a, b) => a + b, 0) / statusInfo.frameTimes.length).toFixed(2) : '0.00';
 
-  // Format durations
-  const routeDur = global.gpxDurationSeconds ? `${(global.gpxDurationSeconds / 60).toFixed(0)}m` : 'N/A';
-  const videoDur = global.videoDurationSeconds ? `${(global.videoDurationSeconds / 60).toFixed(1)}m` : 'N/A';
-
-  console.log(`📊 [v${statusInfo.buildVersion}] Speed:${statusInfo.animationSpeed}x | Route:${routeDur}→Video:${videoDur} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | FPS:${avgFps} | Frame:${avgFrameTime}ms`);
+  console.log(`📊 [${statusInfo.buildVersion}] FPS:${avgFps} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Frame:${avgFrameTime}ms | Elapsed:${elapsed}s`);
 }
 
 async function startServer() {
@@ -192,6 +142,28 @@ async function recordRoute() {
   // Initialize status tracking
   statusInfo.buildVersion = getBuildVersion();
   statusInfo.startTime = Date.now();
+
+  // Copy GPX file to dist directory so it can be served by the HTTP server
+  const gpxFilename = process.env.GPX_FILENAME;
+  if (!gpxFilename) {
+    throw new Error('GPX_FILENAME environment variable is required');
+  }
+
+  // Check if GPX is already in dist (mounted by API) or in /app (manual run)
+  const gpxDestPath = path.join(__dirname, 'dist', gpxFilename);
+  const gpxSourcePath = path.join(__dirname, gpxFilename);
+
+  if (!fs.existsSync(gpxDestPath)) {
+    // GPX not in dist, try to copy from /app
+    if (fs.existsSync(gpxSourcePath)) {
+      fs.copyFileSync(gpxSourcePath, gpxDestPath);
+      console.log(`Copied GPX file from ${gpxSourcePath} to ${gpxDestPath}`);
+    } else {
+      throw new Error(`GPX file not found at ${gpxSourcePath} or ${gpxDestPath}`);
+    }
+  } else {
+    console.log(`Using GPX file already at ${gpxDestPath}`);
+  }
 
   const server = await startServer();
 
@@ -222,18 +194,20 @@ async function recordRoute() {
   const page = await browser.newPage();
   await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 });
 
-  // Load the app
-  const gpxFilename = process.env.GPX_FILENAME;
-  if (!gpxFilename) {
-    throw new Error('GPX_FILENAME environment variable is required');
-  }
+  // Load the app (gpxFilename already set above)
   const userName = process.env.USER_NAME || 'Hiker';
-  // Use calculated speed from getRecordingDuration(), or fallback to env var or default
-  const animationSpeed = global.calculatedAnimationSpeed || process.env.ANIMATION_SPEED || '200';
-  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}&docker=true`;
+  const animationSpeed = process.env.ANIMATION_SPEED || '30';
+  const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   console.log(`Loading Cesium app: ${appUrl}`);
-  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 120000 });
+
+  // Set Docker mode flag BEFORE page loads so animation knows to wait for capture ready
+  await page.evaluateOnNewDocument(() => {
+    window.__DOCKER_MODE = true;
+    console.log('Docker mode detection:', { dockerMode: window.__DOCKER_MODE });
+  });
+
+  await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
   // Wait for Cesium to initialize
   console.log('Waiting for Cesium viewer to initialize...');
@@ -251,103 +225,42 @@ async function recordRoute() {
 
   // Wait for animation to be ready (signal from useCesiumAnimation.ts)
   console.log('Waiting for CESIUM_ANIMATION_READY signal...');
-  // Sometimes initialization is slow under Docker/SwiftShader. Retry waiting with a longer timeout.
-  const waitForAnimationReady = async () => {
-    // Staged checks with informative logs to help debug slow initialization under SwiftShader
-    console.log('Waiting for window.Cesium to be defined... (60s)');
-    try {
-      await page.waitForFunction(() => typeof window.Cesium !== 'undefined', { timeout: 60000 });
-      console.log('window.Cesium detected');
-    } catch (e) {
-      console.warn('window.Cesium not detected within 60s:', e && e.message);
-    }
-
-    console.log('Waiting for canvas element to appear... (30s)');
-    try {
-      await page.waitForFunction(() => !!document.querySelector('canvas'), { timeout: 30000 });
-      console.log('Canvas element detected');
-    } catch (e) {
-      console.warn('Canvas not present within 30s:', e && e.message);
-    }
-
-    console.log('Waiting for Viewer instance or CESIUM_ANIMATION_READY flag... (120s)');
-    try {
-      await page.waitForFunction(() => {
-        try {
-          if (window.CESIUM_ANIMATION_READY === true) return true;
-          if (window.Cesium && window.Cesium.Viewer && window.Cesium.Viewer.instances && window.Cesium.Viewer.instances[0]) {
-            const viewer = window.Cesium.Viewer.instances[0];
-            if (viewer && viewer.clock && viewer.clock.startTime) return true;
-          }
-          return false;
-        } catch (e) {
-          return false;
-        }
-      }, { timeout: 120000 });
-      console.log('✅ Animation ready (flag or viewer detected)');
-      return;
-    } catch (e) {
-      // Last-ditch: log viewer state for debugging and then rethrow
-      console.warn('Viewer/animation-ready check failed:', e && e.message);
-      try {
-        const debugState = await page.evaluate(() => {
-          try {
-            return {
-              cesiumDefined: typeof window.Cesium !== 'undefined',
-              viewerCount: window.Cesium && window.Cesium.Viewer && window.Cesium.Viewer.instances ? window.Cesium.Viewer.instances.length : 0,
-              hasCanvas: !!document.querySelector('canvas'),
-              cesiumAnimationReady: !!window.CESIUM_ANIMATION_READY
-            };
-          } catch (e) {
-            return { error: e && e.message };
-          }
-        });
-        console.log('Viewer debug state:', JSON.stringify(debugState));
-      } catch (ex) {
-        console.warn('Could not evaluate viewer debug state:', ex && ex.message);
-      }
-      throw e;
-    }
-  };
-
-  await waitForAnimationReady();
+  await page.waitForFunction(() => window.CESIUM_ANIMATION_READY === true, { timeout: 60000 });
+  console.log('✅ Animation ready!');
 
   // Get rendering info from browser
   const renderInfo = await page.evaluate(() => {
     try {
+      // Use the global viewer reference set by useViewerInit.ts
+      const viewer = window.__CESIUM_VIEWER;
+
       // Get map provider info
       let mapProvider = 'unknown';
-      if (window.Cesium && window.Cesium.Viewer) {
-        const viewer = window.Cesium.Viewer.instances[0];
-        if (viewer && viewer.imageryLayers) {
-          const layers = viewer.imageryLayers;
-          for (let i = 0; i < layers.length; i++) {
-            const layer = layers.get(i);
-            if (layer && layer.imageryProvider) {
-              const provider = layer.imageryProvider;
-              if (provider.constructor.name.includes('IonImageryProvider')) {
-                if (provider._assetId === 2) mapProvider = 'Bing Maps';
-                else if (provider._assetId === 3954) mapProvider = 'Sentinel-2';
-                else mapProvider = `Cesium Ion (${provider._assetId})`;
-              } else if (provider.constructor.name.includes('OpenStreetMap')) {
-                mapProvider = 'OpenStreetMap';
-              }
-              break;
+      if (viewer && viewer.imageryLayers) {
+        const layers = viewer.imageryLayers;
+        for (let i = 0; i < layers.length; i++) {
+          const layer = layers.get(i);
+          if (layer && layer.imageryProvider) {
+            const provider = layer.imageryProvider;
+            if (provider.constructor.name.includes('IonImageryProvider')) {
+              if (provider._assetId === 2) mapProvider = 'Bing Maps';
+              else if (provider._assetId === 3954) mapProvider = 'Sentinel-2';
+              else mapProvider = `Cesium Ion (${provider._assetId})`;
+            } else if (provider.constructor.name.includes('OpenStreetMap')) {
+              mapProvider = 'OpenStreetMap';
             }
+            break;
           }
         }
       }
 
       // Get terrain quality
       let terrainQuality = 'unknown';
-      if (window.Cesium && window.Cesium.Viewer) {
-        const viewer = window.Cesium.Viewer.instances[0];
-        if (viewer && viewer.scene && viewer.scene.globe) {
-          const errorValue = viewer.scene.globe.maximumScreenSpaceError;
-          if (errorValue !== undefined) {
-            const qualityLevel = getTerrainQualityLevel(errorValue);
-            terrainQuality = `${errorValue} (${qualityLevel})`;
-          }
+      if (viewer && viewer.scene && viewer.scene.globe) {
+        const errorValue = viewer.scene.globe.maximumScreenSpaceError;
+        if (errorValue !== undefined) {
+          const qualityLevel = getTerrainQualityLevel(errorValue);
+          terrainQuality = `${errorValue} (${qualityLevel})`;
         }
       }
 
@@ -364,21 +277,9 @@ async function recordRoute() {
   console.log(`🎨 Map Provider: ${statusInfo.mapProvider}`);
   console.log(`🏔️  Terrain Quality: ${statusInfo.terrainQuality}`);
 
-  // Wait for intro animation to complete (runs at 1x speed for 5 seconds)
-  // This prevents capturing blue screens and intro in the final video
-  console.log('Waiting for intro animation to complete (5 seconds)...');
-  await page.waitForTimeout(6000); // 5s intro + 1s buffer
-
-  // Reset clock to start of route for recording (intro used up simulation time)
-  await page.evaluate(() => {
-    if (window.Cesium && window.Cesium.Viewer && window.Cesium.Viewer.instances[0]) {
-      const viewer = window.Cesium.Viewer.instances[0];
-      if (viewer.clock && viewer.clock.startTime) {
-        viewer.clock.currentTime = window.Cesium.JulianDate.clone(viewer.clock.startTime);
-        console.log('Clock reset to start time for recording');
-      }
-    }
-  });
+  // Wait an additional 2 seconds for the first frame to render
+  console.log('Waiting for first frame to render...');
+  await page.waitForTimeout(2000);
 
   // Force a render cycle before capturing
   console.log('Forcing render cycle...');
@@ -393,7 +294,7 @@ async function recordRoute() {
     });
   });
 
-  console.log('Starting capture after intro...');
+  console.log('Starting capture...');
 
   // Inject canvas extraction function using toDataURL instead of toBlob
   // toDataURL works better with WebGL canvases even without preserveDrawingBuffer
@@ -454,7 +355,7 @@ async function recordRoute() {
       } : null,
       allCanvasCount: allCanvases.length,
       animationReady: window.CESIUM_ANIMATION_READY,
-      hasViewer: !!window.Cesium?.Viewer
+      hasViewer: !!window.__CESIUM_VIEWER
     };
   });
   console.log('DOM State:', JSON.stringify(domInfo, null, 2));
@@ -484,42 +385,123 @@ async function recordRoute() {
   }
   console.log('✅ Test capture successful!');
 
-  // Capture simulation metadata from the browser for debugging
-  console.log('Collecting simulation metadata from browser...');
-  try {
-    const simInfo = await page.evaluate(() => {
-      try {
-        const viewer = window.Cesium && window.Cesium.Viewer && window.Cesium.Viewer.instances[0];
-        if (!viewer || !viewer.clock) return { error: 'No viewer or clock found' };
+  // IMPORTANT: Set up manual time control BEFORE signaling capture ready
+  // This prevents the animation from running too fast and completing before we can capture
+  console.log('🎬 Setting up manual time control BEFORE animation starts...');
 
-        const start = viewer.clock.startTime ? window.Cesium.JulianDate.toIso8601(viewer.clock.startTime) : null;
-        const stop = viewer.clock.stopTime ? window.Cesium.JulianDate.toIso8601(viewer.clock.stopTime) : null;
-        const current = viewer.clock.currentTime ? window.Cesium.JulianDate.toIso8601(viewer.clock.currentTime) : null;
-        const multiplier = typeof viewer.clock.multiplier !== 'undefined' ? viewer.clock.multiplier : null;
-        const shouldAnimate = !!viewer.clock.shouldAnimate;
-        const duration = (start && stop) ? window.Cesium.JulianDate.secondsDifference(window.Cesium.JulianDate.fromIso8601(stop), window.Cesium.JulianDate.fromIso8601(start)) : null;
-
-        return { start, stop, current, multiplier, shouldAnimate, duration };
-      } catch (e) {
-        return { error: e && e.message };
-      }
-    });
-
+  const animationInfo = await page.evaluate((fps, animSpeed) => {
     try {
-      const metaPath = path.join(OUTPUT_DIR, 'recording-metadata.json');
-      fs.writeFileSync(metaPath, JSON.stringify(simInfo, null, 2));
-      console.log('✅ Wrote simulation metadata to', metaPath);
-    } catch (e) {
-      console.warn('Could not write simulation metadata file:', e && e.message);
-    }
+      const viewer = window.__CESIUM_VIEWER;
+      if (!viewer || !viewer.clock || !viewer.clock.startTime) {
+        return {
+          success: false,
+          error: 'Viewer/clock not ready: ' + JSON.stringify({
+            hasViewer: !!viewer,
+            hasClock: !!viewer?.clock,
+            hasStartTime: !!viewer?.clock?.startTime
+          })
+        };
+      }
 
-    console.log('Simulation metadata:', JSON.stringify(simInfo));
-    if (simInfo && simInfo.duration && simInfo.duration < 5) {
-      console.warn('⚠️ Simulation duration is very short (<5s). This may explain condensed animation in output.');
+      // Get JulianDate class from the clock's time objects
+      const JulianDate = viewer.clock.startTime.constructor;
+
+      if (!JulianDate || typeof JulianDate.secondsDifference !== 'function') {
+        return {
+          success: false,
+          error: 'JulianDate not available. Constructor name: ' + (viewer.clock.startTime.constructor?.name || 'unknown')
+        };
+      }
+
+      // Get animation time bounds
+      const startTime = viewer.clock.startTime;
+      const stopTime = viewer.clock.stopTime;
+      const totalSeconds = JulianDate.secondsDifference(stopTime, startTime);
+
+      // Calculate time step per frame
+      const secondsPerFrame = animSpeed / fps;
+
+      console.log('Animation setup (before capture start):', {
+        totalSeconds,
+        secondsPerFrame,
+        expectedFrames: Math.ceil(totalSeconds / secondsPerFrame)
+      });
+
+      // CRITICAL: Keep the clock paused! Don't let it run freely
+      viewer.clock.shouldAnimate = false;
+      viewer.clock.multiplier = 0; // Extra safety
+
+      // Reset to start time
+      viewer.clock.currentTime = JulianDate.clone(startTime);
+
+      // Store for step function
+      window.__CESIUM_JD_CLASS = JulianDate;
+      window.__ANIM_SECONDS_PER_FRAME = secondsPerFrame;
+      window.__ANIM_STOP_TIME = stopTime;
+      window.__ANIM_START_TIME = startTime;
+
+      // Mark manual control as active
+      window.__MANUAL_TIME_CONTROL = true;
+
+      // Create step function that will be called for each frame
+      window.__stepAnimation = function() {
+        const JD = window.__CESIUM_JD_CLASS;
+        const viewer = window.__CESIUM_VIEWER;
+        const secondsPerFrame = window.__ANIM_SECONDS_PER_FRAME;
+        const stopTime = window.__ANIM_STOP_TIME;
+
+        if (!viewer || !JD) {
+          return { done: true, error: 'Viewer or JD not available' };
+        }
+
+        const current = viewer.clock.currentTime;
+        const newTime = JD.addSeconds(current, secondsPerFrame, new JD());
+
+        // Check if we've reached the end
+        if (JD.compare(newTime, stopTime) >= 0) {
+          viewer.clock.currentTime = JD.clone(stopTime);
+          viewer.scene.requestRender();
+          return { done: true };
+        }
+
+        viewer.clock.currentTime = newTime;
+        viewer.scene.requestRender();
+
+        return { done: false };
+      };
+
+      // Trigger initial render at start position
+      viewer.scene.requestRender();
+
+      return {
+        success: true,
+        totalSeconds,
+        secondsPerFrame,
+        expectedFrames: Math.ceil(totalSeconds / secondsPerFrame),
+        startTime: JulianDate.toIso8601(startTime),
+        stopTime: JulianDate.toIso8601(stopTime)
+      };
+    } catch (err) {
+      return { success: false, error: 'Exception: ' + err.message + ' at ' + err.stack };
     }
-  } catch (e) {
-    console.warn('Failed to collect simulation metadata:', e && e.message);
+  }, RECORD_FPS, parseInt(process.env.ANIMATION_SPEED || '30'));
+
+  if (!animationInfo.success) {
+    throw new Error('Failed to set up manual time control: ' + animationInfo.error);
   }
+
+  console.log(`📊 Animation: ${animationInfo.totalSeconds.toFixed(0)}s total, ${animationInfo.secondsPerFrame.toFixed(2)}s per frame`);
+  console.log(`📊 Expected frames: ${animationInfo.expectedFrames}`);
+  console.log(`📊 Time range: ${animationInfo.startTime} to ${animationInfo.stopTime}`);
+
+  // NOW signal capture ready - but the animation won't run on its own because we set shouldAnimate=false
+  console.log('🎬 Signaling capture ready - manual time stepping will control animation');
+  await page.evaluate(() => {
+    window.CESIUM_CAPTURE_READY = true;
+  });
+
+  // Small wait to ensure the signal is processed
+  await page.waitForTimeout(100);
 
   console.log('✅ Starting canvas frame capture...');
   const frameInterval = 1000 / RECORD_FPS;
@@ -535,10 +517,22 @@ async function recordRoute() {
     const frameStartTime = Date.now();
 
     try {
-      // Check if animation is complete (outro finished) - but don't stop recording
-      const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
-      if (isComplete && frameCount === 1) {
-        console.log('ℹ️ Animation outro complete, but continuing recording for full duration');
+      // Step animation time BEFORE capturing frame (except for first frame)
+      if (frameCount > 0) {
+        const stepResult = await page.evaluate(() => {
+          if (window.__stepAnimation) {
+            return window.__stepAnimation();
+          }
+          return { done: false };
+        });
+
+        if (stepResult.done) {
+          console.log('✅ Animation reached end of route, stopping recording');
+          break;
+        }
+
+        // Wait for render to complete
+        await page.waitForTimeout(50);
       }
 
       // Instead of relying on Cesium's real-time clock multiplier we explicitly
@@ -586,35 +580,29 @@ async function recordRoute() {
       // Force two RAFs to make sure the canvas has painted the new frame
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
+      // Check if animation is complete (outro finished) - but only after capturing at least some frames
+      if (frameCount > 30) {
+        const isComplete = await page.evaluate(() => window.CESIUM_ANIMATION_COMPLETE === true);
+        if (isComplete) {
+          console.log('✅ Animation outro complete, stopping recording');
+          break;
+        }
+      } else if (frameCount === 10) {
+        // Log flag state at frame 10 for debugging
+        const flagState = await page.evaluate(() => ({
+          complete: window.CESIUM_ANIMATION_COMPLETE,
+          ready: window.CESIUM_ANIMATION_READY,
+          introComplete: window.CESIUM_INTRO_COMPLETE
+        }));
+        console.log('🔍 Flag state at frame 10:', JSON.stringify(flagState));
+      }
+
       // Capture frame from canvas
       const frameDataBase64 = await page.evaluate(() => window.captureFrame());
 
       if (frameDataBase64) {
         const framePath = path.join(FRAMES_DIR, `frame-${String(frameCount).padStart(6, '0')}.jpg`);
         fs.writeFileSync(framePath, Buffer.from(frameDataBase64, 'base64'));
-
-        // Log the simulation time for this frame for diagnostics
-        try {
-          const simTimeIso = await page.evaluate(() => {
-            try {
-              const viewer = window.Cesium && window.Cesium.Viewer && window.Cesium.Viewer.instances[0];
-              if (!viewer || !viewer.clock || !viewer.clock.currentTime) return null;
-              return window.Cesium.JulianDate.toIso8601(viewer.clock.currentTime);
-            } catch (e) {
-              return null;
-            }
-          });
-          if (simTimeIso) {
-            const csvPath = path.join(OUTPUT_DIR, 'frame-times.csv');
-            try {
-              fs.appendFileSync(csvPath, `${frameCount},${simTimeIso}\n`);
-            } catch (e) {
-              // best-effort
-            }
-          }
-        } catch (e) {
-          // ignore
-        }
 
         // Track frame timing
         const frameTime = Date.now() - frameStartTime;
@@ -680,7 +668,7 @@ async function recordRoute() {
     ffmpeg.on('close', (code) => {
       if (code === 0) {
         console.log('✅ Video encoding complete!');
-        console.log(`📦 Video saved to ${outputPath}`);
+        console.log('Recording complete! Video saved to', outputPath);
 
         // Cleanup frames
         try {
