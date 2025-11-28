@@ -221,8 +221,11 @@ export default function useCesiumAnimation({
 
         // 3. Reset Cesium clock
         resetClockTime(startTime);
-        viewer.clock.shouldAnimate = false; // Intro will start it        // 4. Reset multiplier
-        if (!(window as any).__MANUAL_MULTIPLIER) {
+        viewer.clock.shouldAnimate = false; // Intro will start it
+        // 4. Reset multiplier (keep at 0 if manual time control)
+        if ((window as any).__MANUAL_TIME_CONTROL) {
+          viewer.clock.multiplier = 0;
+        } else if (!(window as any).__MANUAL_MULTIPLIER) {
           viewer.clock.multiplier = animationSpeed;
         }
 
@@ -262,8 +265,10 @@ export default function useCesiumAnimation({
       viewer.clock.clockRange = Cesium.ClockRange.CLAMPED; // Stop at end, don't loop
       viewer.clock.clockStep = Cesium.ClockStep.TICK_DEPENDENT; // Advance by multiplier per frame
 
-      // Set animation speed (unless manually overridden)
-      if (!(window as any).__MANUAL_MULTIPLIER) {
+      // Set animation speed (keep at 0 if manual time control, otherwise set to animationSpeed)
+      if ((window as any).__MANUAL_TIME_CONTROL) {
+        viewer.clock.multiplier = 0;
+      } else if (!(window as any).__MANUAL_MULTIPLIER) {
         viewer.clock.multiplier = animationSpeed;
       }
 
@@ -870,7 +875,10 @@ export default function useCesiumAnimation({
         console.log('Starting animation with multiplier:', animationSpeed);
         viewer.clock.shouldAnimate = false; // Start paused, will be enabled after intro or immediately
 
-        if (!(window as any).__MANUAL_MULTIPLIER) {
+        // Keep multiplier at 0 if manual time control, otherwise set to animationSpeed
+        if ((window as any).__MANUAL_TIME_CONTROL) {
+          viewer.clock.multiplier = 0;
+        } else if (!(window as any).__MANUAL_MULTIPLIER) {
           viewer.clock.multiplier = animationSpeed;
         }
 
@@ -895,7 +903,10 @@ export default function useCesiumAnimation({
             cameraPanOffsetRef.current = Math.sin(cameraProgress * Math.PI * 2) * 200;
 
             // Keep clock at slow speed during intro for smooth camera movement
-            if (!(window as any).__MANUAL_MULTIPLIER) {
+            // (but keep at 0 if manual time control)
+            if ((window as any).__MANUAL_TIME_CONTROL) {
+              viewer.clock.multiplier = 0;
+            } else if (!(window as any).__MANUAL_MULTIPLIER) {
               viewer.clock.multiplier = 1; // Fixed 1x speed for intro
             }
 
@@ -915,7 +926,10 @@ export default function useCesiumAnimation({
               }
 
               // Phase 2: Set full route speed immediately (skip ramping for constant speed)
-              if (!(window as any).__MANUAL_MULTIPLIER) {
+              // (but keep at 0 if manual time control)
+              if ((window as any).__MANUAL_TIME_CONTROL) {
+                viewer.clock.multiplier = 0;
+              } else if (!(window as any).__MANUAL_MULTIPLIER) {
                 viewer.clock.multiplier = animationSpeed;
               }
               animationPhaseRef.current = AnimationPhase.PLAYING; // Intro complete
@@ -985,15 +999,17 @@ export default function useCesiumAnimation({
 
           // Start clock - wait for capture ready in Docker mode
           const startClock = () => {
-            if (!(window as any).__MANUAL_MULTIPLIER) {
-              viewer.clock.multiplier = animationSpeed;
-            }
             // Check if manual time control is active (set by recorder)
-            // If so, don't start the clock - the recorder will step it
+            // If so, don't start the clock and keep multiplier at 0 - the recorder will step it
             if ((window as any).__MANUAL_TIME_CONTROL) {
-              console.log('📹 Manual time control active - clock will be stepped by recorder');
+              viewer.clock.multiplier = 0;  // CRITICAL: Keep at 0 so Cesium doesn't auto-advance
+              viewer.clock.shouldAnimate = false;
+              console.log('📹 Manual time control active - clock multiplier=0, will be stepped by recorder');
               // Don't call startClock() - just mark as ready
             } else {
+              if (!(window as any).__MANUAL_MULTIPLIER) {
+                viewer.clock.multiplier = animationSpeed;
+              }
               viewer.clock.shouldAnimate = true;
               console.log('🎬 Clock started (skip-intro mode), animation running');
             }
@@ -1027,11 +1043,16 @@ export default function useCesiumAnimation({
         }
       }, ANIMATION.SETTLE_DURATION_SECONDS * 1000);
     } else {
-      // Fallback
+      // Fallback (but respect manual time control)
       setTimeout(() => {
         if (viewer && !viewer.isDestroyed() && viewer.clock) {
-          viewer.clock.shouldAnimate = true;
-          viewer.clock.multiplier = animationSpeed;
+          if ((window as any).__MANUAL_TIME_CONTROL) {
+            viewer.clock.shouldAnimate = false;
+            viewer.clock.multiplier = 0;
+          } else {
+            viewer.clock.shouldAnimate = true;
+            viewer.clock.multiplier = animationSpeed;
+          }
           (window as any).CESIUM_ANIMATION_READY = true;
         }
       }, 4000);
