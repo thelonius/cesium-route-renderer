@@ -2,74 +2,21 @@ import * as Cesium from 'cesium';
 import { useEffect, useRef, useState } from 'react';
 import { TrackPoint } from '../types';
 import { detectLoop, getLazyCameraTarget } from '../services/camera/utils/loopDetector';
+import { CameraAnimation } from './animation/CameraAnimation';
+import { getBuildVersion, displayStatusBar, getTerrainQualityLevel, resetClockTime, AnimationPhase } from './animation/helpers';
+import { computeCameraUpdate, applyCamera, CameraState, LoopInfo } from './animation/TrackCameraController';
+import { createIntroAnimation, createOutroAnimation, handleSkipOutro } from './animation/IntroOutroAnimations';
+import { updateTrail, detectTrailGap, findNearestSample, logNearestSampleDiagnostic, isDockerEnvironment, isTrailResetEnabled } from './animation/TrailManager';
+import { createHikerEntity, createTrailEntity, createFullRouteEntity, removeEntities, setInitialCameraPosition, getHikerDisplayName } from './animation/EntityFactory';
 
 // Import constants from central config
 import constants from '../../config/constants';
 import { getCameraValue } from '../services/camera/runtimeConstants';
 const { CAMERA, ANIMATION } = constants;
 
-// Animation lifecycle phases
-enum AnimationPhase {
-  NOT_STARTED = 'not_started',
-  INTRO = 'intro',           // 3s intro animation (optional)
-  PLAYING = 'playing',       // Main route animation
-  OUTRO = 'outro',           // 7s outro animation (optional)
-  COMPLETE = 'complete'      // Animation finished
-}
+// AnimationPhase imported from helpers
 
-// Reusable camera animation class using requestAnimationFrame
-class CameraAnimation {
-  private viewer: Cesium.Viewer;
-  private durationSeconds: number;
-  private onUpdate: (progress: number) => void;
-  private onComplete: () => void;
-  private startTime: number | null = null;
-  private frameId: number | null = null;
-
-  constructor(
-    viewer: Cesium.Viewer,
-    durationSeconds: number,
-    onUpdate: (progress: number) => void,
-    onComplete: () => void
-  ) {
-    this.viewer = viewer;
-    this.durationSeconds = durationSeconds;
-    this.onUpdate = onUpdate;
-    this.onComplete = onComplete;
-  }
-
-  start() {
-    this.startTime = performance.now();
-    this.animate();
-  }
-
-  stop() {
-    if (this.frameId !== null) {
-      cancelAnimationFrame(this.frameId);
-      this.frameId = null;
-    }
-  }
-
-  private animate = () => {
-    if (!this.viewer || this.viewer.isDestroyed()) {
-      this.stop();
-      return;
-    }
-
-    const now = performance.now();
-    const elapsed = (now - (this.startTime || now)) / 1000; // seconds
-    const progress = Math.min(elapsed / this.durationSeconds, 1);
-
-    this.onUpdate(progress);
-
-    if (progress >= 1) {
-      this.stop();
-      this.onComplete();
-    } else {
-      this.frameId = requestAnimationFrame(this.animate);
-    }
-  };
-}
+// CameraAnimation imported from animation/CameraAnimation
 
 // Status tracking for local development
 let statusInfo = {
@@ -84,34 +31,11 @@ let statusInfo = {
   frameTimes: [] as number[]
 };
 
-// Get build version
-function getBuildVersion() {
-  try {
-    // In development, return dev version
-    return 'dev';
-  } catch (err) {
-    return 'unknown';
-  }
-}
+// getBuildVersion imported from helpers
 
-// Display status bar in console
-function displayStatusBar() {
-  const averageFrameTime = statusInfo.frameTimes.length > 0
-    ? statusInfo.frameTimes.reduce((a, b) => a + b, 0) / statusInfo.frameTimes.length
-    : 0;
+// displayStatusBar imported from helpers
 
-  console.log(`📊 [${statusInfo.buildVersion}] FPS:${statusInfo.averageFps.toFixed(1)} | Map:${statusInfo.mapProvider} | Terrain:${statusInfo.terrainQuality} | Speed:${statusInfo.animationSpeed}x | Frame:${averageFrameTime.toFixed(2)}ms`);
-}
-
-// Convert terrain quality value to descriptive level
-function getTerrainQualityLevel(errorValue: number): string {
-  if (errorValue <= 1) return 'Ultra High';
-  if (errorValue <= 2) return 'High';
-  if (errorValue <= 4) return 'Medium';
-  if (errorValue <= 8) return 'Low';
-  if (errorValue <= 16) return 'Very Low';
-  return 'Minimal';
-}
+// getTerrainQualityLevel imported from helpers
 
 interface UseCesiumAnimationProps {
   viewer: Cesium.Viewer | null;
@@ -198,76 +122,49 @@ export default function useCesiumAnimation({
     trailPositionsRef.current = [];
     dlog('Animation state reset for new route');
 
-    // Intro animation function using CameraAnimation class
-    const startIntroAnimation = () => {
-      console.log(`🎬 Starting ${ANIMATION.INTRO_DURATION_SECONDS}s intro animation`);
-
-      const introAnimation = new CameraAnimation(
-        viewer,
-        ANIMATION.INTRO_DURATION_SECONDS,
-        (progress) => {
-          // Ease-out cubic for smooth deceleration
-          const eased = 1 - Math.pow(1 - progress, 3);
-
-          // Update camera progress refs
-          cameraAzimuthProgressRef.current = eased;
-          cameraTiltProgressRef.current = eased;
-        },
-        () => {
-          // Intro complete callback
-          console.log('✅ Intro complete - starting route animation');
-
-          // Mark ready and intro complete
-          try {
-            (window as any).CESIUM_INTRO_COMPLETE = true;
-            (window as any).CESIUM_ANIMATION_READY = true;
-          } catch (e) {}
-
-          // Transition to PLAYING phase
-          animationPhaseRef.current = AnimationPhase.PLAYING;
-          cameraAzimuthProgressRef.current = 1;
-          cameraTiltProgressRef.current = 1;
-
-          // Start the clock for route animation
-          if (!(window as any).__MANUAL_MULTIPLIER) {
-            viewer.clock.multiplier = animationSpeed;
-          }
-          viewer.clock.shouldAnimate = true;
-
-          // Start azimuth rotation
+    // Helper to start azimuth rotation interval
+    const startAzimuthRotation = () => {
+      if (azimuthRotationIntervalRef.current) {
+        clearInterval(azimuthRotationIntervalRef.current);
+      }
+      azimuthRotationIntervalRef.current = setInterval(() => {
+        const phase = animationPhaseRef.current;
+        if (!viewer || viewer.isDestroyed() || phase === AnimationPhase.OUTRO || phase === AnimationPhase.COMPLETE || !viewer.clock || !viewer.clock.shouldAnimate) {
           if (azimuthRotationIntervalRef.current) {
             clearInterval(azimuthRotationIntervalRef.current);
+            azimuthRotationIntervalRef.current = null;
           }
-          azimuthRotationIntervalRef.current = setInterval(() => {
-            const phase = animationPhaseRef.current;
-            if (!viewer || viewer.isDestroyed() || phase === AnimationPhase.OUTRO || phase === AnimationPhase.COMPLETE || !viewer.clock || !viewer.clock.shouldAnimate) {
-              if (azimuthRotationIntervalRef.current) {
-                clearInterval(azimuthRotationIntervalRef.current);
-                azimuthRotationIntervalRef.current = null;
-              }
-              return;
-            }
-            continuousAzimuthRef.current += 0.05;
-            if (continuousAzimuthRef.current >= 360) continuousAzimuthRef.current = 0;
-          }, 100);
+          return;
+        }
+        continuousAzimuthRef.current += 0.05;
+        if (continuousAzimuthRef.current >= 360) continuousAzimuthRef.current = 0;
+      }, 100);
 
-          // Monitor for route completion
+      // Monitor for route completion
+      if (checkCompletionIntervalRef.current) {
+        clearInterval(checkCompletionIntervalRef.current);
+      }
+      checkCompletionIntervalRef.current = setInterval(() => {
+        if (!viewer || viewer.isDestroyed() || !viewer.clock) {
           if (checkCompletionIntervalRef.current) {
             clearInterval(checkCompletionIntervalRef.current);
+            checkCompletionIntervalRef.current = null;
           }
-          checkCompletionIntervalRef.current = setInterval(() => {
-            if (!viewer || viewer.isDestroyed() || !viewer.clock) {
-              if (checkCompletionIntervalRef.current) {
-                clearInterval(checkCompletionIntervalRef.current);
-                checkCompletionIntervalRef.current = null;
-              }
-              return;
-            }
-          }, 100);
+          return;
         }
-      );
+      }, 100);
+    };
 
-      // Start the intro animation
+    // Intro animation function using extracted module
+    const startIntroAnimation = () => {
+      const introAnimation = createIntroAnimation({
+        viewer,
+        animationSpeed,
+        setAnimationPhase: (phase) => { animationPhaseRef.current = phase; },
+        setCameraAzimuthProgress: (value) => { cameraAzimuthProgressRef.current = value; },
+        setCameraTiltProgress: (value) => { cameraTiltProgressRef.current = value; },
+        startAzimuthRotation,
+      });
       introAnimation.start();
     };
 
@@ -476,36 +373,15 @@ export default function useCesiumAnimation({
       }
     }
 
-    // Create entity for the hiker
-    const hikerEntity = viewer.entities.add({
-      availability: new Cesium.TimeIntervalCollection([
-        new Cesium.TimeInterval({ start: startTime, stop: stopTime })
-      ]),
-      position: hikerPositions,
-      point: {
-        pixelSize: 12,
-        color: Cesium.Color.RED,
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2,
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
-        disableDepthTestDistance: Number.POSITIVE_INFINITY
-      },
-      label: {
-        text: (() => {
-          const userName = new URLSearchParams(window.location.search).get('userName') || 'Hiker';
-          // Easter egg for Mikael 🎉
-          if (userName.toLowerCase().includes('mikael') || userName.toLowerCase().includes('ayrapetyan')) {
-            return 'Микаэл, джан, дорогой!';
-          }
-          return userName;
-        })(),
-        font: '14pt sans-serif',
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        outlineWidth: 2,
-        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -20),
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-      }
+    // Get userName from URL params
+    const userName = new URLSearchParams(window.location.search).get('userName') || 'Hiker';
+
+    // Create entity for the hiker using EntityFactory
+    const hikerEntity = createHikerEntity(viewer, {
+      positionProperty: hikerPositions,
+      startTime,
+      stopTime,
+      userName,
     });
 
     setEntity(hikerEntity);
@@ -522,31 +398,12 @@ export default function useCesiumAnimation({
       })
       .filter(Boolean) as Cesium.Cartesian3[];
 
-    if (fullRoutePositions.length > 1) {
-      viewer.entities.add({
-        polyline: {
-          positions: fullRoutePositions,
-          width: 3,
-          material: new Cesium.PolylineOutlineMaterialProperty({
-            color: Cesium.Color.WHITE.withAlpha(0.5),
-            outlineWidth: 1,
-            outlineColor: Cesium.Color.BLUE.withAlpha(0.3)
-          }),
-          clampToGround: true
-        }
-      });
-    }
+    // Create full route entity using EntityFactory
+    createFullRouteEntity(viewer, { positions: fullRoutePositions });
 
-    // Create dynamic trail with reduced artifacts
-    const trailEntity = viewer.entities.add({
-      polyline: {
-        positions: new Cesium.CallbackProperty(() => trailPositionsRef.current, false),
-        width: 4, // Reduced from 5 to minimize rendering artifacts
-        material: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.9)), // Slight transparency to reduce artifacts
-        depthFailMaterial: new Cesium.ColorMaterialProperty(Cesium.Color.YELLOW.withAlpha(0.5)),
-        clampToGround: true,
-        show: true
-      }
+    // Create dynamic trail using EntityFactory
+    const trailEntity = createTrailEntity(viewer, {
+      getPositions: () => trailPositionsRef.current,
     });
     entitiesRef.current.trail = trailEntity;
 
@@ -618,7 +475,7 @@ export default function useCesiumAnimation({
         if (Cesium.JulianDate.compare(currentTime, lastAddedTimeRef.current) < 0) {
           // This behavior can be toggled at runtime. By default the reset is disabled
           // to keep the entire trail visible. To re-enable, set `window.__ENABLE_TRAIL_RESET = true` in the console.
-          if ((window as any).__ENABLE_TRAIL_RESET) {
+          if (isTrailResetEnabled()) {
             trailPositionsRef.current = [];
             lastAddedTimeRef.current = Cesium.JulianDate.clone(startTime);
             return;
@@ -634,59 +491,31 @@ export default function useCesiumAnimation({
         const dt = Cesium.JulianDate.secondsDifference(currentTime, lastAddedTimeRef.current);
         if (dt < CAMERA.TRAIL_ADD_INTERVAL_SECONDS && trailPositionsRef.current.length > 0) return;
 
-        // Check for large gaps or time jumps to prevent lines across the globe
+        // Check for large gaps or time jumps using TrailManager
         if (trailPositionsRef.current.length > 0) {
           const lastPosition = trailPositionsRef.current[trailPositionsRef.current.length - 1];
-          const distance = Cesium.Cartesian3.distance(lastPosition, currentPosition);
-          const GAP_THRESHOLD = 5000; // 5km - if points are farther apart, reset trail
+          const gapResult = detectTrailGap(currentPosition, lastPosition, dt, animationSpeed);
 
-          // Also check for large time jumps (seeking/pausing)
-          const timeJump = Math.abs(dt);
-          // Scale threshold based on animation speed to handle high-speed playback
-          const speedMultiplier = animationSpeed || 2;
-          const TIME_JUMP_THRESHOLD = Math.max(30, speedMultiplier / 2); // Adaptive threshold
-
-          if (distance > GAP_THRESHOLD || timeJump > TIME_JUMP_THRESHOLD) {
-            // Only log in non-Docker mode to avoid log spam during recording
-            const isDocker = new URLSearchParams(window.location.search).get('docker') === 'true';
+          if (gapResult.hasGap && gapResult.gapType) {
+            const isDocker = isDockerEnvironment();
             if (!isDocker) {
-              if (distance > GAP_THRESHOLD) {
-                try { console.log(`Large gap detected (${(distance/1000).toFixed(1)}km) at time ${Cesium.JulianDate.toIso8601(currentTime)}, resetting trail`); } catch (e) { console.log(`Large gap detected (${(distance/1000).toFixed(1)}km), resetting trail`); }
-              }
-              if (timeJump > TIME_JUMP_THRESHOLD) {
-                console.log(`Time jump detected (${timeJump.toFixed(1)}s), resetting trail`);
+              if (gapResult.gapType === 'distance') {
+                try { console.log(`Large gap detected (${(gapResult.value/1000).toFixed(1)}km) at time ${Cesium.JulianDate.toIso8601(currentTime)}, resetting trail`); } catch (e) { console.log(`Large gap detected (${(gapResult.value/1000).toFixed(1)}km), resetting trail`); }
+              } else {
+                console.log(`Time jump detected (${gapResult.value.toFixed(1)}s), resetting trail`);
               }
             }
 
-            // Extra diagnostics: determine nearest sample to currentTime and log its coords
-            try {
-              let nearestIdx = -1;
-              let nearestDiff = Number.POSITIVE_INFINITY;
-              for (let i = 0; i < filteredPoints.length; i++) {
-                try {
-                  const t = Cesium.JulianDate.fromIso8601(filteredPoints[i].time);
-                  const diff = Math.abs(Cesium.JulianDate.secondsDifference(t, currentTime));
-                  if (diff < nearestDiff) {
-                    nearestDiff = diff;
-                    nearestIdx = i;
-                  }
-                } catch (e) {}
-              }
-              if (nearestIdx >= 0) {
-                const np = filteredPoints[nearestIdx];
-                const npPos = Cesium.Cartesian3.fromDegrees(Number(np.lon), Number(np.lat), Number(np.ele) || 0);
-                const distToCurrent = Cesium.Cartesian3.distance(npPos, currentPosition);
-                console.log(`Nearest sample idx=${nearestIdx} time=${np.time} lat=${np.lat} lon=${np.lon} ele=${np.ele} (dt=${nearestDiff}s) distToCurrent=${(distToCurrent/1000).toFixed(3)}km`);
-              }
-            } catch (e) {
-              console.warn('Nearest-sample diagnostics failed:', e);
+            // Log nearest sample for debugging
+            const nearestSample = findNearestSample(filteredPoints, currentTime);
+            if (nearestSample.index >= 0) {
+              logNearestSampleDiagnostic(nearestSample, currentPosition);
             }
 
-            // Respect runtime flag before clearing the trail. Default is OFF to preserve history.
-            if ((window as any).__ENABLE_TRAIL_RESET) {
+            // Respect runtime flag before clearing the trail
+            if (isTrailResetEnabled()) {
               trailPositionsRef.current = [];
             } else {
-              // Keep trail; optionally you could start a new segment here instead
               console.log('Trail reset suppressed (window.__ENABLE_TRAIL_RESET is false)');
             }
           }
@@ -699,9 +528,6 @@ export default function useCesiumAnimation({
         }
 
         // Keep full trail visible - don't remove old points
-        // if (trailPositionsRef.current.length > MAX_TRAIL_POINTS) {
-        //   trailPositionsRef.current.shift();
-        // }
 
         lastAddedTimeRef.current = Cesium.JulianDate.clone(currentTime);
       } catch (err) {
@@ -766,94 +592,22 @@ export default function useCesiumAnimation({
             // Get final position
             const finalPosition = hikerEntity.position!.getValue(stopTime);
             if (finalPosition && animationPhaseRef.current === AnimationPhase.PLAYING) {
-              // Check if outro should be skipped (default: true)
-              const skipOutro = (window as any).__SKIP_OUTRO !== false;
+              // Check if outro should be skipped (default: false - outro enabled)
+              const skipOutro = (window as any).__SKIP_OUTRO === true;
 
               if (skipOutro) {
                 // Skip outro - transition directly to COMPLETE
-                animationPhaseRef.current = AnimationPhase.COMPLETE;
-                viewer.clock.shouldAnimate = false;
-                (window as any).CESIUM_ANIMATION_COMPLETE = true;
-                console.log('✅ Route ended - CESIUM_ANIMATION_COMPLETE flag set (outro skipped)');
-                displayStatusBar();
+                handleSkipOutro(viewer, (phase) => { animationPhaseRef.current = phase; });
               } else {
-                // Transition to OUTRO phase with CameraAnimation
+                // Transition to OUTRO phase using extracted module
                 animationPhaseRef.current = AnimationPhase.OUTRO;
                 viewer.clock.shouldAnimate = false;
-                console.log(`🎬 Starting ${ANIMATION.OUTRO_DURATION_SECONDS}s outro animation - tilting camera to face down`);
 
-                // Capture current camera state
-                const startPosition = Cesium.Cartesian3.clone(viewer.camera.position);
-                const startDirection = Cesium.Cartesian3.clone(viewer.camera.direction);
-                const startUp = Cesium.Cartesian3.clone(viewer.camera.up);
-
-                // Calculate target direction (straight down at hiker)
-                const targetDirection = Cesium.Cartesian3.subtract(
-                  finalPosition,
-                  startPosition,
-                  new Cesium.Cartesian3()
-                );
-                Cesium.Cartesian3.normalize(targetDirection, targetDirection);
-
-                const outroAnimation = new CameraAnimation(
+                const outroAnimation = createOutroAnimation({
                   viewer,
-                  ANIMATION.OUTRO_DURATION_SECONDS,
-                  (progress) => {
-                    // Ease-in cubic for settling motion (starts slow, accelerates)
-                    const eased = Math.pow(progress, 3);
-
-                    try {
-                      // Keep camera position constant - just rotate
-                      viewer.camera.position = startPosition;
-
-                      // Interpolate direction from current to straight down
-                      const interpolatedDirection = Cesium.Cartesian3.lerp(
-                        startDirection,
-                        targetDirection,
-                        eased,
-                        new Cesium.Cartesian3()
-                      );
-                      Cesium.Cartesian3.normalize(interpolatedDirection, interpolatedDirection);
-                      viewer.camera.direction = interpolatedDirection;
-
-                      // Interpolate up vector towards north (UNIT_Z)
-                      const interpolatedUp = Cesium.Cartesian3.lerp(
-                        startUp,
-                        Cesium.Cartesian3.UNIT_Z,
-                        eased,
-                        new Cesium.Cartesian3()
-                      );
-                      Cesium.Cartesian3.normalize(interpolatedUp, interpolatedUp);
-                      viewer.camera.up = interpolatedUp;
-                    } catch (e) {
-                      console.warn('Outro camera update failed:', e);
-                    }
-                  },
-                  () => {
-                    // Outro complete callback
-                    console.log('✅ Outro complete - camera facing down');
-
-                    // Transition to COMPLETE phase
-                    animationPhaseRef.current = AnimationPhase.COMPLETE;
-
-                    // Set final camera state
-                    try {
-                      viewer.camera.position = startPosition;
-                      viewer.camera.direction = targetDirection;
-                      viewer.camera.up = Cesium.Cartesian3.UNIT_Z;
-                      viewer.camera.lookAtTransform(Cesium.Matrix4.IDENTITY);
-                    } catch (e) {
-                      console.warn('Failed to set final camera state:', e);
-                    }
-
-                    viewer.clock.shouldAnimate = false;
-                    (window as any).CESIUM_ANIMATION_COMPLETE = true;
-                    console.log('✅ CESIUM_ANIMATION_COMPLETE flag set');
-                    displayStatusBar();
-                  }
-                );
-
-                // Start the outro animation
+                  finalPosition,
+                  setAnimationPhase: (phase) => { animationPhaseRef.current = phase; },
+                });
                 outroAnimation.start();
               }
             }
@@ -861,198 +615,48 @@ export default function useCesiumAnimation({
           return;
         }
 
-        const position = hikerEntity.position.getValue(currentTime);
-        if (!position || !position.x || !Cesium.Cartesian3.equals(position, position)) {
-          console.warn('Invalid hiker position at time:', currentTime);
-          return;
-        }
+        // Use TrackCameraController for camera updates
+        const loopInfo: LoopInfo = {
+          isLoop: isLoopRouteRef.current,
+          centroid: loopCentroidRef.current,
+          radius: loopRadiusRef.current,
+        };
 
-        // Apply smoothing to hiker position to reduce jittery small movements
-        const hikerSmoothAlpha = getCameraValue('HIKER_POSITION_SMOOTH_ALPHA', CAMERA.HIKER_POSITION_SMOOTH_ALPHA);
-        if (!smoothedHikerPositionRef.current) {
-          smoothedHikerPositionRef.current = Cesium.Cartesian3.clone(position);
-        } else {
-          // Lerp between current smoothed position and new raw position
-          smoothedHikerPositionRef.current = Cesium.Cartesian3.lerp(
-            smoothedHikerPositionRef.current,
-            position,
-            hikerSmoothAlpha,
-            smoothedHikerPositionRef.current
-          );
-        }
-        const smoothedHikerPos = smoothedHikerPositionRef.current;
+        const cameraState: CameraState = {
+          smoothedHikerPosition: smoothedHikerPositionRef.current,
+          smoothedCameraTarget: smoothedCameraTargetRef.current,
+          lookAheadTarget: lookAheadTargetRef.current,
+          currentRotationAngle: currentRotationAngleRef.current,
+          continuousAzimuth: continuousAzimuthRef.current,
+          cameraTiltProgress: cameraTiltProgressRef.current,
+        };
 
-        // Calculate route completion progress for progressive centering
-        const totalDuration = Cesium.JulianDate.secondsDifference(stopTime, startTime);
-        const elapsed = Cesium.JulianDate.secondsDifference(currentTime, startTime);
-        const routeProgress = Math.max(0, Math.min(1, elapsed / totalDuration));
+        const cameraResult = computeCameraUpdate({
+          viewer,
+          hikerEntity,
+          currentTime,
+          startTime,
+          stopTime,
+          loopInfo,
+          state: cameraState,
+        });
 
-        // Calculate look-ahead position (anticipate movement direction)
-        // Reduce look-ahead as route nears completion to center hiker perfectly
-        const baseLookAhead = isLoopRouteRef.current ? 15 : 10;
-        const lookAheadSeconds = baseLookAhead * (1 - routeProgress * 0.7); // Reduce to 30% by end
-        const lookAheadTime = Cesium.JulianDate.addSeconds(currentTime, lookAheadSeconds, new Cesium.JulianDate());
-        const lookAheadStopTime = viewer.clock.stopTime || stopTime;
-        const clampedLookAheadTime = Cesium.JulianDate.compare(lookAheadTime, lookAheadStopTime) > 0
-          ? lookAheadStopTime
-          : lookAheadTime;
+        if (cameraResult) {
+          applyCamera(viewer, cameraResult);
 
-        const lookAheadPosition = hikerEntity.position.getValue(clampedLookAheadTime) || position;
-
-        // Smooth the look-ahead target (camera anticipates but doesn't jump)
-        const smoothedLookAhead = getLazyCameraTarget(
-          lookAheadPosition,
-          lookAheadTargetRef.current,
-          40, // Moderate threshold for look-ahead
-          0.80 // Smooth look-ahead changes
-        );
-        lookAheadTargetRef.current = smoothedLookAhead;
-
-        // Camera position follows current position more closely
-        // For vertical/narrow screens: progressively tighten threshold as route nears end
-        const baseThreshold = isLoopRouteRef.current ? 15 : 25;
-        const lateralThreshold = baseThreshold * (1 - routeProgress * 0.6); // Tighten to 40% by end
-        const positionSmoothness = 0.70 + routeProgress * 0.15; // Increase to 0.85 by end
-
-        const smoothedPosition = getLazyCameraTarget(
-          smoothedHikerPos,
-          smoothedCameraTargetRef.current,
-          lateralThreshold,
-          positionSmoothness
-        );
-        smoothedCameraTargetRef.current = smoothedPosition;
-
-        // For loop routes: blend look-ahead direction with centroid orientation
-        let cameraLookAtTarget = smoothedLookAhead;
-
-        if (isLoopRouteRef.current && loopCentroidRef.current) {
-          // Progressive centering: start 30% centroid, end 100% hiker-focused
-          // For narrow vertical screens, this ensures hiker stays centered
-          const centroidWeight = 0.3 * (1 - routeProgress); // Fades to 0 by end
-          cameraLookAtTarget = Cesium.Cartesian3.lerp(
-            smoothedLookAhead,
-            loopCentroidRef.current,
-            centroidWeight,
-            new Cesium.Cartesian3()
-          );
-        }
-
-        const transform = Cesium.Transforms.eastNorthUpToFixedFrame(smoothedPosition);
-
-        // Calculate azimuth rotation based on hiker's movement direction
-        let azimuthRotation = 0;
-
-        if (isLoopRouteRef.current && loopCentroidRef.current) {
-          // Calculate angle from current position to centroid (outward direction)
-          const vectorFromCentroid = Cesium.Cartesian3.subtract(
-            smoothedPosition,
-            loopCentroidRef.current,
-            new Cesium.Cartesian3()
-          );
-
-          // Get angle in degrees (this is the outward radial direction)
-          const targetRotation = Math.atan2(vectorFromCentroid.y, vectorFromCentroid.x) * (180 / Math.PI);
-
-          // Apply heavy smoothing to rotation for very smooth, gradual changes
-          // This prevents sudden rotation speed changes
-          if (currentRotationAngleRef.current === undefined) {
-            currentRotationAngleRef.current = targetRotation;
-            const azimuthMult = getCameraValue('AZIMUTH_MULTIPLIER', CAMERA.AZIMUTH_MULTIPLIER || 1.0);
-            console.log('🔄 Initial rotation angle:', targetRotation.toFixed(1), '°, azimuth multiplier:', azimuthMult.toFixed(2));
+          // Update refs with new state
+          if (cameraResult.newState.smoothedHikerPosition) {
+            smoothedHikerPositionRef.current = cameraResult.newState.smoothedHikerPosition;
           }
-
-          // Handle angle wrapping (e.g., 359° to 1° should interpolate through 360°, not backwards)
-          let angleDiff = targetRotation - currentRotationAngleRef.current;
-          if (angleDiff > 180) angleDiff -= 360;
-          if (angleDiff < -180) angleDiff += 360;
-
-          // Moderate smoothing for visible smooth rotation; allow runtime tuning via runtime overrides
-          const azimuthSmoothing = getCameraValue('SMOOTH_ALPHA', CAMERA.SMOOTH_ALPHA || 0.15);
-          const azimuthMultiplier = getCameraValue('AZIMUTH_MULTIPLIER', CAMERA.AZIMUTH_MULTIPLIER || 1.0);
-          // Multiply angle difference by multiplier BEFORE applying smoothing
-          azimuthRotation = currentRotationAngleRef.current + (angleDiff * azimuthMultiplier) * azimuthSmoothing;
-          currentRotationAngleRef.current = azimuthRotation;
-
-          // Debug log every 60 frames with multiplier info
-          if (Math.random() < 0.016) {
-            console.log('🔄 Rotation:', azimuthRotation.toFixed(1), '° (target:', targetRotation.toFixed(1), '°, diff:', angleDiff.toFixed(1), '°, multiplier:', azimuthMultiplier.toFixed(2), ', smoothing:', azimuthSmoothing.toFixed(2), ')');
+          if (cameraResult.newState.smoothedCameraTarget) {
+            smoothedCameraTargetRef.current = cameraResult.newState.smoothedCameraTarget;
           }
-        } else {
-          // Debug: check if loop detection failed
-          if (Math.random() < 0.016) {
-            console.log('⚠️ Loop not detected - isLoop:', isLoopRouteRef.current, 'hasCentroid:', !!loopCentroidRef.current);
+          if (cameraResult.newState.lookAheadTarget) {
+            lookAheadTargetRef.current = cameraResult.newState.lookAheadTarget;
           }
-        }
-
-        // Calculate camera offset based on route type
-        let cameraOffsetDistance = CAMERA.BASE_BACK;
-        let cameraOffsetHeight = CAMERA.BASE_HEIGHT;
-
-        if (isLoopRouteRef.current && loopCentroidRef.current) {
-          // For loop routes: moderate distance to see loop while following hiker
-          cameraOffsetDistance = Math.min(loopRadiusRef.current * 1.5, CAMERA.BASE_BACK * 2);
-          // Use fixed high camera for mobile vertical screens - don't clamp by loop radius
-          cameraOffsetHeight = CAMERA.BASE_HEIGHT;
-        }
-
-        // Apply azimuth rotation to camera offset
-        // Include continuous slow azimuth as a fallback for non-loop routes
-        const combinedAzimuth = azimuthRotation + (continuousAzimuthRef.current || 0);
-        const baseAzimuthRadians = Cesium.Math.toRadians(combinedAzimuth);
-        const rotatedOffsetX = -cameraOffsetDistance * Math.cos(baseAzimuthRadians);
-        const rotatedOffsetY = -cameraOffsetDistance * Math.sin(baseAzimuthRadians);
-
-        // Debug: log rotation application
-        if (Math.random() < 0.016) {
-          console.log('📐 Combined azimuth:', combinedAzimuth.toFixed(1), '° → offset:',
-            rotatedOffsetX.toFixed(0), ',', rotatedOffsetY.toFixed(0));
-        }
-
-        // Use rotated camera position
-        const cameraOffsetLocal = new Cesium.Cartesian3(rotatedOffsetX, rotatedOffsetY, cameraOffsetHeight);
-        const cameraPosition = Cesium.Matrix4.multiplyByPoint(transform, cameraOffsetLocal, new Cesium.Cartesian3());
-
-        // Validate camera position
-        if (!cameraPosition || !Cesium.Cartesian3.equals(cameraPosition, cameraPosition)) {
-          console.warn('Invalid camera position calculated');
-          return;
-        }
-
-        try {
-          viewer.camera.position = cameraPosition;
-          if (position) {
-            // Use lookAt but with offset that respects the rotated camera position
-            // Get configurable look ratios
-            const lookX = getCameraValue('OFFSET_LOOKAT_X_RATIO', CAMERA.OFFSET_LOOKAT_X_RATIO || 0.8);
-            const lookZ = getCameraValue('OFFSET_LOOKAT_Z_RATIO', CAMERA.OFFSET_LOOKAT_Z_RATIO || 0.2);
-
-            // Calculate the target point
-            const lookAtTarget = cameraLookAtTarget;
-
-            // Interpolate camera offset based on tilt progress (0 = vertical, 1 = angled follow)
-            const tiltProgress = cameraTiltProgressRef.current;
-            const offsetDistance = cameraOffsetDistance;
-
-            // Start offset: vertical (0, 0, height) - looking straight down
-            const startOffsetX = 0;
-            const startOffsetY = 0;
-            const startOffsetZ = cameraOffsetHeight;
-
-            // End offset: angled follow with azimuth rotation
-            const endOffsetX = -offsetDistance * lookX * Math.cos(baseAzimuthRadians);
-            const endOffsetY = -offsetDistance * lookX * Math.sin(baseAzimuthRadians);
-            const endOffsetZ = cameraOffsetHeight * lookZ;
-
-            // Interpolate between start and end
-            const offsetX = startOffsetX + (endOffsetX - startOffsetX) * tiltProgress;
-            const offsetY = startOffsetY + (endOffsetY - startOffsetY) * tiltProgress;
-            const offsetZ = startOffsetZ + (endOffsetZ - startOffsetZ) * tiltProgress;
-
-            const lookAtOffset = new Cesium.Cartesian3(offsetX, offsetY, offsetZ);
-            viewer.camera.lookAt(lookAtTarget, lookAtOffset);
+          if (cameraResult.newState.currentRotationAngle !== undefined) {
+            currentRotationAngleRef.current = cameraResult.newState.currentRotationAngle;
           }
-        } catch (e) {
-          console.warn('Camera update failed:', e);
         }
 
         // Runtime diagnostic: log nearest sample and distance occasionally
@@ -1076,8 +680,12 @@ export default function useCesiumAnimation({
             if (nearestIdx >= 0) {
               const np = filteredPoints[nearestIdx];
               const npPos = Cesium.Cartesian3.fromDegrees(Number(np.lon), Number(np.lat), Number(np.ele) || 0);
-              const distToCurrent = Cesium.Cartesian3.distance(npPos, position);
-              console.log(`RT: current=${Cesium.JulianDate.toIso8601(currentTime)} idx=${nearestIdx} sampleTime=${np.time} lat=${np.lat} lon=${np.lon} ele=${np.ele} dt=${nearestDiff.toFixed(2)}s dist=${(distToCurrent/1000).toFixed(3)}km`);
+              // Get current hiker position for distance calculation
+              const hikerPos = hikerEntity.position.getValue(currentTime);
+              if (hikerPos) {
+                const distToCurrent = Cesium.Cartesian3.distance(npPos, hikerPos);
+                console.log(`RT: current=${Cesium.JulianDate.toIso8601(currentTime)} idx=${nearestIdx} sampleTime=${np.time} lat=${np.lat} lon=${np.lon} ele=${np.ele} dt=${nearestDiff.toFixed(2)}s dist=${(distToCurrent/1000).toFixed(3)}km`);
+              }
             }
           }
         } catch (e) {
