@@ -233,7 +233,7 @@ async function recordRoute() {
     try {
       // Use the global viewer reference set by useViewerInit.ts
       const viewer = window.__CESIUM_VIEWER;
-      
+
       // Get map provider info
       let mapProvider = 'unknown';
       if (viewer && viewer.imageryLayers) {
@@ -404,54 +404,54 @@ async function recordRoute() {
     if (!viewer || !viewer.clock) {
       return { success: false, error: 'No viewer/clock (window.__CESIUM_VIEWER not found)' };
     }
-    
+
     // Get Cesium from the global that the app exports (check multiple possible locations)
     const Cesium = window.Cesium || window.__CESIUM;
     if (!Cesium || !Cesium.JulianDate) {
       return { success: false, error: 'Cesium.JulianDate not found in window scope' };
     }
-    
+
     // Get animation time bounds
     const startTime = viewer.clock.startTime;
     const stopTime = viewer.clock.stopTime;
     const totalSeconds = Cesium.JulianDate.secondsDifference(stopTime, startTime);
-    
+
     // Calculate time step per frame at the animation speed
     // At 446x speed and 24fps: each frame = 446/24 = ~18.58 seconds of simulation time
     const secondsPerFrame = animSpeed / fps;
-    
+
     // Pause the automatic clock - we'll step manually
     viewer.clock.shouldAnimate = false;
-    
+
     // Reset to start time
     viewer.clock.currentTime = Cesium.JulianDate.clone(startTime);
-    
+
     // Store Cesium reference for step function
     window.__CESIUM = Cesium;
-    
+
     // Store step function globally
     window.__stepAnimation = function() {
       const C = window.__CESIUM;
       const current = viewer.clock.currentTime;
       const newTime = C.JulianDate.addSeconds(current, secondsPerFrame, new C.JulianDate());
-      
+
       // Check if we've reached the end
       if (C.JulianDate.compare(newTime, stopTime) >= 0) {
         viewer.clock.currentTime = C.JulianDate.clone(stopTime);
         return { done: true };
       }
-      
+
       viewer.clock.currentTime = newTime;
-      
+
       // Trigger a render
       viewer.scene.requestRender();
-      
+
       return { done: false };
     };
-    
+
     // Trigger initial render
     viewer.scene.requestRender();
-    
+
     return {
       success: true,
       totalSeconds,
@@ -460,11 +460,11 @@ async function recordRoute() {
       stopTime: Cesium.JulianDate.toIso8601(stopTime)
     };
   }, RECORD_FPS, parseInt(process.env.ANIMATION_SPEED || '30'));
-  
+
   if (!animationInfo.success) {
     throw new Error('Failed to set up manual time control: ' + animationInfo.error);
   }
-  
+
   console.log(`📊 Animation: ${animationInfo.totalSeconds.toFixed(0)}s total, ${animationInfo.secondsPerFrame.toFixed(2)}s per frame`);
   console.log(`📊 Time range: ${animationInfo.startTime} to ${animationInfo.stopTime}`);
 
@@ -487,12 +487,12 @@ async function recordRoute() {
           }
           return { done: false };
         });
-        
+
         if (stepResult.done) {
           console.log('✅ Animation reached end of route, stopping recording');
           break;
         }
-        
+
         // Wait for render to complete
         await page.waitForTimeout(50);
       }
