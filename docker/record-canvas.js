@@ -200,6 +200,13 @@ async function recordRoute() {
   const appUrl = `http://localhost:${PORT}/?gpx=${encodeURIComponent(gpxFilename)}&userName=${encodeURIComponent(userName)}&animationSpeed=${animationSpeed}`;
 
   console.log(`Loading Cesium app: ${appUrl}`);
+
+  // Set Docker mode flag BEFORE page loads so animation knows to wait for capture ready
+  await page.evaluateOnNewDocument(() => {
+    window.__DOCKER_MODE = true;
+    console.log('Docker mode detection:', { dockerMode: window.__DOCKER_MODE });
+  });
+
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
   // Wait for Cesium to initialize
