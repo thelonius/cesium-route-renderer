@@ -461,16 +461,13 @@ async function recordRoute() {
       // Calculate the effective speed for logging
       const effectiveSpeed = Math.round(totalSeconds / targetVideoSeconds);
 
-      console.log('Animation setup (before capture start):', {
-        totalSeconds,
-        targetVideoSeconds,
-        totalFrames,
-        secondsPerFrame,
-        effectiveSpeed: effectiveSpeed + 'x',
-        passedAnimSpeed: animSpeed + 'x (ignored - using calculated)'
-      });
-
-      // CRITICAL: Keep the clock paused! Don't let it run freely
+      console.log('🎬 Animation setup: totalSeconds=' + totalSeconds.toFixed(0) + 
+                  ' targetVideoSeconds=' + targetVideoSeconds + 
+                  ' fps=' + fps +
+                  ' totalFrames=' + totalFrames +
+                  ' secondsPerFrame=' + secondsPerFrame.toFixed(2) +
+                  ' effectiveSpeed=' + effectiveSpeed + 'x' +
+                  ' passedAnimSpeed=' + animSpeed + 'x');      // CRITICAL: Keep the clock paused! Don't let it run freely
       viewer.clock.shouldAnimate = false;
       viewer.clock.multiplier = 0; // Extra safety
 
