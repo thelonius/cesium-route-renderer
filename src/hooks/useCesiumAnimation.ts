@@ -241,6 +241,11 @@ export default function useCesiumAnimation({
     };
 
     const initializeAnimation = () => {
+      // Clear completion flags at the very start to prevent stale state
+      (window as any).CESIUM_ANIMATION_COMPLETE = false;
+      (window as any).CESIUM_INTRO_COMPLETE = false;
+      (window as any).CESIUM_ANIMATION_READY = false;
+
       // Initialize FPS tracking
       statusInfo.buildVersion = getBuildVersion();
       statusInfo.animationSpeed = animationSpeed;
