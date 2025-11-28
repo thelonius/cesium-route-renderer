@@ -70,9 +70,9 @@ function getRecordingDuration() {
 
 // Platform-agnostic constant speed rendering
 // Video is always TARGET_VIDEO_SECONDS long, regardless of route duration or platform
-const TARGET_VIDEO_SECONDS = 20; // Fixed output video duration
+const TARGET_VIDEO_SECONDS = 40; // Fixed output video duration
 const RECORD_FPS = 24; // Output video FPS
-const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * RECORD_FPS; // 480 frames for 20s @ 24fps
+const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * RECORD_FPS; // 960 frames for 40s @ 24fps
 const RECORD_DURATION = TARGET_VIDEO_SECONDS; // For compatibility
 const RECORD_WIDTH = 720;
 const RECORD_HEIGHT = 1280;
@@ -379,12 +379,12 @@ async function recordRoute() {
 
       // Platform-agnostic: calculate simulation seconds per frame
       // This maps the entire route duration to exactly TOTAL_FRAMES frames
-      const totalFrames = fps * 20; // TARGET_VIDEO_SECONDS = 20
+      const totalFrames = fps * 40; // TARGET_VIDEO_SECONDS = 40
       const simulationSecondsPerFrame = routeDurationSeconds / (totalFrames - 1);
 
       console.log('Animation setup (platform-agnostic):', {
         routeDurationSeconds,
-        targetVideoSeconds: 20,
+        targetVideoSeconds: 40,
         totalFrames,
         simulationSecondsPerFrame
       });

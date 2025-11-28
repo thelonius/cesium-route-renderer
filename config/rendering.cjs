@@ -93,7 +93,7 @@ class RenderingConfig {
 
   /**
    * Estimate render time based on fixed video duration
-   * Platform-agnostic: all videos are 20 seconds at 24fps = 480 frames
+   * Platform-agnostic: all videos are 40 seconds at 24fps = 960 frames
    * Based on actual measurements: ~2 seconds per frame with CDP on CPU
    * @param {number} routeDurationMinutes - Route duration in minutes (for display only)
    * @param {number} animationSpeed - Animation speed multiplier (ignored in new system)
@@ -101,7 +101,7 @@ class RenderingConfig {
    */
   estimateRenderTime(routeDurationMinutes, animationSpeed) {
     // Platform-agnostic fixed values
-    const TARGET_VIDEO_SECONDS = 20;  // All videos are 20 seconds
+    const TARGET_VIDEO_SECONDS = 40;  // All videos are 40 seconds
     const OUTPUT_FPS = 24;
     const TOTAL_FRAMES = TARGET_VIDEO_SECONDS * OUTPUT_FPS; // 960 frames
 
