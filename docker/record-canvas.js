@@ -169,9 +169,11 @@ async function recordRoute() {
 
   // Check if GPU is available (USE_GPU env or nvidia-smi available)
   const useGPU = process.env.USE_GPU === '1' || process.env.USE_GPU === 'true';
+  // Check if we have a real X display (for true GPU rendering)
+  const hasRealDisplay = process.env.DISPLAY && process.env.DISPLAY !== ':99';
 
-  // GPU args for headless Chrome with NVIDIA
-  // Note: headless=new is required for GPU in newer Chrome
+  // GPU args for Chrome with NVIDIA
+  // When using real X display (not Xvfb), we run non-headless to use actual GPU
   const gpuArgs = useGPU ? [
     '--enable-webgl',
     '--enable-webgl2',
@@ -189,11 +191,20 @@ async function recordRoute() {
     '--ignore-gpu-blocklist'
   ];
 
-  console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (headless=new + Xvfb)' : 'CPU (SwiftShader)'}`);
+  // Determine headless mode:
+  // - With real X display (GPU): use headless=false to leverage actual GPU
+  // - Without real display: use headless='new' (software rendering)
+  const headlessMode = (useGPU && hasRealDisplay) ? false : 'new';
+  const renderMode = useGPU 
+    ? (hasRealDisplay ? 'GPU (real X display)' : 'GPU (headless + Xvfb)') 
+    : 'CPU (SwiftShader)';
+  
+  console.log(`🖥️  Rendering mode: ${renderMode}`);
+  console.log(`   DISPLAY=${process.env.DISPLAY}, headless=${headlessMode}`);
 
   console.log('Launching browser...');
   const browser = await puppeteer.launch({
-    headless: 'new',  // Use new headless mode for both GPU and CPU
+    headless: headlessMode,
     timeout: 60000,  // 60 second launch timeout
     args: [
       '--no-sandbox',
