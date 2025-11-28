@@ -11,13 +11,13 @@ echo "[$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")] Starting Cesium canvas-based record
 # Check if GPU mode is enabled
 if [ "$USE_GPU" = "1" ] || [ "$USE_GPU" = "true" ]; then
     echo "🖥️  GPU mode enabled - starting Xvfb virtual display..." | tee -a "$LOG_FILE"
-    
+
     # Start Xvfb with GPU-friendly settings
     export DISPLAY=:99
     Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &
     XVFB_PID=$!
     sleep 2
-    
+
     # Verify Xvfb is running
     if ! kill -0 $XVFB_PID 2>/dev/null; then
         echo "❌ Xvfb failed to start" | tee -a "$LOG_FILE"

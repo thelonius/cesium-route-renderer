@@ -191,8 +191,10 @@ async function recordRoute() {
 
   console.log(`🖥️  Rendering mode: ${useGPU ? 'GPU (non-headless + Xvfb)' : 'CPU (SwiftShader)'}`);
 
+  console.log('Launching browser...');
   const browser = await puppeteer.launch({
     headless: useGPU ? false : true,  // Non-headless for GPU (runs on Xvfb)
+    timeout: 60000,  // 60 second launch timeout
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -211,8 +213,10 @@ async function recordRoute() {
     ],
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium'
   });
+  console.log('✅ Browser launched');
 
   const page = await browser.newPage();
+  console.log('✅ New page created');
   await page.setViewport({ width: RECORD_WIDTH, height: RECORD_HEIGHT, deviceScaleFactor: 1 });
 
   // Load the app (gpxFilename already set above)
