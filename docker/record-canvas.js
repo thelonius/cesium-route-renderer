@@ -402,14 +402,28 @@ async function recordRoute() {
     try {
       // Use the global viewer reference set by useViewerInit.ts
       const viewer = window.__CESIUM_VIEWER;
-      if (!viewer || !viewer.clock) {
-        return { success: false, error: 'No viewer/clock (window.__CESIUM_VIEWER not found)' };
+      if (!viewer) {
+        return { success: false, error: 'No viewer (window.__CESIUM_VIEWER not found)' };
       }
+      if (!viewer.clock) {
+        return { success: false, error: 'No clock on viewer' };
+      }
+      if (!viewer.clock.startTime) {
+        return { success: false, error: 'No startTime on clock' };
+      }
+      
+      // Debug: log what we have
+      console.log('Clock state:', {
+        hasStartTime: !!viewer.clock.startTime,
+        hasStopTime: !!viewer.clock.stopTime,
+        startTimeType: typeof viewer.clock.startTime,
+        startTimeConstructor: viewer.clock.startTime?.constructor?.name
+      });
 
       // Get JulianDate class from the clock's time objects (they are JulianDate instances)
       // This works regardless of whether Cesium is exposed globally
       const JulianDate = viewer.clock.startTime.constructor;
-      
+
       console.log('JulianDate from clock:', {
         name: JulianDate?.name,
         hasSecondsDifference: typeof JulianDate?.secondsDifference === 'function',
@@ -417,7 +431,7 @@ async function recordRoute() {
         hasClone: typeof JulianDate?.clone === 'function',
         hasCompare: typeof JulianDate?.compare === 'function'
       });
-      
+
       if (!JulianDate || typeof JulianDate.secondsDifference !== 'function') {
         return { success: false, error: 'Cannot get JulianDate from clock.startTime.constructor' };
       }
@@ -426,55 +440,55 @@ async function recordRoute() {
       const startTime = viewer.clock.startTime;
       const stopTime = viewer.clock.stopTime;
       const totalSeconds = JulianDate.secondsDifference(stopTime, startTime);
-      
+
       // Calculate time step per frame at the animation speed
       // At 446x speed and 24fps: each frame = 446/24 = ~18.58 seconds of simulation time
       const secondsPerFrame = animSpeed / fps;
-      
+
       console.log('Animation setup:', {
         totalSeconds,
         secondsPerFrame,
         expectedFrames: Math.ceil(totalSeconds / secondsPerFrame)
       });
-      
+
       // Pause the automatic clock - we'll step manually
       viewer.clock.shouldAnimate = false;
-      
+
       // Reset to start time
       viewer.clock.currentTime = JulianDate.clone(startTime);
-      
+
       // Store for step function
       window.__CESIUM_JD_CLASS = JulianDate;
       window.__ANIM_SECONDS_PER_FRAME = secondsPerFrame;
       window.__ANIM_STOP_TIME = stopTime;
-      
+
       // Store step function globally
       window.__stepAnimation = function() {
         const JD = window.__CESIUM_JD_CLASS;
         const viewer = window.__CESIUM_VIEWER;
         const secondsPerFrame = window.__ANIM_SECONDS_PER_FRAME;
         const stopTime = window.__ANIM_STOP_TIME;
-        
+
         const current = viewer.clock.currentTime;
         const newTime = JD.addSeconds(current, secondsPerFrame, new JD());
-        
+
         // Check if we've reached the end
         if (JD.compare(newTime, stopTime) >= 0) {
           viewer.clock.currentTime = JD.clone(stopTime);
           return { done: true };
         }
-        
+
         viewer.clock.currentTime = newTime;
-        
+
         // Trigger a render
         viewer.scene.requestRender();
-        
+
         return { done: false };
       };
-      
+
       // Trigger initial render
       viewer.scene.requestRender();
-      
+
       return {
         success: true,
         totalSeconds,
