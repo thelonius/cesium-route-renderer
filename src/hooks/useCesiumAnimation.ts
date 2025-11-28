@@ -978,8 +978,15 @@ export default function useCesiumAnimation({
             if (!(window as any).__MANUAL_MULTIPLIER) {
               viewer.clock.multiplier = animationSpeed;
             }
-            viewer.clock.shouldAnimate = true;
-            console.log('🎬 Clock started (skip-intro mode), animation running');
+            // Check if manual time control is active (set by recorder)
+            // If so, don't start the clock - the recorder will step it
+            if ((window as any).__MANUAL_TIME_CONTROL) {
+              console.log('📹 Manual time control active - clock will be stepped by recorder');
+              // Don't call startClock() - just mark as ready
+            } else {
+              viewer.clock.shouldAnimate = true;
+              console.log('🎬 Clock started (skip-intro mode), animation running');
+            }
           };
 
           if (isDockerMode) {

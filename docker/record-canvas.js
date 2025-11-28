@@ -388,13 +388,13 @@ async function recordRoute() {
   // IMPORTANT: Set up manual time control BEFORE signaling capture ready
   // This prevents the animation from running too fast and completing before we can capture
   console.log('🎬 Setting up manual time control BEFORE animation starts...');
-  
+
   const animationInfo = await page.evaluate((fps, animSpeed) => {
     try {
       const viewer = window.__CESIUM_VIEWER;
       if (!viewer || !viewer.clock || !viewer.clock.startTime) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: 'Viewer/clock not ready: ' + JSON.stringify({
             hasViewer: !!viewer,
             hasClock: !!viewer?.clock,
@@ -405,10 +405,10 @@ async function recordRoute() {
 
       // Get JulianDate class from the clock's time objects
       const JulianDate = viewer.clock.startTime.constructor;
-      
+
       if (!JulianDate || typeof JulianDate.secondsDifference !== 'function') {
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: 'JulianDate not available. Constructor name: ' + (viewer.clock.startTime.constructor?.name || 'unknown')
         };
       }
@@ -417,7 +417,7 @@ async function recordRoute() {
       const startTime = viewer.clock.startTime;
       const stopTime = viewer.clock.stopTime;
       const totalSeconds = JulianDate.secondsDifference(stopTime, startTime);
-      
+
       // Calculate time step per frame
       const secondsPerFrame = animSpeed / fps;
 
@@ -430,7 +430,7 @@ async function recordRoute() {
       // CRITICAL: Keep the clock paused! Don't let it run freely
       viewer.clock.shouldAnimate = false;
       viewer.clock.multiplier = 0; // Extra safety
-      
+
       // Reset to start time
       viewer.clock.currentTime = JulianDate.clone(startTime);
 
@@ -439,7 +439,7 @@ async function recordRoute() {
       window.__ANIM_SECONDS_PER_FRAME = secondsPerFrame;
       window.__ANIM_STOP_TIME = stopTime;
       window.__ANIM_START_TIME = startTime;
-      
+
       // Mark manual control as active
       window.__MANUAL_TIME_CONTROL = true;
 
