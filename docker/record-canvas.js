@@ -222,10 +222,17 @@ async function recordRoute() {
 
   console.log(`Loading Cesium app: ${appUrl}`);
 
-  // Set Docker mode flag BEFORE page loads so animation knows to wait for capture ready
+  // Set Docker mode flags BEFORE page loads
+  // Enable intro/outro animations for professional video output
   await page.evaluateOnNewDocument(() => {
     window.__DOCKER_MODE = true;
-    console.log('Docker mode detection:', { dockerMode: window.__DOCKER_MODE });
+    window.__SKIP_INTRO = false;  // Enable intro animation
+    window.__SKIP_OUTRO = false;  // Enable outro animation
+    console.log('Docker mode detection:', { 
+      dockerMode: window.__DOCKER_MODE,
+      skipIntro: window.__SKIP_INTRO,
+      skipOutro: window.__SKIP_OUTRO
+    });
   });
 
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
