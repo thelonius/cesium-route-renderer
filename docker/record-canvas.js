@@ -228,16 +228,18 @@ async function recordRoute() {
 
   // Set Docker mode flags BEFORE page loads
   // Enable intro/outro animations for professional video output
-  await page.evaluateOnNewDocument(() => {
+  await page.evaluateOnNewDocument((recordDuration) => {
     window.__DOCKER_MODE = true;
     window.__SKIP_INTRO = false;  // Enable intro animation
     window.__SKIP_OUTRO = false;  // Enable outro animation
+    window.__RECORD_DURATION = recordDuration;  // Pass recording duration
     console.log('Docker mode detection:', {
       dockerMode: window.__DOCKER_MODE,
       skipIntro: window.__SKIP_INTRO,
-      skipOutro: window.__SKIP_OUTRO
+      skipOutro: window.__SKIP_OUTRO,
+      recordDuration: window.__RECORD_DURATION
     });
-  });
+  }, RECORD_DURATION);
 
   await page.goto(appUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
@@ -450,13 +452,22 @@ async function recordRoute() {
       const stopTime = viewer.clock.stopTime;
       const totalSeconds = JulianDate.secondsDifference(stopTime, startTime);
 
-      // Calculate time step per frame
-      const secondsPerFrame = animSpeed / fps;
+      // Calculate time step per frame based on ACTUAL clock duration and target video frames
+      // This ensures the full route is covered regardless of what speed was passed
+      const targetVideoSeconds = parseInt(window.__RECORD_DURATION || '40');
+      const totalFrames = targetVideoSeconds * fps;
+      const secondsPerFrame = totalSeconds / totalFrames;
+      
+      // Calculate the effective speed for logging
+      const effectiveSpeed = Math.round(totalSeconds / targetVideoSeconds);
 
       console.log('Animation setup (before capture start):', {
         totalSeconds,
+        targetVideoSeconds,
+        totalFrames,
         secondsPerFrame,
-        expectedFrames: Math.ceil(totalSeconds / secondsPerFrame)
+        effectiveSpeed: effectiveSpeed + 'x',
+        passedAnimSpeed: animSpeed + 'x (ignored - using calculated)'
       });
 
       // CRITICAL: Keep the clock paused! Don't let it run freely
