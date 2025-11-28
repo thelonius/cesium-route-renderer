@@ -406,9 +406,75 @@ async function recordRoute() {
     }
 
     // Get Cesium from the global that the app exports (check multiple possible locations)
+    // Note: The viewer's clock times are already JulianDate instances, so we can access 
+    // the JulianDate class through their constructor
     const Cesium = window.Cesium || window.__CESIUM;
+    
+    // Debug: log what we found
+    console.log('Cesium check:', {
+      'window.Cesium': !!window.Cesium,
+      'window.__CESIUM': !!window.__CESIUM,
+      'Cesium': !!Cesium,
+      'Cesium?.JulianDate': !!(Cesium && Cesium.JulianDate)
+    });
+    
     if (!Cesium || !Cesium.JulianDate) {
-      return { success: false, error: 'Cesium.JulianDate not found in window scope' };
+      // Fallback: try to get JulianDate from the clock's time objects
+      const JulianDate = viewer.clock.startTime.constructor;
+      if (!JulianDate || !JulianDate.secondsDifference) {
+        return { success: false, error: 'Cesium.JulianDate not found and cannot get from clock' };
+      }
+      
+      // Build a minimal Cesium-like object with just what we need
+      const CesiumFallback = {
+        JulianDate: {
+          secondsDifference: JulianDate.secondsDifference.bind(JulianDate),
+          addSeconds: JulianDate.addSeconds.bind(JulianDate),
+          clone: JulianDate.clone.bind(JulianDate),
+          compare: JulianDate.compare.bind(JulianDate),
+          toIso8601: JulianDate.toIso8601.bind(JulianDate)
+        }
+      };
+      
+      // Use fallback for time calculations
+      const startTime = viewer.clock.startTime;
+      const stopTime = viewer.clock.stopTime;
+      const totalSeconds = CesiumFallback.JulianDate.secondsDifference(stopTime, startTime);
+      const secondsPerFrame = animSpeed / fps;
+      
+      viewer.clock.shouldAnimate = false;
+      viewer.clock.currentTime = CesiumFallback.JulianDate.clone(startTime);
+      
+      // Store for step function
+      window.__CESIUM_FALLBACK = CesiumFallback;
+      window.__CESIUM_JD_CLASS = JulianDate;
+      
+      window.__stepAnimation = function() {
+        const C = window.__CESIUM_FALLBACK;
+        const JD = window.__CESIUM_JD_CLASS;
+        const current = viewer.clock.currentTime;
+        const newTime = C.JulianDate.addSeconds(current, secondsPerFrame, new JD());
+        
+        if (C.JulianDate.compare(newTime, stopTime) >= 0) {
+          viewer.clock.currentTime = C.JulianDate.clone(stopTime);
+          return { done: true };
+        }
+        
+        viewer.clock.currentTime = newTime;
+        viewer.scene.requestRender();
+        return { done: false };
+      };
+      
+      viewer.scene.requestRender();
+      
+      return {
+        success: true,
+        totalSeconds,
+        secondsPerFrame,
+        startTime: CesiumFallback.JulianDate.toIso8601(startTime),
+        stopTime: CesiumFallback.JulianDate.toIso8601(stopTime),
+        usedFallback: true
+      };
     }
 
     // Get animation time bounds
