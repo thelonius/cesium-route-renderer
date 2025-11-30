@@ -39,3 +39,9 @@ output/
 !output/.gitkeep
 uploads/
 !uploads/.gitkeep
+
+# Telegram bot persistent data (preserve across deploys)
+telegram-bot/data/
+!telegram-bot/data/.gitkeep
+telegram-bot/.bot_token
+telegram-bot/temp/
