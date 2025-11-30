@@ -328,24 +328,37 @@ async function recordRoute() {
   });
   console.log('DOM State:', JSON.stringify(domInfo, null, 2));
 
-  // Test CDP screenshot capture (much faster than canvas.toDataURL)
-  console.log('Testing CDP screenshot capture...');
+  // Test screenshot capture - try page.screenshot first (more reliable), fall back to CDP if needed
+  console.log('Testing screenshot capture...');
+  let useCDP = false;
   try {
-    const testScreenshot = await Promise.race([
-      cdpSession.send('Page.captureScreenshot', {
-        format: 'jpeg',
-        quality: 85,
-        clip: { x: 0, y: 0, width: RECORD_WIDTH, height: RECORD_HEIGHT, scale: 1 }
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('CDP screenshot timeout (10s)')), 10000))
-    ]);
-    if (!testScreenshot.data) {
-      throw new Error('CDP screenshot returned empty');
+    // First try page.screenshot which is more reliable across Chrome versions
+    const testBuffer = await page.screenshot({ type: 'jpeg', quality: 85 });
+    if (!testBuffer || testBuffer.length < 1000) {
+      throw new Error('Screenshot returned empty or too small');
     }
-    console.log('✅ CDP screenshot test successful!');
+    console.log('✅ page.screenshot test successful! (' + testBuffer.length + ' bytes)');
+    
+    // Also try CDP to see if it's faster
+    try {
+      const cdpTest = await Promise.race([
+        cdpSession.send('Page.captureScreenshot', {
+          format: 'jpeg',
+          quality: 85,
+          clip: { x: 0, y: 0, width: RECORD_WIDTH, height: RECORD_HEIGHT, scale: 1 }
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('CDP timeout')), 5000))
+      ]);
+      if (cdpTest && cdpTest.data) {
+        console.log('✅ CDP screenshot also works - will use CDP for speed');
+        useCDP = true;
+      }
+    } catch (cdpErr) {
+      console.log('ℹ️  CDP not available, using page.screenshot (slower but reliable)');
+    }
   } catch (err) {
-    console.error('❌ CDP screenshot test failed:', err.message);
-    throw new Error('CDP screenshot not working: ' + err.message);
+    console.error('❌ Screenshot test failed:', err.message);
+    throw new Error('Screenshot capture not working: ' + err.message);
   }
 
   // IMPORTANT: Set up manual time control BEFORE signaling capture ready
@@ -551,31 +564,41 @@ async function recordRoute() {
         console.log('🔍 Flag state at frame 10:', JSON.stringify(flagState));
       }
 
-      // Capture frame using CDP (much faster than canvas.toDataURL)
+      // Capture frame - use CDP if available (faster), otherwise page.screenshot
       // Add timeout to prevent hanging
       let frameDataBase64;
       try {
-        const screenshotResult = await Promise.race([
-          cdpSession.send('Page.captureScreenshot', {
-            format: 'jpeg',
-            quality: 85,
-            clip: {
-              x: 0,
-              y: 0,
-              width: RECORD_WIDTH,
-              height: RECORD_HEIGHT,
-              scale: 1
-            }
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('CDP screenshot timeout')), 30000))
-        ]);
-        frameDataBase64 = screenshotResult.data;
-      } catch (cdpErr) {
-        console.error(`❌ CDP screenshot error at frame ${frameCount}:`, cdpErr.message);
+        if (useCDP) {
+          const screenshotResult = await Promise.race([
+            cdpSession.send('Page.captureScreenshot', {
+              format: 'jpeg',
+              quality: 85,
+              clip: {
+                x: 0,
+                y: 0,
+                width: RECORD_WIDTH,
+                height: RECORD_HEIGHT,
+                scale: 1
+              }
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('CDP screenshot timeout')), 30000))
+          ]);
+          frameDataBase64 = screenshotResult.data;
+        } else {
+          // Use page.screenshot directly (more reliable)
+          const buffer = await page.screenshot({ type: 'jpeg', quality: 85 });
+          frameDataBase64 = buffer.toString('base64');
+        }
+      } catch (captureErr) {
+        console.error(`❌ Screenshot error at frame ${frameCount}:`, captureErr.message);
         // Fallback to page.screenshot if CDP fails
-        console.log('Falling back to page.screenshot...');
-        const buffer = await page.screenshot({ type: 'jpeg', quality: 85 });
-        frameDataBase64 = buffer.toString('base64');
+        if (useCDP) {
+          console.log('Falling back to page.screenshot...');
+          const buffer = await page.screenshot({ type: 'jpeg', quality: 85 });
+          frameDataBase64 = buffer.toString('base64');
+        } else {
+          throw captureErr;
+        }
       }
 
       if (frameDataBase64) {
