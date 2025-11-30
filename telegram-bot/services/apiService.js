@@ -119,6 +119,36 @@ class ApiService {
   }
 
   /**
+   * Re-render from existing output (uses original file if still available)
+   *
+   * @param {string} oldOutputId - Original render output ID
+   * @param {string} userName - User name for the render
+   * @returns {Promise<Object>} Re-render result
+   */
+  async reRender(oldOutputId, userName) {
+    try {
+      const response = await axios.post(`${this.apiServer}/re-render/${oldOutputId}`, {
+        userName
+      }, {
+        timeout: 30000
+      });
+
+      return {
+        success: true,
+        outputId: response.data.outputId,
+        originalOutputId: oldOutputId
+      };
+    } catch (error) {
+      console.error(`Re-render failed for ${oldOutputId}:`, error.message);
+      return {
+        success: false,
+        error: error.response?.data?.error || error.message,
+        status: error.response?.status || null
+      };
+    }
+  }
+
+  /**
    * Get render logs (text format)
    *
    * @param {string} outputId - Render output ID

@@ -474,7 +474,45 @@ class BotHandlersService {
           await this.bot.sendMessage(chatId, userLang === 'ru'
             ? `🔄 Повторный рендер: ${route.fileName}`
             : `🔄 Re-rendering: ${route.fileName}`);
-          // TODO: Implement re-render logic
+
+          // Try to re-render using the API's re-render endpoint
+          try {
+            // Get user name from the query
+            const userName = query.from.first_name || query.from.username || 'Hiker';
+            const result = await this.api.reRender(route.outputId, userName);
+
+            if (result.success) {
+              const newOutputId = result.outputId;
+
+              // Track new render
+              this.state.setActiveRender(chatId, {
+                outputId: newOutputId,
+                fileName: route.fileName,
+                startTime: Date.now(),
+                status: 'rendering'
+              });
+
+              await this.bot.sendMessage(chatId, userLang === 'ru'
+                ? `🚀 Рендер запущен!`
+                : `🚀 Render started!`, {
+                reply_markup: {
+                  inline_keyboard: [[
+                    { text: userLang === 'ru' ? '📋 Логи' : '📋 View Logs', callback_data: `logs_${newOutputId}` }
+                  ]]
+                }
+              });
+
+              // Start progress monitoring
+              this.startProgressMonitoring(chatId, newOutputId, userLang);
+            } else {
+              throw new Error(result.error || 'Re-render failed');
+            }
+          } catch (error) {
+            console.error('Re-render error:', error);
+            await this.bot.sendMessage(chatId, userLang === 'ru'
+              ? `❌ Не удалось перерендерить. Оригинальный файл больше не доступен.\nОтправьте файл заново.`
+              : `❌ Cannot re-render. Original file no longer available.\nPlease send the file again.`);
+          }
         }
 
         await this.bot.answerCallbackQuery(query.id);

@@ -123,6 +123,78 @@ app.post('/render-route', upload.single('gpx'), async (req, res) => {
   );
 });
 
+// Re-render from existing output directory
+app.post('/re-render/:outputId', async (req, res) => {
+  const originalOutputId = req.params.outputId;
+  const userName = req.body.userName || 'Hiker';
+  const originalOutputDir = path.join(__dirname, '../output', originalOutputId);
+
+  console.log(`Re-render requested for output ID: ${originalOutputId}, user: ${userName}`);
+
+  // Check if original output directory exists
+  if (!fs.existsSync(originalOutputDir)) {
+    console.error(`Original output directory not found: ${originalOutputDir}`);
+    return res.status(404).json({ error: 'Original render not found', outputId: originalOutputId });
+  }
+
+  // Find the GPX/KML file in the original output directory
+  const files = fs.readdirSync(originalOutputDir);
+  const routeFile = files.find(f => f.endsWith('.gpx') || f.endsWith('.kml'));
+
+  if (!routeFile) {
+    console.error(`No GPX/KML file found in: ${originalOutputDir}`);
+    return res.status(404).json({ error: 'No route file found in original render', outputId: originalOutputId });
+  }
+
+  const originalRoutePath = path.join(originalOutputDir, routeFile);
+
+  // Create new output directory for re-render
+  const newOutputId = `route_${Date.now()}`;
+  const newOutputDir = path.join(__dirname, '../output', newOutputId);
+  fs.mkdirSync(newOutputDir, { recursive: true });
+
+  // Copy route file to new directory
+  const newRoutePath = path.join(newOutputDir, routeFile);
+  fs.copyFileSync(originalRoutePath, newRoutePath);
+
+  console.log(`Starting re-render: ${originalOutputId} -> ${newOutputId}`);
+
+  // Respond immediately (async mode)
+  res.json({
+    success: true,
+    status: 'accepted',
+    outputId: newOutputId,
+    originalOutputId: originalOutputId,
+    message: 'Re-render started in background',
+    statusUrl: `/status/${newOutputId}`,
+    logsUrl: `/logs/${newOutputId}`
+  });
+
+  // Start render in background
+  renderOrchestratorService.startRender(
+    {
+      routeFilePath: newRoutePath,
+      routeFilename: routeFile,
+      outputDir: newOutputDir,
+      outputId: newOutputId,
+      userName: userName
+    },
+    {
+      onProgress: (progress) => {
+        console.log(`📊 [${newOutputId}] Progress: ${progress.progress}% - ${progress.message}`);
+      },
+      onComplete: (result) => {
+        console.log(`✅ [${newOutputId}] Re-render complete!`);
+      },
+      onError: (error) => {
+        console.error(`❌ [${newOutputId}] Re-render failed:`, error);
+      }
+    }
+  ).catch(err => {
+    console.error(`❌ [${newOutputId}] Unhandled re-render error:`, err);
+  });
+});
+
 // Get status of a render job
 app.get('/status/:outputId', (req, res) => {
   try {
