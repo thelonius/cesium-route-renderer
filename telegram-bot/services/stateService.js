@@ -174,7 +174,7 @@ class StateService {
 
     // Check if same fileName already exists - update instead of duplicate
     const existingIndex = history.findIndex(r => r.fileName === route.fileName);
-    
+
     const newEntry = {
       outputId: route.outputId,
       fileName: route.fileName,

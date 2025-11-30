@@ -1,4 +1,5 @@
 const TelegramBot = require('node-telegram-bot-api');
+const path = require('path');
 
 // Services
 const ApiService = require('./services/apiService');
@@ -8,11 +9,16 @@ const BotHandlersService = require('./services/botHandlersService');
 // Configuration
 const CONSTANTS = require('../config/constants.cjs');
 
-// BOT_TOKEN must be set via environment variable (pm2 saves it)
-const BOT_TOKEN = process.env.BOT_TOKEN;
+const BOT_TOKEN = process.env.BOT_TOKEN || (() => {
+  try {
+    const fs = require('fs');
+    const p = '/home/theo/cesium-route-renderer/telegram-bot/.bot_token';
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8').trim();
+  } catch (e) {}
+  return null;
+})();
 if (!BOT_TOKEN) {
-  console.error('Missing BOT_TOKEN environment variable.');
-  console.error('Start with: BOT_TOKEN="your-token" pm2 start index.js --name telegram-bot');
+  console.error('Missing BOT_TOKEN environment variable and .bot_token file. Set BOT_TOKEN or create .bot_token and restart the bot.');
   process.exit(1);
 }
 const API_SERVER = process.env.API_SERVER || 'http://localhost:3000';
