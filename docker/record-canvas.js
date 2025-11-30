@@ -330,18 +330,21 @@ async function recordRoute() {
   // Test CDP screenshot capture (much faster than canvas.toDataURL)
   console.log('Testing CDP screenshot capture...');
   try {
-    const testScreenshot = await cdpSession.send('Page.captureScreenshot', {
-      format: 'jpeg',
-      quality: 85,
-      clip: { x: 0, y: 0, width: RECORD_WIDTH, height: RECORD_HEIGHT, scale: 1 }
-    });
+    const testScreenshot = await Promise.race([
+      cdpSession.send('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 85,
+        clip: { x: 0, y: 0, width: RECORD_WIDTH, height: RECORD_HEIGHT, scale: 1 }
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('CDP screenshot timeout (10s)')), 10000))
+    ]);
     if (!testScreenshot.data) {
       throw new Error('CDP screenshot returned empty');
     }
     console.log('✅ CDP screenshot test successful!');
   } catch (err) {
     console.error('❌ CDP screenshot test failed:', err.message);
-    throw new Error('CDP screenshot not working');
+    throw new Error('CDP screenshot not working: ' + err.message);
   }
 
   // IMPORTANT: Set up manual time control BEFORE signaling capture ready
