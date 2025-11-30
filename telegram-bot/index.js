@@ -1,5 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
 const path = require('path');
+const fs = require('fs');
 
 // Services
 const ApiService = require('./services/apiService');
@@ -9,9 +10,17 @@ const BotHandlersService = require('./services/botHandlersService');
 // Configuration
 const CONSTANTS = require('../config/constants.cjs');
 
-const BOT_TOKEN = process.env.BOT_TOKEN;
+// Load BOT_TOKEN from env or fallback to .bot_token file
+let BOT_TOKEN = process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
-  console.error('Missing BOT_TOKEN environment variable. Set BOT_TOKEN and restart the bot.');
+  const tokenFile = path.join(__dirname, '.bot_token');
+  if (fs.existsSync(tokenFile)) {
+    BOT_TOKEN = fs.readFileSync(tokenFile, 'utf8').trim();
+    console.log('📝 Loaded BOT_TOKEN from .bot_token file');
+  }
+}
+if (!BOT_TOKEN) {
+  console.error('Missing BOT_TOKEN. Set BOT_TOKEN env or create .bot_token file.');
   process.exit(1);
 }
 const API_SERVER = process.env.API_SERVER || 'http://localhost:3000';
