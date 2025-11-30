@@ -172,7 +172,7 @@ async function recordRoute() {
   const server = await startServer();
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: 'shell',  // Use old headless mode (chrome --headless=old) for better WebGL/screenshot support
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -180,8 +180,7 @@ async function recordRoute() {
       '--disable-web-security',
       '--disable-features=IsolateOrigins,site-per-process',
       '--enable-webgl',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
+      '--use-gl=swiftshader',
       '--enable-unsafe-swiftshader',
       '--ignore-gpu-blacklist',
       '--disable-gpu-vsync',
@@ -338,7 +337,7 @@ async function recordRoute() {
       throw new Error('Screenshot returned empty or too small');
     }
     console.log('✅ page.screenshot test successful! (' + testBuffer.length + ' bytes)');
-    
+
     // Also try CDP to see if it's faster
     try {
       const cdpTest = await Promise.race([
