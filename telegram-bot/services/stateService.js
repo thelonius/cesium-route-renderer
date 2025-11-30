@@ -159,6 +159,7 @@ class StateService {
 
   /**
    * Add route to user's history
+   * If a route with the same fileName exists, update it instead of adding duplicate
    *
    * @param {number} chatId - Telegram chat ID
    * @param {Object} route - Route information
@@ -171,14 +172,27 @@ class StateService {
   async addToHistory(chatId, route) {
     const history = this.getHistory(chatId);
 
-    // Add to beginning (newest first)
-    history.unshift({
+    // Check if same fileName already exists - update instead of duplicate
+    const existingIndex = history.findIndex(r => r.fileName === route.fileName);
+    
+    const newEntry = {
       outputId: route.outputId,
       fileName: route.fileName,
       timestamp: route.timestamp || Date.now(),
       videoUrl: route.videoUrl || null,
-      analysis: route.analysis || null
-    });
+      analysis: route.analysis || null,
+      renderCount: 1
+    };
+
+    if (existingIndex !== -1) {
+      // Update existing entry and move to front
+      const existing = history[existingIndex];
+      newEntry.renderCount = (existing.renderCount || 1) + 1;
+      history.splice(existingIndex, 1); // Remove old position
+    }
+
+    // Add to beginning (newest first)
+    history.unshift(newEntry);
 
     // Trim to limit
     if (history.length > this.historyLimit) {

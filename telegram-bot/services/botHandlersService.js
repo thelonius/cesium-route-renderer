@@ -184,8 +184,11 @@ class BotHandlersService {
         minute: '2-digit'
       });
 
+      // Show render count if rendered multiple times
+      const countStr = route.renderCount > 1 ? ` (×${route.renderCount})` : '';
+
       return [{
-        text: `${index + 1}. ${route.fileName} - ${dateStr}`,
+        text: `${index + 1}. ${route.fileName}${countStr} - ${dateStr}`,
         callback_data: `rerender_${index}`
       }];
     });
