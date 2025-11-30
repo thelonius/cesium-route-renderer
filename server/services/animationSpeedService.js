@@ -2,6 +2,25 @@ const CONSTANTS = require('../../config/constants.cjs');
 const { haversineDistance, calculateTotalDistance, calculateElevationGain } = require('../../utils/geoMath.cjs');
 
 /**
+ * Helper to extract numeric distance (in km) from various formats:
+ * - { kilometers: X } or { meters: X } (gpxService format)
+ * - { total: X } (test format, assumed meters)
+ * - number (direct value, assumed km)
+ * @param {Object|number} distance - Distance in various formats
+ * @returns {number|null} Distance in kilometers, or null if not available
+ */
+function getDistanceKm(distance) {
+  if (distance == null) return null;
+  if (typeof distance === 'number') return distance;
+  if (typeof distance === 'object') {
+    if (typeof distance.kilometers === 'number') return distance.kilometers;
+    if (typeof distance.meters === 'number') return distance.meters / 1000;
+    if (typeof distance.total === 'number') return distance.total / 1000;
+  }
+  return null;
+}
+
+/**
  * Animation Speed Service
  *
  * Manages animation speed calculations for route rendering with support for:
@@ -249,7 +268,8 @@ class AnimationSpeedService {
       }
     } else {
       // Point-to-point: distinct start and end
-      const routeDistance = routeAnalysis.distance || calculateTotalDistance(points);
+      const routeDistanceKm = getDistanceKm(routeAnalysis.distance);
+      const routeDistance = routeDistanceKm ? routeDistanceKm * 1000 : calculateTotalDistance(points);
       const linearityRatio = startEndDistance / routeDistance;
 
       // Check for repeated segments in point-to-point (unusual but possible)
@@ -1016,7 +1036,7 @@ class AnimationSpeedService {
       content: {
         title: 'Completing Loop',
         area: `${patternResult.enclosedArea?.toFixed(0) || 'N/A'}m²`,
-        distance: `${routeAnalysis.distance?.toFixed(1) || 'N/A'}km`
+        distance: `${getDistanceKm(routeAnalysis.distance)?.toFixed(1) || 'N/A'}km`
       },
       animation: 'fade-in',
       position: 'bottom-center'
@@ -1096,7 +1116,7 @@ class AnimationSpeedService {
         priority: 'low',
         content: {
           title: `${percent}% Complete`,
-          distance: `${((routeAnalysis.distance || 0) * (percent / 100)).toFixed(1)}km`,
+          distance: `${((getDistanceKm(routeAnalysis.distance) || 0) * (percent / 100)).toFixed(1)}km`,
           elevation: point?.ele ? `${point.ele.toFixed(0)}m` : null,
           // Placeholders for future features:
           calories: null, // TODO: Calculate based on distance, elevation, user weight

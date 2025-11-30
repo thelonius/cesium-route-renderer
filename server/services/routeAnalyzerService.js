@@ -2,6 +2,22 @@ const gpxService = require('./gpxService');
 const animationSpeedService = require('./animationSpeedService');
 
 /**
+ * Helper to extract numeric distance (in meters) from various formats
+ * @param {Object|number} distance - Distance in various formats
+ * @returns {number|null} Distance in meters, or null if not available
+ */
+function getDistanceMeters(distance) {
+  if (distance == null) return null;
+  if (typeof distance === 'number') return distance;
+  if (typeof distance === 'object') {
+    if (typeof distance.meters === 'number') return distance.meters;
+    if (typeof distance.kilometers === 'number') return distance.kilometers * 1000;
+    if (typeof distance.total === 'number') return distance.total;
+  }
+  return null;
+}
+
+/**
  * Route Analyzer Service
  *
  * High-level orchestrator that combines all route analysis services:
@@ -242,7 +258,8 @@ class RouteAnalyzerService {
       validation.errors.push('Route must have at least 2 points');
     }
 
-    if (!routeAnalysis.distance || routeAnalysis.distance < 0.001) {
+    const distanceMeters = getDistanceMeters(routeAnalysis.distance);
+    if (distanceMeters == null || distanceMeters < 1) {
       validation.warnings.push('Route distance is very short (< 1m)');
     }
 
